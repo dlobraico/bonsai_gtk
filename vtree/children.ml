@@ -22,3 +22,12 @@ let rec find_map t ~f =
   | List l -> List.find_map l ~f
   | Slots slots -> List.find_map slots ~f:(fun (_, s) -> find_map s ~f)
 ;;
+
+let rec iteri t ~path ~f =
+  match t with
+  | No_children -> ()
+  | Single c -> Option.iter c ~f:(f (sprintf "%s/0" path))
+  | List l -> List.iteri l ~f:(fun i c -> f (sprintf "%s/%d" path i) c)
+  | Slots slots ->
+    List.iter slots ~f:(fun (name, s) -> iteri s ~path:(sprintf "%s/%s" path name) ~f)
+;;

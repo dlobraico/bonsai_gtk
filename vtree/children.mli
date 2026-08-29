@@ -23,3 +23,9 @@ val iter : 'a t -> f:('a -> unit) -> unit
 
 (** First child for which [f] returns [Some], in the same order as {!iter}. *)
 val find_map : 'a t -> f:('a -> 'b option) -> 'b option
+
+(** Like {!iter}, but passing each child the path it sits at under [path]: [path/0] for a
+    {!Single}, [path/i] for the i-th of a {!List}, and [path/<slot>/...] through a
+    {!Slots}. The same spelling the patcher uses in its exception messages, so a path
+    computed here names the same node one of those does. *)
+val iteri : 'a t -> path:string -> f:(string -> 'a -> unit) -> unit

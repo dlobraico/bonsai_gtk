@@ -58,9 +58,15 @@ echo "== live tests (xvfb)"
 BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 
 echo "== example smoke"
+# Built first, and run out of `_build` rather than through `dune exec`: the
+# three-second budget has to cover the run alone. `dune exec` would spend it on
+# the build as well, and a cold cache or a contended dune lock would have
+# `timeout` kill the compiler at 124 -- which the check below would read as "the
+# window came up and stayed up".
+dune build examples/counter.exe examples/gallery.exe
 for ex in counter gallery; do
   set +e
-  xvfb-run -a timeout -k 2 3 dune exec "examples/$ex.exe"
+  xvfb-run -a timeout -k 2 3 "_build/default/examples/$ex.exe"
   code=$?
   set -e
   # 124 is timeout's "still running when time ran out", which is what a GUI that

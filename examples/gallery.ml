@@ -17,9 +17,18 @@ let sample_png =
     ]
 ;;
 
+(* A fixed name rather than [Filename.temp_file]'s unique one: nothing removes this file,
+   and nothing can -- GTK holds the path for as long as the picture might reload it, and
+   the process is normally ended by a window close or a signal rather than by anything
+   that would run an [at_exit]. A fixed name means one file in the temp directory however
+   many times the gallery is run, instead of one per run. *)
 let sample_png_path =
   lazy
-    (let path = Stdlib.Filename.temp_file "bonsai_gtk_gallery" ".png" in
+    (let path =
+       Stdlib.Filename.concat
+         (Stdlib.Filename.get_temp_dir_name ())
+         "bonsai_gtk_gallery.png"
+     in
      Out_channel.write_all path ~data:sample_png;
      path)
 ;;

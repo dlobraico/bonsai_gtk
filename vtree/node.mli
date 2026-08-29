@@ -652,5 +652,10 @@ val window
 
 val native : ?key:Key.t -> ?attrs:Attr.t list -> Native.t -> t
 
-(** Depth-first search for a node whose attrs carry [Test_id id]. *)
+(** Depth-first search for the node whose attrs carry [Test_id id].
+
+    Raises [Invalid_argument] if more than one node carries it, naming the path of each --
+    the same spelling the patcher uses in its own messages. Two nodes under one [test_id]
+    is what rendering the same sub-view twice produces, and returning whichever the walk
+    reached first would let a test act on an arbitrary one of them and still pass. *)
 val find_by_test_id : t -> string -> t option

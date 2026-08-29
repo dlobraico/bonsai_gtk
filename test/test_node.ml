@@ -64,3 +64,37 @@ let%expect_test "same_kind ignores props; native compares by name" =
        : bool * bool)];
   [%expect {| (true false) |}]
 ;;
+
+(* A [test_id] is how a headless action names the node it acts on, so two nodes carrying
+   one is not a search to resolve by walk order -- it is the mistake of rendering the same
+   sub-view twice (two rows, both with a "delete" button), and a test that acted on
+   whichever came first would pass without asserting which. *)
+let%expect_test "find_by_test_id insists on one match, and names the paths otherwise" =
+  let view ~second_id =
+    Node.window
+      ~title:"t"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.label "heading"
+         ; Node.button ~attrs:[ Attr.test_id "delete" ] ~label:"row 1" ()
+         ; Node.button ~attrs:[ Attr.test_id second_id ] ~label:"row 2" ()
+         ])
+  in
+  print_s
+    [%sexp
+      (Option.map
+         (Node.find_by_test_id (view ~second_id:"other") "delete")
+         ~f:(fun n -> Kind.name n.Node.kind)
+       : string option)];
+  [%expect {| (Button) |}];
+  print_s
+    [%sexp (Node.find_by_test_id (view ~second_id:"other") "missing" : Node.t option)];
+  [%expect {| () |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.find_by_test_id (view ~second_id:"delete") "delete");
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.find_by_test_id: 2 nodes carry the test_id delete (root/0/1, root/0/2); a test_id has to identify one node")
+    |}]
+;;
