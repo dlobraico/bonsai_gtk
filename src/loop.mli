@@ -20,7 +20,13 @@ open Bonsai_gtk_vtree
 
     If building the computation or rendering its first frame raises, the exception is
     logged and the status is non-zero even though GTK itself exited cleanly: an
-    application that never opened a window must not look like a successful run. *)
+    application that never opened a window must not look like a successful run.
+
+    If a *later* frame raises, the exception is logged and the driver stops permanently
+    (see {!Driver.broken}): the main loop keeps running and the window stays on screen at
+    its last good state, but nothing updates it again, and this call returns a non-zero
+    status when the loop finally exits. Frames are not atomic, so retrying one that raised
+    would patch a GTK tree the shadow tree no longer describes. *)
 val start
   :  ?application_id:string
   -> ?time_source:Bonsai.Time_source.t

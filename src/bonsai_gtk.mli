@@ -71,7 +71,15 @@ end
 
     Returns GTK's exit status, or a non-zero status of its own if building the computation
     or rendering its first frame raised — an application that never opened a window does
-    not report success. *)
+    not report success.
+
+    An exception raised by any later frame is logged once and stops the driver for good:
+    the window stays on screen at its last good state and the main loop keeps running (so
+    the app does not vanish under the user), but nothing renders into it again and [start]
+    returns a non-zero status. A frame is not atomic — the patcher mutates GTK as it goes
+    and records what it did only on success — so continuing after one raised would mean
+    diffing against a tree that no longer describes GTK. A raising frame is an application
+    bug to fix, not a condition to recover from. *)
 val start
   :  ?application_id:string
   -> ?time_source:Bonsai.Time_source.t

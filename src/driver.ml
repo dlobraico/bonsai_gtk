@@ -9,6 +9,7 @@ type t =
   ; ctx : Patcher.ctx
   ; mutable root : Patcher.live option
   ; mutable last : Node.t option
+  ; mutable stopped : bool
   }
 
 let schedule_event t effect =
@@ -27,6 +28,11 @@ let check_root (node : Node.t) =
 ;;
 
 let frame t =
+  if t.stopped
+  then
+    invalid_arg
+      "Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph \
+       and tears the widget tree down; build a new driver instead)";
   if t.advance_wall_clock
   then (
     Bonsai.Time_source.advance_clock t.time_source ~to_:(Time_ns.now ());
@@ -47,8 +53,8 @@ let frame t =
       t.root
       <- Some
            (match t.root with
-            | None -> Patcher.mount t.ctx ~path:"root" node
-            | Some live -> Patcher.patch t.ctx ~path:"root" live node));
+            | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
+            | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node));
     t.last <- Some node);
   Bonsai_driver.trigger_lifecycles t.bonsai;
   (* [trigger_lifecycles] *schedules* the after-display effects rather than applying them,
@@ -68,6 +74,10 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
     Option.value_or_thunk time_source ~default:(fun () ->
       Bonsai.Time_source.create ~start:(Time_ns.now ()))
   in
+  (* [default_for_test_handles] reads alarmingly in a production driver, but despite the
+     name it is the zero-overhead no-op configuration ([Not_watching], [Not_profiling], no
+     timers) and the only instrumentation value [Bonsai_driver] exposes publicly.
+     bonsai_term uses it in production for the same reason. *)
   let bonsai =
     Bonsai_driver.create
       ~optimize
@@ -97,7 +107,15 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
     }
   in
   let t =
-    { bonsai; time_source; advance_wall_clock; scheduler; ctx; root = None; last = None }
+    { bonsai
+    ; time_source
+    ; advance_wall_clock
+    ; scheduler
+    ; ctx
+    ; root = None
+    ; last = None
+    ; stopped = false
+    }
   in
   cell := Some t;
   t
@@ -105,10 +123,18 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
 
 let root_widget t = Option.map t.root ~f:(fun live -> live.Patcher.widget)
 let start_tick t ~fps = Scheduler.start_tick t.scheduler ~fps
+let broken t = Scheduler.broken t.scheduler
 
 let stop t =
-  Scheduler.stop t.scheduler;
-  Option.iter t.root ~f:(Patcher.destroy t.ctx);
-  t.root <- None;
-  t.last <- None
+  if not t.stopped
+  then (
+    t.stopped <- true;
+    Scheduler.stop t.scheduler;
+    Option.iter t.root ~f:(Patcher.destroy t.ctx);
+    t.root <- None;
+    t.last <- None;
+    (* Without this the incremental graph and every observer Bonsai built for it stay
+       reachable from [t.bonsai] for as long as the driver value is, which for an embedder
+       that creates a driver per dialog is a real leak. *)
+    Bonsai_driver.Expert.invalidate_observers t.bonsai)
 ;;

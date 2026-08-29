@@ -12,6 +12,7 @@ type t =
   ; mutable in_patch : bool
   ; mutable tick : Glib.Timeout.id option
   ; mutable stopped : bool
+  ; mutable broken : bool
   }
 
 let create ~run_frame =
@@ -21,11 +22,21 @@ let create ~run_frame =
   ; in_patch = false
   ; tick = None
   ; stopped = false
+  ; broken = false
   }
 ;;
 
 let in_patch t = t.in_patch
 let ticking t = Option.is_some t.tick
+let broken t = t.broken
+
+let stop t =
+  t.stopped <- true;
+  Option.iter t.tick ~f:Glib.Timeout.remove;
+  t.tick <- None;
+  Option.iter t.soon ~f:Glib.Timeout.remove;
+  t.soon <- None
+;;
 
 let with_patch_guard t f =
   t.in_patch <- true;
@@ -33,11 +44,23 @@ let with_patch_guard t f =
 ;;
 
 (* Every frame runs underneath a GLib callback, so nothing may escape: an OCaml exception
-   crossing a C frame would at best skip GLib's own bookkeeping. *)
+   crossing a C frame would at best skip GLib's own bookkeeping.
+
+   A raising frame stops the scheduler rather than being logged and retried. The patcher
+   mutates GTK as it walks the ops and only then writes the shadow tree back, so a frame
+   that dies part-way leaves GTK's tree ahead of the shadow tree's idea of it. Every later
+   frame would diff from that stale shadow tree — wrong ordering at best, and the same
+   exception again at tick rate at worst. One clear error and a frozen (but still
+   displayed) window beats a live app patching a tree it no longer describes. *)
 let guarded_frame t =
   match t.run_frame () with
   | () -> ()
-  | exception exn -> eprintf "bonsai_gtk: exception in frame: %s\n%!" (Exn.to_string exn)
+  | exception exn ->
+    eprintf
+      "bonsai_gtk: exception in frame, stopping the driver: %s\n%!"
+      (Exn.to_string exn);
+    t.broken <- true;
+    stop t
 ;;
 
 let request_frame t =
@@ -76,8 +99,8 @@ let start_tick t ~fps =
   Option.iter t.tick ~f:Glib.Timeout.remove;
   t.tick <- None;
   (* A non-positive rate is "never tick" rather than an error or, worse, the 1ms tick a
-     naive [1000. /. fps] would round to. *)
-  if Float.( > ) fps 0.
+     naive [1000. /. fps] would round to. A stopped scheduler is never restarted. *)
+  if (not t.stopped) && Float.( > ) fps 0.
   then (
     let ms = Int.max 1 (Float.to_int (1000. /. fps)) in
     t.tick
@@ -89,14 +112,9 @@ let start_tick t ~fps =
               then false
               else (
                 guarded_frame t;
-                true))
+                (* [guarded_frame] stops the scheduler if the frame raised, which has
+                   already removed this very source; returning [false] keeps GLib from
+                   re-arming it either way. *)
+                not t.stopped))
             ()))
-;;
-
-let stop t =
-  t.stopped <- true;
-  Option.iter t.tick ~f:Glib.Timeout.remove;
-  t.tick <- None;
-  Option.iter t.soon ~f:Glib.Timeout.remove;
-  t.soon <- None
 ;;

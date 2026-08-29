@@ -15,8 +15,10 @@ open! Core
     emits a signal while the patcher is running. *)
 type t
 
-(** [run_frame] is the thunk this scheduler drives. It is called from GLib callbacks and
-    its exceptions are caught and logged rather than escaping into the C frame. *)
+(** [run_frame] is the thunk this scheduler drives. It is called from GLib callbacks, so
+    its exceptions are caught rather than escaping into the C frame: a raising frame is
+    logged once and {!stop}s the scheduler, leaving {!broken} true. It is not retried —
+    see {!broken}. *)
 val create : run_frame:(unit -> unit) -> t
 
 (** Arms a coalesced high-priority idle that runs one frame. A no-op if a frame is already
@@ -41,13 +43,24 @@ val in_patch : t -> bool
 val with_patch_guard : t -> (unit -> 'a) -> 'a
 
 (** Starts a repeating timeout that runs a frame [fps] times a second. Calling it twice
-    replaces the previous tick; a non-positive [fps] means no tick at all. *)
+    replaces the previous tick; a non-positive [fps] means no tick at all, and a
+    {!stop}ped scheduler installs none. *)
 val start_tick : t -> fps:float -> unit
 
 (** [true] between {!start_tick} and {!stop}, i.e. a frame is guaranteed to run soon
     without anyone asking for one. *)
 val ticking : t -> bool
 
-(** Cancels the tick and makes every later {!request_frame} a no-op; an idle already armed
-    still fires but does nothing. Idempotent. *)
+(** [true] once a frame has raised. The scheduler {!stop}s itself at that point and never
+    runs another frame.
+
+    The reason is that a frame is not atomic: the patcher mutates GTK as it goes and only
+    writes the shadow tree back once the whole patch succeeds, so a frame that dies
+    part-way leaves the two out of sync. Continuing would diff every later frame against a
+    tree that no longer describes GTK. The window stays on screen showing its last good
+    state; the application has to be fixed. *)
+val broken : t -> bool
+
+(** Cancels the tick and any pending one-shot, and makes every later {!request_frame} a
+    no-op; an idle already armed still fires but does nothing. Idempotent. *)
 val stop : t -> unit

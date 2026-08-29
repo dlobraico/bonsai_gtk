@@ -26,6 +26,21 @@ let drain () =
   done
 ;;
 
+(* A frame that raises must stop the driver instead of repeating itself at tick rate. This
+   app renders a [Node.window] as a box child once its count reaches 1 — structural misuse
+   the patcher rejects (spec §11) — which is a realistic stand-in for any app bug that
+   surfaces mid-patch. *)
+let breaking_app (graph @ local) =
+  let count, set_count = Bonsai.state 0 graph in
+  let%arr count and set_count in
+  Node.window
+    ~title:"break"
+    (Node.box
+       ~orientation:Vertical
+       (Node.button ~attrs:[ Attr.on_clicked (set_count (count + 1)) ] ~label:"+" ()
+        :: (if count = 0 then [] else [ Node.window ~title:"nested" (Node.label "x") ])))
+;;
+
 let () =
   ignore (Ocgtk_gtk.GMain.init () : string array);
   (* A caller-owned time source: with none, every frame would advance the clock to
@@ -58,5 +73,27 @@ let () =
   drain ();
   dump ();
   Expert.Driver.stop d;
-  print_endline "stopped"
+  print_endline "stopped";
+  (* The click below reaches the computation through the scheduler's idle, which is the
+     guarded path — [Expert.Driver.frame] would simply re-raise. *)
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let broken =
+    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) breaking_app
+  in
+  Expert.Driver.frame broken;
+  printf "broken before: %b\n" (Expert.Driver.broken broken);
+  let plus () =
+    let root = Option.value_exn (Expert.Driver.root_widget broken) in
+    List.hd_exn (widget_children (List.hd_exn (widget_children root)))
+  in
+  Gobject.Signal.emit_by_name (plus ()) ~name:"clicked";
+  drain ();
+  printf "broken after: %b\n" (Expert.Driver.broken broken);
+  (* The window is still there, showing its last good state — a dead app the user can
+     close, not a vanished one. A second click arms nothing, so nothing re-raises. *)
+  Gobject.Signal.emit_by_name (plus ()) ~name:"clicked";
+  drain ();
+  print_s (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget broken)));
+  Expert.Driver.stop broken;
+  print_endline "broken driver stopped"
 ;;

@@ -63,12 +63,17 @@ let () =
               ~label:text
               ())))
   in
-  let live = P.mount ctx ~path:"root" (view "v1" [ "a", "A"; "b", "B" ]) in
+  let live = P.mount ctx ~path:"root" ~is_root:true (view "v1" [ "a", "A"; "b", "B" ]) in
   print_s (Live_tree.dump live.widget);
   (* v1 order is [label; a; b]. *)
   let a_before = nth_box_child live 1 in
   let live =
-    P.patch ctx ~path:"root" live (view "v2" [ "b", "B"; "c", "C"; "a", "A!" ])
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (view "v2" [ "b", "B"; "c", "C"; "a", "A!" ])
   in
   print_s (Live_tree.dump live.widget);
   (* v2 order is [label; b; c; a]: [a] was moved and relabelled, not recreated. *)
@@ -84,6 +89,7 @@ let () =
     P.patch
       ctx
       ~path:"root"
+      ~is_root:true
       live
       (Node.window
          ~title:"T"
@@ -102,20 +108,67 @@ let () =
   let native_view n =
     Node.window ~title:"T" (Node.box ~orientation:Vertical [ counter n ])
   in
-  let live = P.patch ctx ~path:"root" live (native_view 1) in
+  let live = P.patch ctx ~path:"root" ~is_root:true live (native_view 1) in
   print_s (Live_tree.dump live.widget);
   (* Same impl, new input: [update] runs rather than the widget being recreated. *)
   let native_before = nth_box_child live 0 in
-  let live = P.patch ctx ~path:"root" live (native_view 2) in
+  let live = P.patch ctx ~path:"root" ~is_root:true live (native_view 2) in
   print_s (Live_tree.dump live.widget);
   printf
     "same widget for native: %b\n"
     (Gobject.same native_before (nth_box_child live 0));
   (* Dropping the box takes the native node with it, so its [destroy] must run. *)
   let live =
-    P.patch ctx ~path:"root" live (Node.window ~title:"T" (Node.label "replaced"))
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (Node.window ~title:"T" (Node.label "replaced"))
   in
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
-  print_endline "destroyed"
+  print_endline "destroyed";
+  (* Every ordinary attribute, set and then dropped. [Attr_apply.unset] is the half with
+     the non-obvious choices in it (a [-1] size request means "no request"; [`FILL] is the
+     alignment default; a dropped [visible] means visible again), and the second dump is
+     what proves each of those actually lands. *)
+  let attr_view attrs = Node.window ~title:"attrs" (Node.label ~attrs "styled") in
+  let live =
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (attr_view
+         [ Attr.margin_start 1
+         ; Attr.margin_end 2
+         ; Attr.margin_top 3
+         ; Attr.margin_bottom 4
+         ; Attr.halign Start
+         ; Attr.valign Center
+         ; Attr.hexpand true
+         ; Attr.vexpand true
+         ; Attr.tooltip "hi"
+         ; Attr.sensitive false
+         ; Attr.visible false
+         ; Attr.width_request 20
+         ; Attr.height_request 30
+         ])
+  in
+  print_s (Live_tree.dump live.widget);
+  let live = P.patch ctx ~path:"root" ~is_root:true live (attr_view []) in
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* Spec §11: a window below the root is structural misuse, not something to render. *)
+  match
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (Node.window
+         ~title:"outer"
+         (Node.box ~orientation:Vertical [ Node.window ~title:"inner" (Node.label "x") ]))
+  with
+  | (_ : P.live) -> print_endline "BUG: nested window accepted"
+  | exception Invalid_argument msg -> printf "nested window rejected: %s\n" msg
 ;;

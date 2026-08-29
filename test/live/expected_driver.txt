@@ -12,3 +12,12 @@ window created
     (GtkButton (label (+)) (css (text-button))
      (children (GtkLabel (text +))))))))
 stopped
+broken before: false
+broken after: true
+(GtkWindow (title (break)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (+)) (css (text-button))
+     (children (GtkLabel (text +))))))))
+broken driver stopped

@@ -24,7 +24,7 @@ widgets, Windows/macOS support (GTK4 on Linux only, via ocgtk).
 | GTK binding | [`ocgtk`](https://github.com/chris-armstrong/ocgtk) 0.1~preview2, pinned to a commit on the `dlobraico/ocgtk` fork's `bonsai-gtk` branch (upstream `40ab0b6` + fixes being upstreamed, see §2.1). GTK 4. Dune libraries used: `ocgtk.gtk`, `ocgtk.gio`, `ocgtk.gdk`, `ocgtk.common` (unwrapped: `Gobject`, `Glib`). |
 | Event loop | GLib main loop only. No Async. `GtkApplication` is the entry point. |
 | Bonsai libs | `bonsai`, `bonsai.driver`, `virtual_dom.ui_effect` (for `Ui_effect`), `bonsai_test` (for the test handle). |
-| Nix | `flake.nix` provides the dev shell (opam, pkg-config, GTK4 stack, xvfb-run, ocamlformat) and a `packages.ocgtk` derivation. The library itself is built by dune in the opam switch, not by Nix, because Bonsai v0.18 is OxCaml-only. |
+| Nix | `flake.nix` provides the dev shell (opam, pkg-config, GTK4 stack, xvfb-run) and a `packages.ocgtk` derivation. `ocamlformat` comes from the opam switch, not the shell, so it is the version the project pins rather than nixpkgs'. The library itself is built by dune in the opam switch, not by Nix, because Bonsai v0.18 is OxCaml-only. |
 
 ### 2.1 ocgtk fork and upstreaming
 
@@ -50,10 +50,16 @@ Decision: **fork upstream to `dlobraico/ocgtk` and upstream the fixes.**
   additions. Each theme becomes one upstream PR against `chris-armstrong/ocgtk`
   `main`, with ocgtk's own regression tests (`tests/test_closure_with_gc.ml`
   etc.) included.
-- `bonsai_gtk` pins the fork: `scripts/setup-switch.sh` does
-  `opam pin add ocgtk git+https://github.com/dlobraico/ocgtk#<commit>` and
-  `flake.nix` `packages.ocgtk` uses `fetchFromGitHub { owner = "dlobraico"; rev = <commit>; }`.
-  One commit hash, recorded in `scripts/ocgtk-pin` and read by both.
+- `bonsai_gtk` pins the fork: `scripts/setup-switch.sh` clones the fork to
+  `.ocgtk-src`, checks out the pinned commit, and *path*-pins it
+  (`opam pin add ocgtk ./.ocgtk-src/ocgtk`) rather than using a git pin — opam
+  rsyncs the directory, which keeps the switch reproducible from a checkout the
+  script controls and makes local fork edits testable without a push. The script
+  asserts the checkout is at the pinned commit, and reinstalls ocgtk when the
+  commit moves (opam does not notice a directory pin's contents changing on its
+  own). `flake.nix` `packages.ocgtk` uses
+  `fetchFromGitHub { owner = "dlobraico"; rev = <commit>; }`.
+  One commit hash, recorded in `ocgtk-pin.json` and read by both.
 - As PRs merge upstream, the branch rebases toward upstream `main` and the
   pin moves; when everything is merged the pin returns to upstream.
 - The fork is also where any C stubs bonsai_gtk turns out to need
@@ -484,9 +490,10 @@ Out of scope until a follow-up design: ListView/ColumnView/GridView (ocgtk
 generates no `SignalListItemFactory` signals, so they cannot be populated
 without new C stubs), Assistant, ColorDialog/FontDialog, drag & drop, custom
 Cairo drawing (`DrawingArea.set_draw_func` unbound), display-wide CSS
-(`add_provider_for_display` unbound — M3 adds the stub on the ocgtk fork and
-proposes it upstream; until then `Attr.css_provider` applies a provider to a
-widget's own style context).
+(`add_provider_for_display` is unbound upstream; the fork already carries the
+stub as commit 6, awaiting the upstream PR, so M3 wires it up rather than
+writing it. Until then `Attr.css_provider` applies a provider to a widget's own
+style context).
 
 Implementation notes carried from the survey: `ListBox`/`FlowBox` sorting and
 filtering are done in the Bonsai model (the GTK callbacks are unbound);
@@ -553,7 +560,7 @@ test_lib/                   library bonsai_gtk_test (ocgtk-free)
 test/                       pure + headless expect tests
 test/live/                  xvfb tests (plain executables + diff rules)
 examples/                   counter, todo, gallery (grows per milestone)
-scripts/ocgtk-pin           the fork commit both opam and Nix pin
+ocgtk-pin.json              the fork commit both opam and Nix pin (owner/repo/rev/hash)
 scripts/setup-switch.sh     create ./_opam OxCaml switch, pin ocgtk to the fork commit, install deps
 scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune runtest test/live
 .ocamlformat                profile=janestreet (as bonsai_term)
@@ -561,10 +568,12 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
 
 `flake.nix`:
 - `devShells.default`: opam, pkg-config, gcc, gnumake, autoconf, gtk4, glib,
-  graphene, pango, cairo, gdk-pixbuf, gobject-introspection, xvfb-run,
-  ocamlformat; `shellHook` activates `./_opam` if present.
+  graphene, pango, cairo, gdk-pixbuf, gobject-introspection, xvfb-run;
+  `shellHook` activates `./_opam` if present. `ocamlformat` is not in the shell:
+  it is installed into the opam switch by `scripts/setup-switch.sh`, so `dune
+  fmt` uses the version `.ocamlformat` pins.
 - `packages.ocgtk`: `buildDunePackage` from `fetchFromGitHub` at the fork
-  commit in `scripts/ocgtk-pin`, nixpkgs OCaml, tests under xvfb — proves the
+  commit in `ocgtk-pin.json`, nixpkgs OCaml, tests under xvfb — proves the
   pinned fork builds and passes ocgtk's own GC regression tests, independent
   of the opam switch.
 - No `packages.bonsai_gtk`: documented limitation (Bonsai v0.18 is not in
@@ -572,13 +581,22 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
 
 ## 11. Error handling
 
-- Structural misuse (non-window root, duplicate sibling keys, event attr on a
-  widget that lacks the signal) raises `Invalid_argument` with the node path
-  at mount/patch time — loud and early.
+- Structural misuse (non-window root, a `Node.window` anywhere *below* the
+  root — a `GtkWindow` is a toplevel and cannot be parented — duplicate sibling
+  keys, event attr on a widget that lacks the signal) raises `Invalid_argument`
+  with the node path at mount/patch time — loud and early.
 - Exceptions inside a signal trampoline are caught before they reach C
   (undefined behaviour otherwise), logged to stderr with the node path, and
-  do not tear down the main loop. Exceptions inside a frame (flush/patch)
-  propagate out of the GLib source callback's guard the same way; the
-  `in_patch` flag is reset in a `protect ~finally`.
+  do not tear down the main loop.
+- Exceptions inside a frame (flush/patch) are likewise caught before reaching C,
+  but are *not* survivable: the frame is logged once and the driver stops for
+  good (`Driver.broken`). A frame is not atomic — the patcher mutates GTK as it
+  walks its ops and records what it did only on success — so a frame that dies
+  part-way leaves the shadow tree describing a GTK tree that no longer exists,
+  and every later frame would diff against it (wrong ordering at best, the same
+  exception at tick rate at worst). The main loop keeps running so the window
+  stays on screen at its last good state; nothing renders into it again, and
+  `start` returns a non-zero status. The `in_patch` flag is reset in a
+  `protect ~finally` either way.
 - ocgtk unsupported signals are omitted at the API level, never silently
   no-op.

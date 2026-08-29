@@ -15,9 +15,23 @@ echo "== format"
 # each real source directory's `@<dir>/fmt` alias instead; each exits
 # non-zero when its files need formatting.
 dune build @vtree/fmt @src/fmt @test/fmt @test_lib/fmt @test/live/fmt @examples/fmt
+# The root `dune` and `dune-project` are not covered by any of those aliases
+# (they belong to the root directory, whose `@fmt` alias is the one that walks
+# `result/`). `dune format-dune-file` is the same formatter the alias runs.
+for f in dune dune-project; do
+  dune format-dune-file "$f" | diff -u "$f" - || {
+    echo "$f needs formatting"; exit 1;
+  }
+done
 
 echo "== build"
 dune build @all
+
+# `generate_opam_files true` rewrites the .opam files during the build, so a
+# dune-project edit committed without its regenerated .opam would otherwise
+# leave CI green and the tree dirty.
+echo "== generated opam files are committed"
+git diff --exit-code -- '*.opam'
 
 echo "== pure + headless tests"
 dune build @test/runtest

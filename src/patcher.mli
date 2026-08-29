@@ -28,10 +28,14 @@ type live =
     for a window, presents it).
 
     [path] identifies the node for exception reporting; children extend it with their
-    index.
+    index. [is_root] must be [true] only for the node the runtime treats as the tree's
+    root; every recursive call passes [false].
 
-    Raises [Invalid_argument] if a node has children its widget cannot hold. *)
-val mount : ctx -> path:string -> Node.t -> live
+    Raises [Invalid_argument] if a node has children its widget cannot hold, or if a
+    {!Bonsai_gtk_vtree.Kind.Window} node appears anywhere but the root — a [GtkWindow] is
+    a toplevel and cannot be parented, so nesting one produces a GTK critical and a
+    silently broken tree. *)
+val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
 
 (** Diffs [node] against [live.node] and mutates the live tree to match.
 
@@ -42,8 +46,9 @@ val mount : ctx -> path:string -> Node.t -> live
     attached.
 
     Raises [Invalid_argument] if a node's children shape changed under an unchanged kind
-    (e.g. a single-child container asked to hold a list). *)
-val patch : ctx -> path:string -> live -> Node.t -> live
+    (e.g. a single-child container asked to hold a list), or if a window node appears
+    off-root (see {!mount}). *)
+val patch : ctx -> path:string -> is_root:bool -> live -> Node.t -> live
 
 (** Tears [live] and its subtree down: empties the signal slots (so a signal GTK emits
     during teardown cannot reach a handler), disconnects, and lets native implementations

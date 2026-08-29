@@ -3,8 +3,10 @@ open Gtk_import
 module Gio_application = Ocgtk_gio.Gio.Wrappers.Application
 
 (* [g_application_run]'s own status codes come from the application; 1 is ours, for "the
-   app never got off the ground". *)
+   app never got off the ground". 2 is ours too, for "it ran, then a frame raised and the
+   driver stopped" — see {!Driver.broken}. *)
 let startup_failure_status = 1
+let broken_driver_status = 2
 
 let start
   ?(application_id = "org.bonsai_gtk.app")
@@ -50,9 +52,15 @@ let start
   (* [0]/[None] rather than the real command line: GTK's own argument parsing is not
      something an embedded app should inherit by default. *)
   let status = Gio_application.run gapp 0 None in
+  (* Read before [stop], which tears the driver down. *)
+  let broke = Option.exists !driver ~f:Driver.broken in
   Option.iter !driver ~f:Driver.stop;
   Gtk_effect.For_start.clear_app ();
-  match !failure with
-  | None -> status
-  | Some _ -> if status = 0 then startup_failure_status else status
+  if status <> 0
+  then status
+  else if Option.is_some !failure
+  then startup_failure_status
+  else if broke
+  then broken_driver_status
+  else status
 ;;

@@ -18,7 +18,21 @@ type live =
 
 let child_path path i = sprintf "%s/%d" path i
 
-let rec mount ctx ~path (node : Node.t) : live =
+(* Spec §11: structural misuse is rejected loudly and early. A [GtkWindow] is a toplevel,
+   so parenting one would make GTK log a critical and leave a silently broken tree — and
+   under [Loop] the runtime would additionally present it as if it were a real window. *)
+let check_placement ~path ~is_root (node : Node.t) =
+  match node.kind with
+  | Window _ when not is_root ->
+    invalid_argf
+      "%s: a Node.window may only be the root node, not a child of another node"
+      path
+      ()
+  | _ -> ()
+;;
+
+let rec mount ctx ~path ~is_root (node : Node.t) : live =
+  check_placement ~path ~is_root node;
   let impl = Registry.for_kind node.kind in
   let widget = impl.create node.kind in
   Attr_apply.apply_all widget node.attrs;
@@ -30,11 +44,15 @@ let rec mount ctx ~path (node : Node.t) : live =
     match node.children, impl.children with
     | No_children, _ -> Children.No_children
     | Single c, Single { set } ->
-      let live_c = Option.map c ~f:(fun c -> mount ctx ~path:(child_path path 0) c) in
+      let live_c =
+        Option.map c ~f:(fun c -> mount ctx ~path:(child_path path 0) ~is_root:false c)
+      in
       set widget (Option.map live_c ~f:(fun l -> l.widget));
       Single live_c
     | List cs, List { insert; _ } ->
-      let lives = List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) c) in
+      let lives =
+        List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
+      in
       List.iteri lives ~f:(fun i l -> insert widget ~index:i l.widget);
       List lives
     | (Single _ | List _), _ ->
@@ -76,12 +94,13 @@ and disarm (live : live) =
   | Single c -> Option.iter c ~f:disarm
   | List l -> List.iter l ~f:disarm
 
-and patch ctx ~path (live : live) (node : Node.t) : live =
+and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
+  check_placement ~path ~is_root node;
   if not (Kind.same_kind live.node.kind node.kind)
   then (
     (* Mount before destroying: the caller re-parents the fresh widget, and mounting first
        keeps the old subtree alive (and parented) until the replacement exists. *)
-    let fresh = mount ctx ~path node in
+    let fresh = mount ctx ~path ~is_root node in
     destroy ctx live;
     fresh)
   else (
@@ -107,11 +126,11 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
        destroy ctx o;
        Single None
      | None, Some n ->
-       let l = mount ctx ~path:(child_path path 0) n in
+       let l = mount ctx ~path:(child_path path 0) ~is_root:false n in
        set live.widget (Some l.widget);
        Single (Some l)
      | Some o, Some n ->
-       let l = patch ctx ~path:(child_path path 0) o n in
+       let l = patch ctx ~path:(child_path path 0) ~is_root:false o n in
        (* [patch] returns a different record only when the kind changed, in which case the
           old widget is still the container's child; [set] replaces (and unparents) it. *)
        if not (phys_equal l o) then set live.widget (Some l.widget);
@@ -137,7 +156,7 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
         destroy ctx l;
         cur := List.filteri !cur ~f:(fun i _ -> i <> index)
       | Insert { index; item } ->
-        let l = mount ctx ~path:(child_path path index) item in
+        let l = mount ctx ~path:(child_path path index) ~is_root:false item in
         insert live.widget ~index l.widget;
         cur := List.take !cur index @ (l :: List.drop !cur index)
       | Move { from; to_ } ->
@@ -147,7 +166,7 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
         cur := List.take without to_ @ (l :: List.drop without to_)
       | Update { index; item; old = _ } ->
         let l = List.nth_exn !cur index in
-        let l' = patch ctx ~path:(child_path path index) l item in
+        let l' = patch ctx ~path:(child_path path index) ~is_root:false l item in
         if not (phys_equal l l')
         then (
           (* The kind changed, so [patch] mounted a replacement and destroyed [l]. [l]'s

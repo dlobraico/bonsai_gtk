@@ -30,8 +30,12 @@ val create
     apply queued actions, and patch the GTK tree to the new result, then run lifecycles.
 
     Raises whatever the computation or the patcher raises — in particular
-    [Invalid_argument] if the root node is not a [Node.window]. Under {!Bonsai_gtk.start}
-    frames are driven by the scheduler, which logs instead. *)
+    [Invalid_argument] if the root node is not a [Node.window], or if a [Node.window]
+    appears anywhere below the root. Under {!Bonsai_gtk.start} frames are driven by the
+    scheduler, which logs the exception and stops the driver instead of raising; see
+    {!broken}.
+
+    Raises [Invalid_argument] if called after {!stop}. *)
 val frame : t -> unit
 
 (** Queues [effect] and asks for a frame. This is the path every signal handler takes. *)
@@ -53,6 +57,18 @@ val root_widget : t -> Widget.t option
     a tick: it renders when something else causes a frame and otherwise sits still. *)
 val start_tick : t -> fps:float -> unit
 
-(** Stops the scheduler and tears the widget tree down. The Bonsai computation itself is
-    left alone; the driver is simply not driving anything any more. *)
+(** [true] once a scheduler-driven frame has raised, which permanently stops this driver.
+
+    A frame is not atomic — the patcher mutates GTK as it walks its ops and writes the
+    shadow tree back only on success — so a frame that raises part-way leaves the two out
+    of sync, and every later frame would diff against a tree that no longer describes GTK.
+    Rather than repeat that (and the exception) at tick rate, the scheduler logs once and
+    stops. The widgets stay on screen showing their last good state and the GTK main loop
+    keeps running, so the window does not vanish; nothing updates it again. The fix is to
+    the application. {!Bonsai_gtk.start} reports this as a non-zero exit status. *)
+val broken : t -> bool
+
+(** Stops the scheduler, tears the widget tree down, and invalidates the Bonsai
+    computation's incremental observers. The driver is dead afterwards: {!root_widget} is
+    [None] and {!frame} raises. Build a new driver to render again. Idempotent. *)
 val stop : t -> unit
