@@ -103,6 +103,10 @@ and destroy ctx (live : live) =
   | Image _
   | Picture _
   | Separator _
+  | Scrolled_window _
+  | Frame _
+  | Expander _
+  | Revealer _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.

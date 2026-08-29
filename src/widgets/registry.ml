@@ -17,6 +17,10 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Image _ -> W_image.impl
   | Picture _ -> W_picture.impl
   | Separator _ -> W_separator.impl
+  | Scrolled_window _ -> W_scrolled_window.impl
+  | Frame _ -> W_frame.impl
+  | Expander _ -> W_expander.impl
+  | Revealer _ -> W_revealer.impl
   | Box _ -> W_box.impl
   | Window _ -> W_window.impl
   | Native n -> Native_gtk.impl_of_payload n

@@ -134,6 +134,47 @@ type picture_props =
 
 type separator_props = { orientation : Orientation.t } [@@deriving sexp_of, equal]
 
+(* The single-child containers. Every default below is GTK's own, so a container built
+   from its child alone is the plain GTK widget -- which is why [kinetic_scrolling] and
+   [overlay_scrolling] default to [true] and are dropped from the sexp when they are. *)
+type scrolled_window_props =
+  { hpolicy : Policy.t [@sexp_drop_if Policy.equal Automatic]
+  ; vpolicy : Policy.t [@sexp_drop_if Policy.equal Automatic]
+  ; min_content_width : int [@sexp_drop_if Int.equal (-1)]
+  ; min_content_height : int [@sexp_drop_if Int.equal (-1)]
+  ; max_content_width : int [@sexp_drop_if Int.equal (-1)]
+  ; max_content_height : int [@sexp_drop_if Int.equal (-1)]
+  ; propagate_natural_width : bool [@sexp_drop_if fun b -> not b]
+  ; propagate_natural_height : bool [@sexp_drop_if fun b -> not b]
+  ; has_frame : bool [@sexp_drop_if fun b -> not b]
+  ; kinetic_scrolling : bool [@sexp_drop_if fun b -> b]
+  ; overlay_scrolling : bool [@sexp_drop_if fun b -> b]
+  }
+[@@deriving sexp_of, equal]
+
+type frame_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; label_align : float [@sexp_drop_if Float.equal 0.]
+  }
+[@@deriving sexp_of, equal]
+
+(* [expanded] and [reveal] carry no [@sexp_drop_if] for the reason the toggles' [active]
+   does not: they are required labelled arguments and controlled props, so their value is
+   always something the caller asked for. *)
+type expander_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; expanded : bool
+  ; use_markup : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type revealer_props =
+  { reveal : bool
+  ; transition : Reveal_transition.t [@sexp_drop_if Reveal_transition.equal None_]
+  ; transition_duration : int [@sexp_drop_if Int.equal 250]
+  }
+[@@deriving sexp_of, equal]
+
 type box_props =
   { orientation : Orientation.t
   ; spacing : int [@sexp_drop_if Int.equal 0]
@@ -163,6 +204,10 @@ type t =
   | Image of image_props
   | Picture of picture_props
   | Separator of separator_props
+  | Scrolled_window of scrolled_window_props
+  | Frame of frame_props
+  | Expander of expander_props
+  | Revealer of revealer_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t
@@ -184,6 +229,10 @@ let name = function
   | Image _ -> "Image"
   | Picture _ -> "Picture"
   | Separator _ -> "Separator"
+  | Scrolled_window _ -> "ScrolledWindow"
+  | Frame _ -> "Frame"
+  | Expander _ -> "Expander"
+  | Revealer _ -> "Revealer"
   | Box _ -> "Box"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
@@ -206,6 +255,10 @@ let same_kind a b =
   | Image _, Image _
   | Picture _, Picture _
   | Separator _, Separator _
+  | Scrolled_window _, Scrolled_window _
+  | Frame _, Frame _
+  | Expander _, Expander _
+  | Revealer _, Revealer _
   | Box _, Box _
   | Window _, Window _ -> true
   | Native a, Native b -> String.equal a.name b.name
@@ -229,6 +282,10 @@ let equal_props a b =
   | Image a, Image b -> equal_image_props a b
   | Picture a, Picture b -> equal_picture_props a b
   | Separator a, Separator b -> equal_separator_props a b
+  | Scrolled_window a, Scrolled_window b -> equal_scrolled_window_props a b
+  | Frame a, Frame b -> equal_frame_props a b
+  | Expander a, Expander b -> equal_expander_props a b
+  | Revealer a, Revealer b -> equal_revealer_props a b
   | Box a, Box b -> equal_box_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload

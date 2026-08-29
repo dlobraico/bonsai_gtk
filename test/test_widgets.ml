@@ -161,3 +161,43 @@ let%expect_test "images, pictures and separators" =
          (children No_children))))))
     |}]
 ;;
+
+let%expect_test "single-child containers" =
+  print_s
+    [%sexp
+      (Node.scrolled_window
+         ~vpolicy:Automatic
+         ~hpolicy:Never
+         ~propagate_natural_height:true
+         (Node.box
+            ~orientation:Vertical
+            [ Node.frame ~label:"Group" (Node.label "framed")
+            ; Node.expander ~label:"More" ~expanded:false (Node.label "hidden")
+            ; Node.revealer ~reveal:true ~transition:Slide_down (Node.label "shown")
+            ])
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Scrolled_window ((hpolicy Never) (propagate_natural_height true))))
+     (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Frame ((label (Group))))) (attrs ())
+             (children
+              (Single
+               (((kind (Label ((text framed)))) (attrs ())
+                 (children No_children))))))
+            ((kind (Expander ((label (More)) (expanded false)))) (attrs ())
+             (children
+              (Single
+               (((kind (Label ((text hidden)))) (attrs ())
+                 (children No_children))))))
+            ((kind (Revealer ((reveal true) (transition Slide_down)))) (attrs ())
+             (children
+              (Single
+               (((kind (Label ((text shown)))) (attrs ()) (children No_children))))))))))))))
+    |}]
+;;

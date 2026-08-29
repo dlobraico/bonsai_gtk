@@ -107,6 +107,8 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_activate _
   | On_search_changed _
   | On_value_changed _
+  | On_expanded_changed _
+  | On_revealed _
   | Many _ -> ()
 ;;
 
@@ -137,7 +139,9 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_changed
   | On_activate
   | On_search_changed
-  | On_value_changed -> ()
+  | On_value_changed
+  | On_expanded_changed
+  | On_revealed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

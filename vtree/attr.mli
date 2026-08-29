@@ -27,6 +27,8 @@ module Name : sig
     | On_activate
     | On_search_changed
     | On_value_changed
+    | On_expanded_changed
+    | On_revealed
   [@@deriving sexp_of, compare, equal]
 
   (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
@@ -63,6 +65,8 @@ type t =
   | On_activate of unit Handler.t
   | On_search_changed of string Handler.t
   | On_value_changed of float Handler.t
+  | On_expanded_changed of bool Handler.t
+  | On_revealed of bool Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -170,6 +174,30 @@ val on_search_changed : (string -> unit Ui_effect.t) -> t
     value on the next render. Attaching it to a widget that emits no such signal raises
     [Invalid_argument] when the node is mounted or patched. *)
 val on_value_changed : (float -> unit Ui_effect.t) -> t
+
+(** Fires when the user opens or closes an [expander], carrying its new state.
+
+    This is [notify::expanded] rather than [GtkExpander::activate], which fires {i before}
+    the property settles and so would hand the handler the old value (spec 6.4).
+
+    [expanded] is {i controlled} on the same rule as the toggles' [active], so an expander
+    whose model never learns it was opened snaps shut on the next unrelated re-render.
+    Attaching this to a widget that emits no such signal raises [Invalid_argument] when
+    the node is mounted or patched. *)
+val on_expanded_changed : (bool -> unit Ui_effect.t) -> t
+
+(** Fires when a [revealer]'s {i animation} finishes, carrying whether the child ended up
+    revealed. This is what to hang "now that it has slid away, drop it from the model" on;
+    the [reveal] argument itself is the input, not the outcome.
+
+    It connects [notify::child-revealed]: [child-revealed] is a read-only property that
+    flips when the transition completes, unlike [reveal-child], which moves the instant
+    the animation is asked to start. A revealer with no transition settles both at once.
+
+    Unlike the other event attrs here, this one is not the write-back half of a controlled
+    prop -- [reveal] is controlled against [reveal-child], which the user cannot move on
+    their own. It is a notification, and a revealer that carries none is not broken. *)
+val on_revealed : (bool -> unit Ui_effect.t) -> t
 
 val many : t list -> t
 val empty : t

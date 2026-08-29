@@ -346,6 +346,119 @@ val picture
     [Horizontal] separator is a horizontal line, drawn across a vertical stack. *)
 val separator : ?key:Key.t -> ?attrs:Attr.t list -> orientation:Orientation.t -> unit -> t
 
+(** A [GtkScrolledWindow]: a viewport onto a child too big for the space it is given.
+
+    [hpolicy] and [vpolicy] say when each scrollbar appears. The two are set through one
+    GTK call, so changing either rewrites both. [Never] means "no scrollbar, and the
+    content dictates the size" -- the child's full natural size is requested, which is
+    what you want for a vertically scrolling list whose width should still fit its rows
+    ([~hpolicy:Never ~vpolicy:Automatic]). [External_] means "no scrollbar, and do not let
+    the content dictate the size either", which is how a widget is clipped to whatever
+    space it is given.
+
+    [min_content_width]/[min_content_height] are the size the viewport keeps visible
+    ([-1], GTK's own, for none); [max_content_width]/[max_content_height] cap how far it
+    grows before it starts scrolling. [propagate_natural_width]/[..._height] let the
+    child's natural size through to the scrolled window's own request -- the pairing that
+    makes a scroller size itself to its content up to the maximum.
+
+    [has_frame] draws a border around the contents. [kinetic_scrolling] (GTK's own [true])
+    is touchscreen flick-and-glide. [overlay_scrolling] (also [true]) is the thin
+    scrollbar that floats over the content instead of taking layout space.
+
+    Scroll {i position} is deliberately not a prop. It lives on the two adjustments, moves
+    continuously while the user scrolls, and a controlled version would fight every scroll
+    event -- the same reason a paned handle's position is not controlled. Preserving a
+    position across re-renders is what {!Key.t} is for: keep the node's identity and GTK
+    keeps its adjustments. Scrolling {i to} somewhere is an imperative action, and belongs
+    with M3's effects rather than in a tree.
+
+    [edge-reached] and [edge-overshot] -- the signals an infinite list hangs its "load
+    more" on -- are left to M2, alongside [ListBox]. The adjustments themselves, and
+    [placement], are not exposed; a scroller that needs them is a {!native} node. *)
+val scrolled_window
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?hpolicy:Policy.t
+  -> ?vpolicy:Policy.t
+  -> ?min_content_width:int
+  -> ?min_content_height:int
+  -> ?max_content_width:int
+  -> ?max_content_height:int
+  -> ?propagate_natural_width:bool
+  -> ?propagate_natural_height:bool
+  -> ?has_frame:bool
+  -> ?kinetic_scrolling:bool
+  -> ?overlay_scrolling:bool
+  -> t
+  -> t
+
+(** A [GtkFrame]: a border around one child, optionally titled.
+
+    [label] is the title GTK embeds in the top edge; absent means an untitled border.
+    [label_align] positions it along that edge ([0.], GTK's own, is at the start).
+
+    [set_label_widget] -- an arbitrary widget as the frame's title, rather than a string
+    -- is deliberately not exposed: it is a second child slot, which the children
+    machinery could express, but no caller wants one. A frame with a widget for a title is
+    a {!native} node. *)
+val frame
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?label:string
+  -> ?label_align:float
+  -> t
+  -> t
+
+(** A [GtkExpander]: a disclosure triangle that shows or hides its child.
+
+    [expanded] is {i controlled} on the same rule as {!toggle_button}'s [active] (spec
+    6.5): on every patch the widget is written only when the model's value differs from
+    the one the widget currently shows, so a model that declines the user's click pins the
+    expander rather than letting the two diverge. It is required for that reason, and
+    wants an {!Attr.on_expanded_changed} or the control is inert -- an expander whose
+    model never learns it was opened snaps shut on the next unrelated re-render.
+
+    [label] is the text beside the triangle and [use_markup] parses it as Pango markup.
+    [set_label_widget] is not exposed, for the reason {!frame}'s is not.
+
+    The child is built and mounted whether or not the expander is open -- GTK hides it, it
+    does not drop it. An expensive subtree that should not exist while collapsed is
+    something the model expresses, by rendering a placeholder until [expanded] is true. *)
+val expander
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?label:string
+  -> ?use_markup:bool
+  -> expanded:bool
+  -> t
+  -> t
+
+(** A [GtkRevealer]: a container that animates its child in and out.
+
+    [reveal] is controlled on the same rule as {!expander}'s [expanded], though it is the
+    gentler case: nothing the user does moves it, so the re-assertion only ever corrects
+    the library's own writes. It is compared against GTK's [reveal-child] -- the input
+    property, which moves the moment an animation is asked to start -- and not against
+    [child-revealed], which is the outcome and does not settle until the animation ends.
+
+    [transition] and [transition_duration] (250 ms, GTK's own) describe that animation.
+    {!Attr.on_revealed} fires when it finishes, which is the moment a hidden subtree can
+    be dropped from the model.
+
+    A revealer whose child is expensive still builds it: like {!expander}, concealing is
+    GTK's job and pruning is the model's. And note that a test which dumps the tree
+    immediately after flipping [reveal] should use [~transition:None_], or it races the
+    animation. *)
+val revealer
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?transition:Reveal_transition.t
+  -> ?transition_duration:int
+  -> reveal:bool
+  -> t
+  -> t
+
 val box
   :  ?key:Key.t
   -> ?attrs:Attr.t list

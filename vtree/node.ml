@@ -203,6 +203,68 @@ let separator ?key ?attrs ~orientation () =
   make ?key ?attrs (Separator { orientation }) No_children
 ;;
 
+(* All four take their child positionally, like [window]: a scrolled window with nothing
+   in it, a frame around nothing, an expander that expands onto nothing are all
+   meaningless, so the slot is required rather than [?child]. That also means none of
+   these can express [Single None] -- the child is replaced, never removed. *)
+let scrolled_window
+  ?key
+  ?attrs
+  ?(hpolicy = Policy.Automatic)
+  ?(vpolicy = Policy.Automatic)
+  ?(min_content_width = -1)
+  ?(min_content_height = -1)
+  ?(max_content_width = -1)
+  ?(max_content_height = -1)
+  ?(propagate_natural_width = false)
+  ?(propagate_natural_height = false)
+  ?(has_frame = false)
+  ?(kinetic_scrolling = true)
+  ?(overlay_scrolling = true)
+  child
+  =
+  make
+    ?key
+    ?attrs
+    (Scrolled_window
+       { hpolicy
+       ; vpolicy
+       ; min_content_width
+       ; min_content_height
+       ; max_content_width
+       ; max_content_height
+       ; propagate_natural_width
+       ; propagate_natural_height
+       ; has_frame
+       ; kinetic_scrolling
+       ; overlay_scrolling
+       })
+    (Single (Some child))
+;;
+
+let frame ?key ?attrs ?label ?(label_align = 0.) child =
+  make ?key ?attrs (Frame { label; label_align }) (Single (Some child))
+;;
+
+let expander ?key ?attrs ?label ?(use_markup = false) ~expanded child =
+  make ?key ?attrs (Expander { label; expanded; use_markup }) (Single (Some child))
+;;
+
+let revealer
+  ?key
+  ?attrs
+  ?(transition = Reveal_transition.None_)
+  ?(transition_duration = 250)
+  ~reveal
+  child
+  =
+  make
+    ?key
+    ?attrs
+    (Revealer { reveal; transition; transition_duration })
+    (Single (Some child))
+;;
+
 let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;

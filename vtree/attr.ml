@@ -28,6 +28,8 @@ module Name = struct
       | On_activate
       | On_search_changed
       | On_value_changed
+      | On_expanded_changed
+      | On_revealed
     [@@deriving sexp_of, compare, equal]
 
     (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
@@ -39,7 +41,9 @@ module Name = struct
       | On_changed
       | On_activate
       | On_search_changed
-      | On_value_changed -> true
+      | On_value_changed
+      | On_expanded_changed
+      | On_revealed -> true
       | Margin_start
       | Margin_end
       | Margin_top
@@ -93,6 +97,8 @@ type t =
   | On_activate of unit Handler.t
   | On_search_changed of string Handler.t
   | On_value_changed of float Handler.t
+  | On_expanded_changed of bool Handler.t
+  | On_revealed of bool Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -123,6 +129,8 @@ let name = function
   | On_activate _ -> Some On_activate
   | On_search_changed _ -> Some On_search_changed
   | On_value_changed _ -> Some On_value_changed
+  | On_expanded_changed _ -> Some On_expanded_changed
+  | On_revealed _ -> Some On_revealed
 ;;
 
 let rec equal a b =
@@ -152,6 +160,8 @@ let rec equal a b =
   | On_activate a, On_activate b -> Handler.equal a b
   | On_search_changed a, On_search_changed b -> Handler.equal a b
   | On_value_changed a, On_value_changed b -> Handler.equal a b
+  | On_expanded_changed a, On_expanded_changed b -> Handler.equal a b
+  | On_revealed a, On_revealed b -> Handler.equal a b
   | Many a, Many b -> List.equal equal a b
   | _ -> false
 ;;
@@ -183,5 +193,7 @@ let on_changed f = On_changed f
 let on_activate eff = On_activate (fun () -> eff)
 let on_search_changed f = On_search_changed f
 let on_value_changed f = On_value_changed f
+let on_expanded_changed f = On_expanded_changed f
+let on_revealed f = On_revealed f
 let many l = Many l
 let empty = Many []

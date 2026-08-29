@@ -10,6 +10,8 @@ module Content_fit = Bonsai_gtk_vtree.Content_fit
 module Icon_size = Bonsai_gtk_vtree.Icon_size
 module Image_source = Bonsai_gtk_vtree.Image_source
 module Picture_source = Bonsai_gtk_vtree.Picture_source
+module Policy = Bonsai_gtk_vtree.Policy
+module Reveal_transition = Bonsai_gtk_vtree.Reveal_transition
 module Orientation = Bonsai_gtk_vtree.Orientation
 
 module Native = struct

@@ -22,6 +22,13 @@ let ellipsize_name : Ocgtk_pango.Pango.ellipsizemode -> string = function
   | `END -> "end"
 ;;
 
+let policy_name : Gtk_enums.policytype -> string = function
+  | `ALWAYS -> "always"
+  | `AUTOMATIC -> "automatic"
+  | `NEVER -> "never"
+  | `EXTERNAL -> "external"
+;;
+
 let content_fit_name : Gtk_enums.contentfit -> string = function
   | `FILL -> "fill"
   | `CONTAIN -> "contain"
@@ -44,6 +51,12 @@ let string_prop name value ~default =
 ;;
 
 let flag_prop name value = if value then [ Sexp.Atom name ] else []
+
+let policy_prop name (p : Gtk_enums.policytype) =
+  match p with
+  | `AUTOMATIC -> []
+  | p -> [ Sexp.List [ Atom name; Atom (policy_name p) ] ]
+;;
 
 let align_prop name (a : Gtk_enums.align) =
   match a with
@@ -236,6 +249,59 @@ let rec dump (w : Widget.t) : Sexp.t =
                 | `VERTICAL -> "vertical")
            ]
        ]
+     (* A [GtkScrolledWindow] prints its two internal [GtkScrollbar] children like any
+        other child, and a non-scrollable child arrives wrapped in a [GtkViewport] GTK
+        added itself. Both are left in: they are the honest tree, and the viewport's
+        presence is what shows the child landed *inside* the scroller rather than beside
+        it. Only the two content minima are printed -- the policies are visible in the
+        scrollbars, and the rest are size hints no test has claimed. *)
+     | "GtkScrolledWindow" ->
+       let s : W.Scrolled_window.t = cast w in
+       let hpolicy, vpolicy = W.Scrolled_window.get_policy s in
+       (* The policies are printed because nothing else in the dump shows them: the two
+          scrollbars are children whatever the policy says, and a [`NEVER] one differs
+          only in child visibility, which this dump does not descend into. *)
+       policy_prop "hpolicy" hpolicy
+       @ policy_prop "vpolicy" vpolicy
+       @ int_prop
+           "min-content-height"
+           (W.Scrolled_window.get_min_content_height s)
+           ~default:(-1)
+       @ int_prop
+           "min-content-width"
+           (W.Scrolled_window.get_min_content_width s)
+           ~default:(-1)
+       @ int_prop
+           "max-content-height"
+           (W.Scrolled_window.get_max_content_height s)
+           ~default:(-1)
+       @ int_prop
+           "max-content-width"
+           (W.Scrolled_window.get_max_content_width s)
+           ~default:(-1)
+       @ flag_prop
+           "propagate-natural-height"
+           (W.Scrolled_window.get_propagate_natural_height s)
+       @ flag_prop
+           "propagate-natural-width"
+           (W.Scrolled_window.get_propagate_natural_width s)
+       @ (if W.Scrolled_window.get_kinetic_scrolling s
+          then []
+          else [ Sexp.Atom "no-kinetic" ])
+       @ (if W.Scrolled_window.get_overlay_scrolling s
+          then []
+          else [ Sexp.Atom "no-overlay" ])
+       @ flag_prop "framed" (W.Scrolled_window.get_has_frame s)
+     | "GtkFrame" -> [ [%sexp `label (W.Frame.get_label (cast w) : string option)] ]
+     | "GtkExpander" ->
+       [ [%sexp `label (W.Expander.get_label (cast w) : string option)] ]
+       @ flag_prop "expanded" (W.Expander.get_expanded (cast w))
+     (* Both halves: [reveal] is the input the model controls and [revealed] the outcome
+        the animation settles, and a dump that showed only one could not tell a reveal
+        that landed from one still in flight. *)
+     | "GtkRevealer" ->
+       flag_prop "reveal" (W.Revealer.get_reveal_child (cast w))
+       @ flag_prop "revealed" (W.Revealer.get_child_revealed (cast w))
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

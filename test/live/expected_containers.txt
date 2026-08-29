@@ -20,3 +20,121 @@ shows the new texture: true
     (GtkPicture (content-fit cover) no-shrink)
     (GtkPicture has-paintable (content-fit cover))
     (GtkSeparator (orientation vertical) (css (vertical)))))))
+(GtkWindow (title (containers)) (css (background)) hidden
+ (children
+  (GtkScrolledWindow (hpolicy never) (min-content-height 120)
+   propagate-natural-height
+   (children
+    (GtkViewport
+     (children
+      (GtkBox (spacing 0) (css (vertical))
+       (children
+        (GtkFrame (label (Group))
+         (children (GtkLabel (text Group)) (GtkLabel (text framed))))
+        (GtkExpander (label (More))
+         (children
+          (GtkBox (spacing 0) (css (vertical))
+           (children
+            (GtkBox (spacing 0) (css (horizontal))
+             (children (GtkBuiltinIcon (css (horizontal)))
+              (GtkLabel (text More))))))))
+        (GtkRevealer (children (GtkLabel (text revealed))))))))
+    (GtkScrollbar (css (bottom horizontal))
+     (children
+      (GtkRange (css (horizontal)) hexpand vexpand
+       (children (GtkGizmo (children (GtkGizmo)))))))
+    (GtkScrollbar (css (vertical right))
+     (children
+      (GtkRange (css (vertical)) hexpand vexpand
+       (children (GtkGizmo (children (GtkGizmo)))))))))))
+(GtkWindow (title (containers)) (css (background)) hidden
+ (children
+  (GtkScrolledWindow (hpolicy external) (vpolicy never)
+   (min-content-height 60) (min-content-width 80) (max-content-height 400)
+   (max-content-width 300) propagate-natural-width no-kinetic no-overlay
+   framed (css (frame))
+   (children
+    (GtkViewport
+     (children
+      (GtkBox (spacing 0) (css (vertical))
+       (children
+        (GtkFrame (label (Renamed))
+         (children (GtkLabel (text Renamed))
+          (GtkButton (label (framed)) (css (text-button))
+           (children (GtkLabel (text framed))))))
+        (GtkExpander (label (Fewer)) expanded
+         (children
+          (GtkBox (spacing 0) (css (vertical))
+           (children
+            (GtkBox (spacing 0) (css (horizontal))
+             (children (GtkBuiltinIcon (css (horizontal)))
+              (GtkLabel (text Fewer))))
+            (GtkLabel (text detail))))))
+        (GtkRevealer reveal revealed (children (GtkLabel (text revealed))))))))
+    (GtkScrollbar (css (bottom horizontal))
+     (children
+      (GtkRange (css (horizontal)) hexpand vexpand
+       (children (GtkGizmo (children (GtkGizmo)))))))
+    (GtkScrollbar (css (vertical right))
+     (children
+      (GtkRange (css (vertical)) hexpand vexpand
+       (children (GtkGizmo (children (GtkGizmo)))))))))))
+notify reaching Bonsai outside a patch: 2
+declined expander true, revealer true (revealed true); reached Bonsai: 0
+(GtkWindow (title (slots)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkScrolledWindow (hpolicy never)
+     (children (GtkViewport (children (GtkLabel (text scrolled))))
+      (GtkScrollbar (css (bottom horizontal))
+       (children
+        (GtkRange (css (horizontal)) hexpand vexpand
+         (children (GtkGizmo (children (GtkGizmo)))))))
+      (GtkScrollbar (css (vertical right))
+       (children
+        (GtkRange (css (vertical)) hexpand vexpand
+         (children (GtkGizmo (children (GtkGizmo)))))))))
+    (GtkFrame (label ()) (children (GtkLabel (text framed))))
+    (GtkExpander (label ()) expanded
+     (children
+      (GtkBox (spacing 0) (css (vertical))
+       (children
+        (GtkBox (spacing 0) (css (horizontal))
+         (children (GtkBuiltinIcon (css (horizontal)))))
+        (GtkLabel (text expanded))))))
+    (GtkRevealer reveal revealed (children (GtkLabel (text revealed))))))))
+(GtkWindow (title (slots)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkScrolledWindow (hpolicy never)
+     (children
+      (GtkViewport
+       (children
+        (GtkButton (label (scrolled)) (css (text-button))
+         (children (GtkLabel (text scrolled))))))
+      (GtkScrollbar (css (bottom horizontal))
+       (children
+        (GtkRange (css (horizontal)) hexpand vexpand
+         (children (GtkGizmo (children (GtkGizmo)))))))
+      (GtkScrollbar (css (vertical right))
+       (children
+        (GtkRange (css (vertical)) hexpand vexpand
+         (children (GtkGizmo (children (GtkGizmo)))))))))
+    (GtkFrame (label ())
+     (children
+      (GtkButton (label (framed)) (css (text-button))
+       (children (GtkLabel (text framed))))))
+    (GtkExpander (label ()) expanded
+     (children
+      (GtkBox (spacing 0) (css (vertical))
+       (children
+        (GtkBox (spacing 0) (css (horizontal))
+         (children (GtkBuiltinIcon (css (horizontal)))))
+        (GtkButton (label (expanded)) (css (text-button))
+         (children (GtkLabel (text expanded))))))))
+    (GtkRevealer reveal revealed
+     (children
+      (GtkButton (label (revealed)) (css (text-button))
+       (children (GtkLabel (text revealed))))))))))
