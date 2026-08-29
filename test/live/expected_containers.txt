@@ -221,6 +221,8 @@ same widget after re-attach: true
    (cells (0 0 1 1) (1 0 1 1) (0 1 2 1)) (css (horizontal))
    (children (GtkLabel (text Name)) (GtkLabel (text Bach))
     (GtkLabel (text note))))))
+focus is in the entry: true
+focus survives the re-attach: true
 rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid needs one)
 (GtkWindow (title (stack)) (css (background)) hidden
  (children

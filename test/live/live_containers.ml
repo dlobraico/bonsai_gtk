@@ -440,6 +440,49 @@ let () =
   in
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
+  (* Re-attaching a grid child unparents it, so its whole subtree is unrooted and
+     re-rooted between the two calls. The window's focus widget is the thing that hangs
+     off that lifecycle, and the field the user is filling in is exactly what a widening
+     row moves. The entry below is focused and then given a wider cell; the focus has to
+     still be in it afterwards.
+
+     GTK 4.22 leaves the focus alone across an unroot on its own, so this passes with or
+     without [w_grid.ml]'s save and restore; what it pins is the behaviour, on whichever
+     GTK the tests run against. The focus lands on the entry's internal [GtkText] rather
+     than on the [GtkEntry], which is why this asks whether the focus is *inside* the
+     moved child rather than whether it is the child. *)
+  let focus_view ~span =
+    Node.window
+      ~title:"focus"
+      (Node.grid
+         [ Node.entry
+             ~key:"e"
+             ~attrs:
+               [ (if span
+                  then Attr.grid_cell ~column:0 ~row:0 ~width:2 ()
+                  else Attr.grid_cell ~column:0 ~row:0 ())
+               ]
+             ~text:"typing"
+             ()
+         ; Node.label ~key:"l" ~attrs:[ Attr.grid_cell ~column:0 ~row:1 () ] "note"
+         ])
+  in
+  let focus_live = P.mount ctx ~path:"focus" ~is_root:true (focus_view ~span:false) in
+  let focus_root = Option.value_exn (W.Widget.get_root focus_live.widget) in
+  let focused_in_entry (live : P.live) =
+    match W.Root.get_focus focus_root with
+    | None -> false
+    | Some f ->
+      let entry = grid_child live 0 in
+      Gobject.same f entry || W.Widget.is_ancestor f entry
+  in
+  W.Root.set_focus focus_root (Some (grid_child focus_live 0));
+  printf "focus is in the entry: %b\n" (focused_in_entry focus_live);
+  let focus_live =
+    P.patch ctx ~path:"focus" ~is_root:true focus_live (focus_view ~span:true)
+  in
+  printf "focus survives the re-attach: %b\n" (focused_in_entry focus_live);
+  P.destroy ctx focus_live;
   (* A grid child with no cell is a bug worth failing on. *)
   (match
      P.mount
