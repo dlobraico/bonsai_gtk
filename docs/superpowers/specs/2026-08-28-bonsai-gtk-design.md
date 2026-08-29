@@ -135,7 +135,7 @@ stubs are absent; the `-linkall` test runner fails to link):
 - `Driver` — wraps `Bonsai_driver` + `Patcher` + `Scheduler`; one frame API.
 - `Loop` — `GtkApplication` lifecycle; implements `start`.
 - `Effect` — `Ui_effect` plus GTK-specific effects.
-- `Debug` — `dump_live_tree` for live tests.
+- `Live_tree` — `dump` reads back the live GTK tree as a sexp, for live tests.
 
 ## 4. Runtime loop
 
@@ -186,11 +186,24 @@ handler.
   `request_frame`. (`Widget.add_tick_callback` is not bound by ocgtk;
   `Gdk.Frame_clock.on_update` is a possible later refinement.)
 - A `Glib.Timeout` at `1 / target_frames_per_second` runs a frame
-  unconditionally. This is what advances the clock for `Bonsai.Clock.every`,
+  unconditionally when `target_frames_per_second` is positive (the default,
+  60). This is what advances the clock for `Bonsai.Clock.every`,
   `Clock.sleep`, `Clock.now`. When nothing changed, flush is a no-op and the
   patch is skipped by the `phys_equal` check, so an idle tick costs one
   stabilization. Suspending the tick while idle is a noted future
   optimization, not part of this design.
+- A non-positive `target_frames_per_second` installs no tick at all
+  (`Scheduler.start_tick` with `fps <= 0.`). Frames still happen on
+  interaction via `request_frame`. After-display handlers still need to be
+  re-serviced without a tick to drive them, so a frame that finds one pending
+  (`Bonsai_driver.has_after_display_events`, §4.2 step 6) calls
+  `Scheduler.request_frame_soon` instead of nothing: a coalesced one-shot
+  `Glib.Timeout` at a fixed ~16 ms, the same cadence a 60 fps tick would give,
+  rather than an idle (which has no rate cap and would spin as fast as the
+  CPU allows). This keeps after-display handlers alive without standing in
+  for the tick — `Bonsai.Clock` only advances inside a frame, and a tickless
+  app gets no frames beyond what interaction and pending after-display work
+  produce.
 
 ### 4.4 Reentrancy guard
 
@@ -202,8 +215,13 @@ never re-enter the driver.
 
 ### 4.5 Exit
 
-`Effect.quit : unit Effect.t` calls `app#quit`. There is no Ctrl-C handling;
-GTK/GLib own process signals.
+`Effect.quit : unit Effect.t` calls `app#quit` on whichever application `start` is
+currently running. The library holds that application through a single reference for the
+duration of the call — one application per process — so two overlapping `start`s fight
+over it (the second warns on stderr and takes over the reference). Outside `start` —
+before it has run, under `Expert.Driver`, in a headless test, or after `start` has
+returned — there is nothing to quit, so performing `quit` logs and does nothing rather
+than raising. There is no Ctrl-C handling; GTK/GLib own process signals.
 
 ## 5. Node / Attr model
 
@@ -312,12 +330,24 @@ disconnects then unparents before dropping the record.
    - `Slots`: per-slot `Single` or `List` patch.
 3. Return the updated `live` (physically the same record, mutated).
 
-`destroy live` recursively: disconnects every `handler_id`
-(`Gobject.Signal.disconnect`), clears the slots, detaches the widget from its
-parent via the parent impl's remove op (`Box.remove`, `set_child None`, ...),
-and drops the OCaml reference so the wrapper and closures can be collected.
-Disconnecting matters: a connected closure is a GC root and would otherwise pin
-the captured handler slot and its environment forever.
+`destroy live` recursively: clears the slots, disconnects every `handler_id`
+(`Gobject.Signal.disconnect`), recurses into children, then — a window has no parent to
+unparent it, so it is destroyed explicitly (`Window.destroy`); a native node's payload
+module gets its `destroy` called, to release whatever `create` acquired; anything else
+needs nothing further here, since the caller already detached it from its parent (below) —
+and drops the OCaml reference so the wrapper and closures can be collected. Disconnecting
+matters: a connected closure is a GC root and would otherwise pin the captured handler slot
+and its environment forever.
+
+A `Single` child cleared or a `List` `Remove` unparents the live widget via the parent
+impl's remove op (`set_child None`, `Box.remove`, ...) — and that op emits GTK signals
+synchronously, so a handler could fire against a node Bonsai is already in the middle of
+dropping if `destroy` (which clears slots) hasn't run yet. Rather than run `destroy` first
+and only then remove — which would really destroy a `Window` live before the remove op
+that names it — those call sites first call `disarm live`, which clears every slot in the
+subtree, recursively, without disconnecting anything or touching the widget; then the
+remove op; then `destroy` for real. `disarm` is `destroy`'s slot-clearing step split out so
+it can close that window ahead of everything else.
 
 ### 6.3 `Reconcile.diff` (pure)
 
@@ -387,15 +417,27 @@ module type S = sig
   val update : Widget.t -> old:input -> input -> unit
   val destroy : Widget.t -> unit
 end
-type Native.payload += Gtk : (module S with type input = 'a) * 'a -> Native.payload
-val Bonsai_gtk.Node.native : ?key:Key.t -> (module S with type input = 'a) -> 'a -> Node.t
+
+(* An impl, plus the [Type_equal.Id.t] witness that lets the patcher recover [input]
+   from a node's existentially typed payload. *)
+type 'a impl
+val Native_gtk.impl : (module S with type input = 'a) -> 'a impl
+
+type Native.payload += Gtk : 'a impl * 'a -> Native.payload
+val Native_gtk.node : ?key:Key.t -> ?attrs:Attr.t list -> 'a impl -> 'a -> Node.t
 ```
 
-The patcher treats two `native` nodes as the same kind iff the module is
-physically the same; then calls `update`; otherwise replaces. This is how an
-existing hand-written ocgtk widget, or a `Picture` fed from a
-`Gdk.Memory_texture`, plugs in. (Custom Cairo drawing via `DrawingArea` is
-*not* possible: ocgtk does not bind `set_draw_func`.)
+Build the `impl` once, at the top level of the module that defines the widget, and reuse
+that value for every node. The patcher treats two `native` nodes as the same kind iff their
+payloads carry the same `impl`'s `Type_equal.Id.t` witness (checked with
+`Type_equal.Id.same_witness`, not a physical-module comparison — modules aren't
+first-class values to compare that way); then calls `update`; otherwise replaces. Two
+`impl`s built from the same module are different widgets as far as the patcher is
+concerned — building a fresh `impl` per render, rather than reusing one, is a bug the
+witness turns into a loud `Invalid_argument` rather than a misread input. This is how an
+existing hand-written ocgtk widget, or a `Picture` fed from a `Gdk.Memory_texture`, plugs
+in. (Custom Cairo drawing via `DrawingArea` is *not* possible: ocgtk does not bind
+`set_draw_func`.)
 
 ## 7. Widget catalogue and milestones
 
@@ -467,6 +509,8 @@ bracketed with `Gobject.Property.freeze_notify`/`thaw_notify`.
 Asynchronous ones are built with `Ui_effect.Private.make`; the GLib callback
 resolves the effect's callback, then `request_frame`.
 
+M0 implements only `quit` (§4.5); the rest of this list is M3 scope (§7).
+
 ## 9. Testing
 
 Three layers, each in its own dune directory so the pure/headless suites run
@@ -485,9 +529,9 @@ without a display:
    `bonsai_gtk.vtree` only) — same rule stavekeeper already follows.
 3. **Live** (`test/live/`): runs under `xvfb-run`. Because ppx_expect cannot
    link against ocgtk, these are plain `(test)` executables that print
-   `Debug.dump_live_tree` (real widget type names, key props, child order)
+   `Live_tree.dump` (real widget type names, key props, child order)
    and are compared with `(diff expected.txt output.txt)` rules. They use
-   `Expert.start_with_driver` and drive frames by hand. `scripts/ci.sh` runs
+   `Expert.Driver` (`Driver.create`, `Driver.frame`, ...) and drive frames by hand. `scripts/ci.sh` runs
    them; the directory is `(enabled_if (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))`
    so plain `dune runtest` without a display stays green.
 
