@@ -72,7 +72,11 @@
           nativeBuildInputs = with pkgs; [
             opam pkg-config gnumake gcc autoconf git jq xvfb-run
           ];
-          buildInputs = gtkStack ++ [ pkgs.gobject-introspection ];
+          # gmp: conf-gmp (a dependency of zarith, pulled in transitively by
+          # js_of_ocaml <- bonsai) probes via `pkg-config --exists gmp`
+          # during `opam install`; without it in the shell that check fails
+          # and takes the whole opam install transaction down with it.
+          buildInputs = gtkStack ++ [ pkgs.gobject-introspection pkgs.gmp ];
           shellHook = ''
             if [ -d "$PWD/_opam" ]; then
               eval "$(opam env --switch=. --set-switch 2>/dev/null || true)"
