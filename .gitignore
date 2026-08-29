@@ -1,0 +1,7 @@
+_build/
+_opam/
+.ocgtk-src/
+result
+result-*
+.direnv/
+*.install
