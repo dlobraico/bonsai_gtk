@@ -56,6 +56,35 @@ let%expect_test "duplicate keys raise" =
   [%expect {| (Invalid_argument "Reconcile.diff: duplicate key a") |}]
 ;;
 
+(* A stricter interpreter than [Reconcile.apply]: it never blindly overwrites by index. At
+   each [Update], it asserts the element currently at [index] is exactly [old] (the item
+   [diff] claims is there) before replacing it — this is the identity guarantee the GTK
+   patcher depends on ("patch the widget that used to be [old] into [item]"), which
+   [Reconcile.apply]'s plain index-overwrite can't check. It also asserts every op's
+   indices are in bounds. Test-local only; [Reconcile.apply] itself is intentionally left
+   unchanged. *)
+let checked_apply ops list =
+  List.fold ops ~init:list ~f:(fun l (op : item Reconcile.op) ->
+    let n = List.length l in
+    match op with
+    | Reconcile.Remove { index } ->
+      assert (index >= 0 && index < n);
+      List.filteri l ~f:(fun i _ -> i <> index)
+    | Reconcile.Insert { index; item } ->
+      assert (index >= 0 && index <= n);
+      List.take l index @ [ item ] @ List.drop l index
+    | Reconcile.Move { from; to_ } ->
+      assert (from >= 0 && from < n);
+      assert (to_ >= 0 && to_ < n);
+      let item = List.nth_exn l from in
+      let l = List.filteri l ~f:(fun i _ -> i <> from) in
+      List.take l to_ @ [ item ] @ List.drop l to_
+    | Reconcile.Update { index; old; item } ->
+      assert (index >= 0 && index < n);
+      [%test_eq: item] (List.nth_exn l index) old ~message:"Update: stale index/identity";
+      List.mapi l ~f:(fun i x -> if i = index then item else x))
+;;
+
 let%test_unit "apply (diff old new) old = new" =
   let gen =
     let open Quickcheck.Generator.Let_syntax in
@@ -84,5 +113,6 @@ let%test_unit "apply (diff old new) old = new" =
       let old = dedup old
       and new_ = dedup new_ in
       let ops = diff ~old ~new_ in
-      [%test_result: item list] (Reconcile.apply ops old) ~expect:new_)
+      [%test_result: item list] (Reconcile.apply ops old) ~expect:new_;
+      [%test_result: item list] (checked_apply ops old) ~expect:new_)
 ;;

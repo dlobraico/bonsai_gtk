@@ -64,7 +64,10 @@ let diff ~key ~same_kind ~old ~new_ =
     |> List.rev
     |> List.map ~f:(fun index -> Remove { index })
   in
-  (* current = surviving old indices in old order *)
+  (* current.(j) is the identity token of the element at live position j, tracked in
+     lockstep with what [apply] would do to [old]: a surviving old index, or [-1] for an
+     item this loop has already inserted fresh. [-1] can never match the [findi] below,
+     which only ever looks for a real (non-negative) old index. *)
   let current =
     ref (List.init (Array.length old_arr) ~f:Fn.id |> List.filter ~f:(Set.mem kept))
   in

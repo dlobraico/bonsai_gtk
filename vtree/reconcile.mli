@@ -1,7 +1,7 @@
 open! Core
 
-(** A keyed list diff: turns an [old] list into a [new_] list via a minimal sequence of
-    ops, matching items by {!Key.t} where present and by positional same-kind matching
+(** A keyed list diff: turns an [old] list into a [new_] list via a sequence of ops,
+    matching items by {!Key.t} where present and by positional same-kind matching
     otherwise (see {!diff}). *)
 
 type 'a op =
@@ -34,7 +34,8 @@ type 'a op =
 
     Every unmatched old item produces a [Remove]. Every unmatched new item produces an
     [Insert]. Every matched pair produces an optional [Move] (when its position changed)
-    followed by an [Update].
+    followed by an [Update]; every emitted [Move] has [from > to_], since positions below
+    the one currently being placed are already finalized and never revisited.
 
     Op order: all [Remove]s first, in descending index order (so removing earlier ones
     doesn't invalidate later indices), followed by the [Move]/[Insert]/[Update] ops for
@@ -49,5 +50,8 @@ val diff
   -> 'a op list
 
 (** [apply ops list] applies [ops] left to right to [list], per each op's documented
-    semantics. Reference semantics used by tests and by the patcher's index bookkeeping. *)
+    semantics. Reference semantics used by tests and by the patcher's index bookkeeping.
+    [apply] does not validate [Update.old] against the element actually at [index] — it
+    unconditionally overwrites by position, so a caller that needs the identity guarantee
+    (that the element at [index] really is [old]) must check that itself. *)
 val apply : 'a op list -> 'a list -> 'a list
