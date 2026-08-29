@@ -6,9 +6,9 @@ spirit of `bonsai_web` and `bonsai_term`. An app is a pure function
 signals into Bonsai events, and keeps a live GTK widget tree in sync with the declarative
 `Node.t` the app computes.
 
-Status: pre-alpha (M0) — four widgets (`Label`, `Button`, `Box`, `Window`), the `Native`
-escape hatch, the runtime loop, and headless testing. See [Limitations](#limitations)
-below.
+Status: pre-alpha (M1) — 29 `Node.*` constructors covering displays, controls, text
+entry, layout and stack-based navigation (see [Widgets](#widgets)), the `Native` escape
+hatch, the runtime loop, and headless testing. See [Limitations](#limitations) below.
 
 ## Example
 
@@ -60,6 +60,10 @@ let () = exit (Bonsai_gtk.start ~application_id:"org.bonsai_gtk.examples.counter
 Run it with `dune exec examples/counter.exe` (needs a display; under `nix develop` you also
 have `xvfb-run -a dune exec examples/counter.exe` for a headless one).
 
+`examples/gallery.ml` renders one of every M1 widget in a `Stack` with a sidebar —
+`dune exec examples/gallery.exe` — and is the quickest way to see what a constructor
+looks like on screen.
+
 ## Libraries
 
 - **`bonsai_gtk.vtree`** (`vtree/`) — the virtual widget tree (`Node`, `Attr`, `Key`,
@@ -72,7 +76,39 @@ have `xvfb-run -a dune exec examples/counter.exe` for a headless one).
   and `Expert.Driver` for callers that want to drive frames by hand.
 - **`bonsai_gtk_test`** (`test_lib/`) — a headless test handle built on `bonsai_gtk.vtree`
   only (no GTK, no display needed): `Bonsai_test.Handle` over the `Node.t` sexp tree, with
-  `Click of test_id` as the one action so far.
+  `Click`, `Toggle`, `Set_text`, `Activate` and `Set_value` actions dispatched by
+  `test_id`.
+
+## Widgets
+
+| | |
+|---|---|
+| **Display** | `label` (wrap, xalign, ellipsize, max-width-chars, markup), `image`, `picture`, `separator`, `progress_bar`, `spinner` |
+| **Controls** | `button` (label / icon / arbitrary child / frameless), `toggle_button`, `check_button`, `switch`, `spin_button`, `scale` |
+| **Text** | `entry`, `password_entry`, `search_entry` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret |
+| **Layout** | `box`, `grid` (`Attr.grid_cell`), `center_box`, `paned`, `overlay` (`Attr.measure_overlay`), `frame`, `expander`, `revealer`, `scrolled_window` |
+| **Navigation** | `stack` + `stack_switcher` + `stack_sidebar` (pages keyed by `Key.t`, switchers name their stack) |
+| **Window** | `window` (one per app until M3) |
+| **Escape hatch** | `Node.native` for anything else, plus `Native.Picture` for a widget fed from a `GdkPaintable` |
+
+That is all 29 `Node.*` constructors; `vtree/node.mli` is the reference, and each
+constructor's doc comment names the properties it does *not* bind.
+
+Shared attributes on every widget: `css_class`, `margin_*`, `halign`/`valign`,
+`hexpand`/`vexpand`, `width_request`/`height_request`, `sensitive`, `visible`, `tooltip`,
+`opacity`, `focusable`/`can_focus`, `widget_name`, `cursor_name`, `test_id`. Dropping an
+attribute restores the value that widget was created with, not a global default.
+
+Container-specific attributes are inert elsewhere: `Attr.grid_cell` (a `grid` child's
+column/row/span), `Attr.measure_overlay` (whether an `overlay` child counts towards the
+overlay's size request), `Attr.page_title` (a `stack` page's switcher label).
+
+Event attributes are `on_clicked`, `on_toggled`, `on_changed`, `on_activate`,
+`on_search_changed`, `on_value_changed`, `on_expanded_changed`, `on_revealed`,
+`on_position_changed` and `on_visible_child_changed`. Attaching one to a widget that has
+no such signal raises at mount and at patch, rather than silently doing nothing.
+
+See §7 of the design doc for what M2 (lists & text) and M3 (chrome & popups) add.
 
 ## Headless testing
 
@@ -112,6 +148,13 @@ let%expect_test "clicking the button re-renders the label" =
 ;;
 ```
 
+The actions are `Click of test_id` (fires `Attr.on_clicked`), `Toggle of test_id` (a
+`toggle_button`/`check_button`/`switch`, fired with the negation of the `active` the node
+currently renders), `Set_text of test_id * string` and `Set_value of test_id * float` (the
+text the user typed / the value they moved to, passed through verbatim so the test can
+watch the *model* clamp or rewrite it), and `Activate of test_id` (Enter pressed in a text
+widget). Each fails loudly if the node it names carries no matching handler.
+
 `do_actions` dispatches every action in one call against a single view snapshot, so a second
 click that depends on the state the first click just set needs a `recompute_view` between
 them — see the doc comment on `Bonsai_gtk_test.create` for why.
@@ -140,10 +183,37 @@ status.
 
 ## Limitations
 
-M0 covers four widgets (`Label`, `Button`, `Box`, `Window`) plus the `Native` escape hatch
-for anything else, a single window per app, no custom Cairo drawing
-(`DrawingArea.set_draw_func` is unbound in ocgtk), and no `ListView`/`ColumnView`/`GridView`
-(ocgtk generates no `SignalListItemFactory` signals, so they can't be populated without new
-C stubs — out of scope until a follow-up design). See §7 of the design doc for the full
-widget catalogue and milestone plan (M1 core & layout, M2 lists & text, M3 chrome &
-popups).
+M1 covers the widgets listed under [Widgets](#widgets); anything else is a `Node.native`
+case. What is deliberately still out:
+
+- **Not bound yet.** `ListBox`, `FlowBox`, `DropDown`, `TextView`, `Notebook`, `LevelBar`,
+  `Calendar` and `EditableLabel` are M2; `HeaderBar`, `ActionBar`, `Popover`,
+  `MenuButton` + `Node.menu`, alert/file dialogs, multi-window (`Node.windows`) and
+  `Attr.shortcut` are M3. One window per app until then.
+- **Out of scope until a follow-up design.** `ListView`/`ColumnView`/`GridView` (ocgtk
+  generates no `SignalListItemFactory` signals, so they can't be populated without new C
+  stubs); custom Cairo drawing (`DrawingArea.set_draw_func` is unbound in ocgtk); drag and
+  drop.
+- **`Stack`, `Grid` and `Overlay` children are never reordered.** GTK exposes no reorder
+  API for them, so a keyed `Move` within those containers is a no-op: children stay in the
+  order they were first added. Keys still preserve identity, so state is not lost — but if
+  the order is meaningful, change the placement (`Attr.grid_cell`) or the keys. Changing a
+  `Grid` child's cell re-attaches it, which also moves it to the end of GTK's child list;
+  the cell is the placement, so nothing moves on screen.
+- **No radio groups** (`CheckButton.set_group` is unbound): model the exclusive choice in
+  Bonsai state and render the `active` flags from it.
+- **Per-widget gaps**, each a `Node.native` case and each named in its constructor's doc
+  comment: no `Scale` marks, no `ProgressBar.pulse`, no `Entry` icons, no
+  `SearchEntry.set_key_capture_widget`, no `Frame.set_label_widget`.
+- **`Paned`'s position is uncontrolled** — writing it every frame would fight the drag
+  handle. `Attr.on_position_changed` reports where the user left it.
+- **`Attr.t` and `Bonsai_gtk_test.Action.t` are unsealed public variants**, so every
+  attribute or action a later milestone adds is a breaking change for a downstream
+  exhaustive match. Sealing them is on the backlog (`docs/m1-backlog.md`).
+- **Every frame patches**, including frames on which Bonsai hands back the physically
+  identical root — that is what puts a widget back after the model declines the user's
+  edit. An idle frame walks the shadow tree and makes no GTK call; a walk restricted to
+  the re-assert and fixup passes is on the backlog.
+
+See §7 of the design doc for the full widget catalogue and milestone plan (M2 lists &
+text, M3 chrome & popups).

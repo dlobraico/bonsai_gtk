@@ -179,13 +179,27 @@ A frame is, in order:
    (skipped when a custom time source is supplied).
 2. `Bonsai_driver.flush`.
 3. `Bonsai_driver.result` → `Node.t`.
-4. If the new root is not `phys_equal` to the last rendered root:
-   `Patcher.patch` under the `in_patch` guard.
+4. `Patcher.patch` under the `in_patch` guard, followed by `Patcher.run_fixups`
+   (still inside the guard).
 5. `Bonsai_driver.trigger_lifecycles`.
 6. If `Bonsai_driver.has_after_display_events`, request another frame.
 
 Frames run only from the GLib main loop, never synchronously inside a signal
 handler.
+
+**M1 amendment (2026-08-29).** Step 4 originally read "if the new root is not
+`phys_equal` to the last rendered root", and the driver kept a `last` field for
+that test. Both are gone: *every* frame patches. A model that **declines** a
+user's edit — the digits-only field handed a letter, the switch the model
+refuses to flip, the stack page it will not navigate to — leaves its state
+exactly as it was, so it renders the physically same node, so the patch a
+phys-equal guard throws away is precisely the patch that would put the widget
+back. Both halves of the cure (`Widget_impl.reassert`, §6.5, and the
+stack-selection fixup pass) live inside that patch. The cost is bounded rather
+than free: an unchanged frame still walks the shadow tree, but `Kind.equal_props`
+skips every impl `update` and `Attrs.diff` writes nothing, so no GTK call is
+made. A walk restricted to the re-assert and fixup passes for a phys-equal root
+is on the backlog.
 
 ### 4.3 Scheduling
 
@@ -198,10 +212,12 @@ handler.
 - A `Glib.Timeout` at `1 / target_frames_per_second` runs a frame
   unconditionally when `target_frames_per_second` is positive (the default,
   60). This is what advances the clock for `Bonsai.Clock.every`,
-  `Clock.sleep`, `Clock.now`. When nothing changed, flush is a no-op and the
-  patch is skipped by the `phys_equal` check, so an idle tick costs one
-  stabilization. Suspending the tick while idle is a noted future
-  optimization, not part of this design.
+  `Clock.sleep`, `Clock.now`. When nothing changed, flush is a no-op — but
+  since the M1 amendment to §4.2 the patch is no longer skipped, so an idle
+  tick costs one stabilization *plus* one walk of the shadow tree that issues
+  no GTK calls. Suspending the tick while idle, and a re-assert-and-fixup-only
+  walk for a phys-equal root, are noted future optimizations, not part of this
+  design.
 - A non-positive `target_frames_per_second` installs no tick at all
   (`Scheduler.start_tick` with `fps <= 0.`). Frames still happen on
   interaction via `request_frame`. After-display handlers still need to be
@@ -294,8 +310,23 @@ Fixed per kind, encoded in constructor arguments:
 |---|---|---|
 | `None` | Label, Entry, Switch, ... | — |
 | `Single` | Window, ScrolledWindow, Frame, Expander, Revealer, Button(child), ... | `set_child (Some w)` / `set_child None` |
-| `List` (keyed, ordered) | Box, ListBox, FlowBox, Stack, Notebook | `append` / `insert_child_after` / `reorder_child_after` / `remove`, or the widget's page API |
-| `Slots` (named) | HeaderBar (`start`/`title`/`end`), Paned (`start`/`end`), Overlay (`child` + `overlays`), CenterBox, Grid (`attach` coords), ActionBar | per-slot single/list patch |
+| `List` (keyed, ordered) | Box, Grid, Stack, ListBox, FlowBox, Notebook | `append` / `insert_child_after` / `reorder_child_after` / `remove`, or the widget's page API |
+| `Slots` (named) | HeaderBar (`start`/`title`/`end`), Paned (`start`/`end`), Overlay (`child` slot + `overlays` list), CenterBox, ActionBar | per-slot single/list patch |
+
+**M1 amendment (2026-08-29).** `Grid` is a `List`, not `Slots`: its children are
+an ordinary keyed list and the cell is an attribute on the child
+(`Attr.grid_cell ~column ~row ?width ?height`), which keeps one code path for
+every list container and lets a cell change be a prop diff rather than a
+re-shape. A child whose cell changes is re-`attach`ed, which moves it to the end
+of GTK's child list; the cell is the placement, so nothing moves on screen.
+`Overlay`'s two slots are the `child` (a `Single`) and `overlays` (a `List`).
+
+Also: `Overlay`, `Stack` and `Grid` accept no reorder. GTK exposes no
+`reorder_child_after` for them, so `Reconcile`'s `Move` op is a **no-op** in
+those three; keys still preserve identity (state survives), but children stay in
+the order they were first added. `Notebook` (M2) does have `reorder_child`,
+which is where an explicit `Unordered` marker on `list_ops` should be
+reconsidered.
 
 ### 5.4 Keys
 
@@ -409,6 +440,30 @@ text (not the previous node's), so a model that echoes what the user typed
 causes no caret jump, while a model that rewrites input (e.g. uppercasing)
 still wins.
 
+**M1 amendment (2026-08-29).** The rule is not implemented in `update`, because
+the patcher skips `update` entirely when the two nodes' props are equal — which
+is exactly the case a *declined* edit produces. It lives instead in
+`Widget_impl.reassert : (Widget.t -> Kind.t -> unit) option`, a hook the patcher
+calls on **every** patch of a node of that kind, after `update` and before the
+attrs and children, and which compares against the live widget rather than
+against the previous node. It runs inside the `in_patch` guard, so the signals
+its writes provoke are dropped, and it brackets them in `Widget_impl.batch`
+(freeze/thaw). It is `None` for a kind with no controlled prop.
+
+The rule reaches beyond text: `ToggleButton`, `CheckButton` and `Switch`
+(`active`), `SpinButton` and `Scale` (`value`), `Expander` (`expanded`) and
+`Revealer` (`reveal_child`) all re-assert the same way. Two exceptions:
+
+- **`Stack`'s visible child** is applied by the post-patch fixup pass, not by
+  `reassert` — `reassert` runs before `patch_children`, so the page a frame
+  selects may not exist yet. The fixup pass runs after the whole tree is built
+  and inside the same guard, and is also where a `StackSwitcher`/`StackSidebar`
+  resolves the stack it names through the patcher's name registry.
+- **`Paned`'s position is deliberately uncontrolled** (`reassert = None`):
+  writing it every frame would fight the user's drag handle.
+  `Attr.on_position_changed` reports where it was left, and an app that wants it
+  controlled can round-trip it through its own model.
+
 ### 6.6 `Node.native`
 
 `vtree` cannot mention ocgtk types, so the native payload is an extensible
@@ -449,6 +504,18 @@ existing hand-written ocgtk widget, or a `Picture` fed from a `Gdk.Memory_textur
 in. (Custom Cairo drawing via `DrawingArea` is *not* possible: ocgtk does not bind
 `set_draw_func`.)
 
+**M1 amendment (2026-08-29).** The `Picture` case is no longer hypothetical:
+`Native.Picture` ships as a supported impl, taking a `Gdk.Paintable` (a
+`Gdk.Memory_texture`, say) where the declarative `Node.picture` takes a file,
+resource or icon source. `Node.image` has no paintable source by design — it
+would be a second native widget, and paintables belong on `GtkPicture`.
+
+Native nodes carry `Attr.t`s like any other node, but they declare no signal
+specs, so `Signals.require_specs` **rejects an event attribute on a native node**
+with `Invalid_argument` at mount and at patch (§11) rather than silently
+dropping it. A native widget that needs to talk back connects its own signals
+inside its impl.
+
 ## 7. Widget catalogue and milestones
 
 Each widget is one file `src/widgets/<name>.ml` implementing:
@@ -474,11 +541,18 @@ Milestones, each merged only with its tests green:
 - **M0 — scaffold:** flake, dune-project, opam switch script, library skeleton,
   `Reconcile`, `Attrs`, `Node` with `Label` + `Box` + `Window`, runtime loop,
   counter example, `Bonsai_gtk_test` handle.
-- **M1 — core & layout:** Button, ToggleButton, CheckButton, Switch, Entry,
-  PasswordEntry, SearchEntry, SpinButton, Scale, ProgressBar, Spinner,
-  Image, Picture, Separator, ScrolledWindow, Frame, Expander, Grid,
-  CenterBox, Paned, Overlay, Revealer, Stack + StackSwitcher + StackSidebar,
-  `Node.native`.
+- **M1 — core & layout:** *done* (2026-08-29). Button, ToggleButton,
+  CheckButton, Switch, Entry, PasswordEntry, SearchEntry, SpinButton, Scale,
+  ProgressBar, Spinner, Image, Picture, Separator, ScrolledWindow, Frame,
+  Expander, Grid, CenterBox, Paned, Overlay, Revealer, Stack + StackSwitcher +
+  StackSidebar, `Node.native` — 29 `Node.*` constructors in all, plus
+  `Native.Picture`, an `examples/gallery.ml` that renders one of each, and
+  `Bonsai_gtk_test` actions `Click`/`Toggle`/`Set_text`/`Activate`/`Set_value`.
+  Two shipped details this section did not anticipate:
+  `Attr.measure_overlay` defaults to **`false`**, matching
+  `GtkOverlayLayoutChild:measure` (an overlay child is unmeasured unless it says
+  otherwise), and `Attr.on_position_changed` ships for `Paned` because its
+  position is uncontrolled (§6.5).
 - **M2 — lists & text:** ListBox (keyed rows, selection), FlowBox, Notebook,
   TextView (controlled buffer), DropDown (string list), LevelBar, Calendar,
   EditableLabel.
@@ -585,6 +659,19 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
   root — a `GtkWindow` is a toplevel and cannot be parented — duplicate sibling
   keys, event attr on a widget that lacks the signal) raises `Invalid_argument`
   with the node path at mount/patch time — loud and early.
+- **M1 amendment (2026-08-29).** "Mount/patch time" is literal:
+  `Signals.require_specs` is called from `Patcher.mount` and again from
+  `Patcher.patch` (guarded on the attrs having changed), because handlers are
+  connected once at mount, so a patch that *adds* an unsupported event attr has
+  no slot to fail on otherwise. Native nodes declare no specs, so any event attr
+  on one is rejected (§6.6). M1 added two further families of structural
+  message, all `Invalid_argument` and all prefixed with the node path:
+  slot misuse — `slot <name> does not exist on <impl>`, `slot <name> has the
+  wrong shape for <impl>`, `<impl>'s slots changed shape under an unchanged
+  kind`, `node's children do not match <impl>'s shape` — and the stack name
+  registry: `two Node.stacks are named "<name>" in one tree` (at mount, and
+  identically when a patch renames a stack onto a name another stack holds), and
+  a `stack_switcher`/`stack_sidebar` naming a stack no node declares.
 - Exceptions inside a signal trampoline are caught before they reach C
   (undefined behaviour otherwise), logged to stderr with the node path, and
   do not tear down the main loop.
