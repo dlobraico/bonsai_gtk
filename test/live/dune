@@ -1,14 +1,15 @@
 (executables
- (names live_patcher)
+ (names live_patcher live_driver)
  (libraries
   core
+  bonsai
   bonsai_gtk
   bonsai_gtk.vtree
   virtual_dom.ui_effect
   ocgtk.gtk
   ocgtk.common)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane bonsai.ppx_bonsai)))
 
 ; Live tests drive a real GTK display, so they run only under xvfb and only when
 ; explicitly asked for:
@@ -25,3 +26,15 @@
     output_patcher.txt
     (run %{exe:live_patcher.exe}))
    (diff expected_patcher.txt output_patcher.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_driver.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_driver.txt
+    (run %{exe:live_driver.exe}))
+   (diff expected_driver.txt output_driver.txt))))

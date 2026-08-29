@@ -1,0 +1,14 @@
+window created
+(GtkWindow (title (drv)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text "Count: 0"))
+    (GtkButton (label (+)) (css (text-button))
+     (children (GtkLabel (text +))))))))
+(GtkWindow (title (drv)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text "Count: 2"))
+    (GtkButton (label (+)) (css (text-button))
+     (children (GtkLabel (text +))))))))
+stopped
