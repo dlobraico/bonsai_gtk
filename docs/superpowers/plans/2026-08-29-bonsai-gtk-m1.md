@@ -5363,9 +5363,15 @@ The controller rules on these before execution; each has a recommendation and th
 
 ## Rulings on the open questions (controller, 2026-08-29)
 
-1. Seal `Attr.t` in Task 2 via `Attr.Private.repr`; `Attr.Name.t` and `Bonsai_gtk_test.Action.t` stay concrete.
+1. ~~Seal `Attr.t` in Task 2~~ — REVISED after the pre-flight scan: no task implements the seal and every widget impl matches `Attr.t` constructors directly, so sealing now would ripple through Tasks 2–9. Defer to the M2 backlog (Task 11 records it in `docs/m1-backlog.md`); `Attr.Name.t` and `Bonsai_gtk_test.Action.t` stay concrete either way.
 2. `Scale`/`SpinButton` values are controlled exactly like text (compare against the widget's live value, not the previous node); `Paned`'s position is the documented exception.
 3. `StackSwitcher`/`StackSidebar` find their `Stack` by a string name registered with `Node.stack ~name`, resolved by an order-independent post-patch fixup pass.
 4. `Overlay`/`Stack` `move` is a silent no-op with a doc comment in M1; revisit when `Notebook` (M2) shares the list machinery.
 5. `SearchEntry` exposes both `Attr.on_changed` and `Attr.on_search_changed`, documented on `Node.search_entry`.
 6. `Live_tree.dump` keeps GTK's internal children.
+
+## Pre-flight corrections (controller, 2026-08-29)
+
+- Task 5: the `Live_tree` sample that reads `GtkScale | GtkSpinButton` through one `W.Range.get_value` arm is the bug the following prose warns about — implement the split arm (`GtkSpinButton` is not a `GtkRange`).
+- Task 8: `list_ops.insert` gains `~node`; the patcher loop's `Insert` and kind-changed `Update` branches must pass it too (the plan shows only the `updated` hook line).
+- Task 9: the Stack-selection fixup in `mount` references `ctx_widget`, which does not exist — use the mount's `widget` (`live.widget` in patch).
