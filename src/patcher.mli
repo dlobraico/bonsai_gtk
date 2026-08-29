@@ -47,7 +47,9 @@ val patch : ctx -> path:string -> live -> Node.t -> live
 
 (** Tears [live] and its subtree down: empties the signal slots (so a signal GTK emits
     during teardown cannot reach a handler), disconnects, and lets native implementations
-    release what they allocated. Windows are destroyed outright; any other widget is
-    merely detached from Bonsai and is expected to be unparented by the caller (or by its
-    parent going away). *)
+    release what they allocated. On the paths where the patcher unparents a subtree before
+    destroying it, the slots of the whole subtree are emptied before the unparenting
+    rather than here, so the guarantee holds in both orders. Windows are destroyed
+    outright; any other widget is merely detached from Bonsai and is expected to be
+    unparented by the caller (or by its parent going away). *)
 val destroy : ctx -> live -> unit

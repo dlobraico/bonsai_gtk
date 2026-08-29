@@ -24,12 +24,14 @@ module Orientation = Bonsai_gtk_vtree.Orientation
 module Native : sig
   module type S = Native_gtk.S
 
-  val node
-    :  ?key:Key.t
-    -> ?attrs:Attr.t list
-    -> (module S with type input = 'a)
-    -> 'a
-    -> Node.t
+  (** An implementation plus the type witness that lets the patcher recover its [input]
+      from a node. Build it once, at the top level of the module that defines the widget,
+      and reuse that value: two [impl]s made from the same module are different widgets as
+      far as the patcher is concerned. *)
+  type 'a impl = 'a Native_gtk.impl
+
+  val impl : (module S with type input = 'a) -> 'a impl
+  val node : ?key:Key.t -> ?attrs:Attr.t list -> 'a impl -> 'a -> Node.t
 end
 
 (** [Ui_effect] plus {!Effect.quit}. *)
@@ -67,7 +69,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private : sig
   module Attr_apply = Attr_apply
-  module Debug = Bonsai_gtk__Debug
+  module Live_tree = Live_tree
   module Gtk_import = Gtk_import
   module Native_gtk = Native_gtk
   module Patcher = Patcher

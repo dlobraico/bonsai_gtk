@@ -2,7 +2,7 @@ open! Core
 open Bonsai_gtk_vtree
 module Gobject = Bonsai_gtk.Private.Gtk_import.Gobject
 module Widget = Bonsai_gtk.Private.Gtk_import.Widget
-module Debug = Bonsai_gtk.Private.Debug
+module Live_tree = Bonsai_gtk.Private.Live_tree
 module Native_gtk = Bonsai_gtk.Private.Native_gtk
 module P = Bonsai_gtk.Private.Patcher
 module W = Bonsai_gtk.Private.Gtk_import.W
@@ -20,7 +20,10 @@ module Native_counter = struct
   let destroy _ = print_endline "native destroyed"
 end
 
-let counter n = Native_gtk.node (module Native_counter) n
+(* Built once at the top level, as every native widget must be: the impl carries the type
+   witness the patcher matches on, so a fresh one per render would be a different widget. *)
+let counter_impl = Native_gtk.impl (module Native_counter)
+let counter n = Native_gtk.node counter_impl n
 
 (* The [a]-keyed button, which the second render moves and relabels. Reaching for it by
    position is how we show it is the *same* GTK widget across the patch. *)
@@ -61,13 +64,13 @@ let () =
               ())))
   in
   let live = P.mount ctx ~path:"root" (view "v1" [ "a", "A"; "b", "B" ]) in
-  print_s (Debug.dump_live_tree live.widget);
+  print_s (Live_tree.dump live.widget);
   (* v1 order is [label; a; b]. *)
   let a_before = nth_box_child live 1 in
   let live =
     P.patch ctx ~path:"root" live (view "v2" [ "b", "B"; "c", "C"; "a", "A!" ])
   in
-  print_s (Debug.dump_live_tree live.widget);
+  print_s (Live_tree.dump live.widget);
   (* v2 order is [label; b; c; a]: [a] was moved and relabelled, not recreated. *)
   let a_after = nth_box_child live 3 in
   printf "same widget for a: %b\n" (Gobject.same a_before a_after);
@@ -93,18 +96,18 @@ let () =
             ; Node.button ~key:"a" ~label:"A!" ()
             ]))
   in
-  print_s (Debug.dump_live_tree live.widget);
+  print_s (Live_tree.dump live.widget);
   (* Swapping the whole child list out for a native node: every keyed button is removed,
      and the native widget is created through [Registry]'s [Native] arm. *)
   let native_view n =
     Node.window ~title:"T" (Node.box ~orientation:Vertical [ counter n ])
   in
   let live = P.patch ctx ~path:"root" live (native_view 1) in
-  print_s (Debug.dump_live_tree live.widget);
-  (* Same module, new input: [update] runs rather than the widget being recreated. *)
+  print_s (Live_tree.dump live.widget);
+  (* Same impl, new input: [update] runs rather than the widget being recreated. *)
   let native_before = nth_box_child live 0 in
   let live = P.patch ctx ~path:"root" live (native_view 2) in
-  print_s (Debug.dump_live_tree live.widget);
+  print_s (Live_tree.dump live.widget);
   printf
     "same widget for native: %b\n"
     (Gobject.same native_before (nth_box_child live 0));
@@ -112,7 +115,7 @@ let () =
   let live =
     P.patch ctx ~path:"root" live (Node.window ~title:"T" (Node.label "replaced"))
   in
-  print_s (Debug.dump_live_tree live.widget);
+  print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
   print_endline "destroyed"
 ;;

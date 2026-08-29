@@ -9,4 +9,4 @@ open Gtk_import
     title / spacing apply to the type, then the css classes, then [hidden] and
     [insensitive] when set. Internal widgets GTK creates for itself (a button's label, for
     instance) show up as children like any other. *)
-val dump_live_tree : Widget.t -> Sexp.t
+val dump : Widget.t -> Sexp.t

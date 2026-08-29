@@ -61,6 +61,21 @@ and destroy ctx (live : live) =
   | Native n -> Native_gtk.destroy_payload n live.widget
   | Label _ | Button _ | Box _ -> ()
 
+(* Empties every slot in a subtree without tearing anything down.
+
+   [destroy] clears slots too, but on the paths where GTK unparents a subtree *before* it
+   is destroyed the clearing would come too late: GTK emits signals synchronously from
+   [remove]/[set_child], so a handler could fire against a node Bonsai is in the middle of
+   dropping. Disarming first closes that window. The obvious alternative — destroy, then
+   remove — is wrong: [destroy] on a window live really destroys the window, so a window
+   ever appearing as a container child would be freed before the [remove] that names it. *)
+and disarm (live : live) =
+  Signals.clear_slots live.slots;
+  match live.children with
+  | No_children -> ()
+  | Single c -> Option.iter c ~f:disarm
+  | List l -> List.iter l ~f:disarm
+
 and patch ctx ~path (live : live) (node : Node.t) : live =
   if not (Kind.same_kind live.node.kind node.kind)
   then (
@@ -87,6 +102,7 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
     (match old_c, new_c with
      | None, None -> Single None
      | Some o, None ->
+       disarm o;
        set live.widget None;
        destroy ctx o;
        Single None
@@ -116,6 +132,7 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
       match op with
       | Remove { index } ->
         let l = List.nth_exn !cur index in
+        disarm l;
         remove live.widget l.widget;
         destroy ctx l;
         cur := List.filteri !cur ~f:(fun i _ -> i <> index)

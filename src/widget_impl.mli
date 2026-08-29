@@ -32,6 +32,12 @@ type t =
     list at its old position). [None] means "at the beginning", which is what GTK's
     [*_child_after] calls take for a null sibling.
 
+    This reads GTK's live child list, so an impl whose [children] ops are used with this
+    must keep [widget_children] equal to exactly the list of children the patcher manages,
+    in the patcher's order. A container that creates internal children of its own (or
+    reorders them behind GTK's back) breaks the correspondence between the reconciler's
+    indices and GTK's, and the placement below is computed against the wrong list.
+
     Raises [Invalid_argument] if [index] exceeds the length of the considered child list:
     such an [index] has no sibling to name, and answering [None] would silently place the
     child at the *beginning* rather than the end. Reaching that case means GTK's live

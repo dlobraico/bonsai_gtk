@@ -1,7 +1,7 @@
 open! Core
 open Gtk_import
 
-let rec dump_live_tree (w : Widget.t) : Sexp.t =
+let rec dump (w : Widget.t) : Sexp.t =
   let ty = type_name w in
   let props =
     (match ty with
@@ -19,7 +19,7 @@ let rec dump_live_tree (w : Widget.t) : Sexp.t =
   let kids =
     match widget_children w with
     | [] -> []
-    | kids -> [ Sexp.List (Sexp.Atom "children" :: List.map kids ~f:dump_live_tree) ]
+    | kids -> [ Sexp.List (Sexp.Atom "children" :: List.map kids ~f:dump) ]
   in
   Sexp.List (Sexp.Atom ty :: (props @ kids))
 ;;

@@ -9,6 +9,9 @@ module Orientation = Bonsai_gtk_vtree.Orientation
 module Native = struct
   module type S = Native_gtk.S
 
+  type 'a impl = 'a Native_gtk.impl
+
+  let impl = Native_gtk.impl
   let node = Native_gtk.node
 end
 
@@ -23,10 +26,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private = struct
   module Attr_apply = Attr_apply
-
-  (* The library-wide [-open Core] shadows our [Debug] with [Core.Debug], so this one
-     alias has to name the wrapped compilation unit explicitly. *)
-  module Debug = Bonsai_gtk__Debug
+  module Live_tree = Live_tree
   module Gtk_import = Gtk_import
   module Native_gtk = Native_gtk
   module Patcher = Patcher

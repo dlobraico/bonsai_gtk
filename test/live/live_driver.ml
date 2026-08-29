@@ -38,8 +38,7 @@ let () =
       app
   in
   let dump () =
-    print_s
-      (Private.Debug.dump_live_tree (Option.value_exn (Expert.Driver.root_widget d)))
+    print_s (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget d)))
   in
   Expert.Driver.frame d;
   dump ();
