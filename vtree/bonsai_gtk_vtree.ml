@@ -8,3 +8,4 @@ module Native = Native
 module Kind = Kind
 module Children = Children
 module Node = Node
+module Reconcile = Reconcile
