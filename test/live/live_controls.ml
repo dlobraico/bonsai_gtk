@@ -21,15 +21,15 @@ let () =
   ignore (Ocgtk_gtk.GMain.init () : string array);
   let scheduled = ref 0 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
-  let ctx : P.ctx =
-    { signals =
+  let ctx =
+    P.create_ctx
+      ~signals:
         { schedule = (fun _ -> incr scheduled)
         ; in_patch = (fun () -> Scheduler.in_patch scheduler)
         ; on_exn =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
-    ; on_window_created = (fun _ -> ())
-    }
+      ~on_window_created:(fun _ -> ())
   in
   let text_attrs = Attr.on_changed (fun _ -> Ui_effect.Ignore) in
   let view ~active =

@@ -468,6 +468,93 @@ val box
   -> t list
   -> t
 
+(** A [GtkGrid]: children placed by {i coordinates} rather than by order.
+
+    Every child needs an {!Attr.grid_cell}; a child without one is [Invalid_argument] at
+    mount, naming its path. There is no default cell -- defaulting to (0,0) would stack
+    the whole grid in one place and read as a layout bug rather than as the missing
+    attribute it is.
+
+    Child {i order} carries no meaning here: the cell is the placement, so reordering the
+    list without changing the cells does not touch GTK (the reconciler's [Move] ops are
+    dropped). {!Key.t} still governs identity, which is what preserves a cell's widget --
+    and its focus, and its entry text -- across a re-render. A child whose cell changes is
+    detached and re-attached at the new coordinates, because GTK has no "move an attached
+    child"; it is the same widget afterwards.
+
+    The spacings ([0]) are the gaps between rows and columns in pixels; the homogeneous
+    flags ([false]) make every row the same height or every column the same width. Row
+    baselines ([gtk_grid_set_row_baseline_position]) are not exposed; a grid that needs
+    them is a {!native} node. *)
+val grid
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?row_spacing:int
+  -> ?column_spacing:int
+  -> ?row_homogeneous:bool
+  -> ?column_homogeneous:bool
+  -> t list
+  -> t
+
+(** A [GtkStack]: one child visible at a time, selected by name.
+
+    Every child needs a [~key]: it is the GTK page name, it is what [~visible_child]
+    selects by, and it is what preserves a page's widgets across a re-render. A child
+    without one is [Invalid_argument] at mount.
+
+    Child {i order} is not reconciled: GTK offers no way to insert a page at a position or
+    to reorder pages, so pages land in the order they are first added and reordering the
+    list does nothing (M1 ruling 4, as for {!overlay}). Order only affects the button
+    order in a {!stack_switcher}; identity and selection are entirely by key.
+
+    [~name] is how a {!stack_switcher} or {!stack_sidebar} elsewhere in the tree finds
+    this stack. Two stacks with the same name in one tree is [Invalid_argument].
+
+    [~visible_child] is {i controlled} (spec §6.5): it is compared against the page the
+    widget is actually showing, so a user who clicked a switcher button the model then
+    ignored is put back. It is applied once the whole tree exists rather than while the
+    stack is being built -- a page GTK does not have yet cannot be selected -- so a test
+    driving the patcher by hand must call [Patcher.run_fixups] before reading the
+    selection back. Pair it with {!Attr.on_visible_child_changed} or the control is inert.
+    Naming a page that does not exist leaves the selection alone rather than raising: the
+    frame that adds the page will select it.
+
+    [~transition] ([None_]) and [~transition_duration] (200 ms, GTK's own) describe the
+    animation between pages; a test that dumps the tree straight after a selection change
+    should keep [None_] or it races it. [~hhomogeneous] and [~vhomogeneous] (both [true],
+    GTK's own) make the stack request the size of its largest page in that direction, so
+    it does not resize as pages change. *)
+val stack
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?transition:Stack_transition.t
+  -> ?transition_duration:int
+  -> ?hhomogeneous:bool
+  -> ?vhomogeneous:bool
+  -> name:string
+  -> visible_child:string
+  -> t list
+  -> t
+
+(** A [GtkStackSwitcher]: a row of buttons, one per page of the {!stack} named by
+    [~stack], showing each page's {!Attr.page_title}.
+
+    The stack is found by name rather than held as a value, because the vtree cannot name
+    a live widget. The name is resolved after the whole tree has been mounted or patched,
+    so the switcher may be declared {i above} the stack it drives -- which is the ordinary
+    layout. A name no {!stack} in the tree registers is [Invalid_argument] at that point,
+    naming both the switcher's path and the name it wanted.
+
+    Clicking a button changes the stack's visible page, which reaches the model through
+    the {i stack's} {!Attr.on_visible_child_changed} -- the switcher itself has no
+    handler. *)
+val stack_switcher : ?key:Key.t -> ?attrs:Attr.t list -> stack:string -> unit -> t
+
+(** A [GtkStackSidebar]: the same thing as a {!stack_switcher} in a vertical list, which
+    is the sidebar half of a two-pane window. It finds its stack the same way and on the
+    same rules. *)
+val stack_sidebar : ?key:Key.t -> ?attrs:Attr.t list -> stack:string -> unit -> t
+
 (** A [GtkCenterBox]: three children addressed by role rather than position, with the
     centre one centred in the box as a whole rather than between its neighbours — which is
     what a header bar wants and what a three-child {!box} cannot do.

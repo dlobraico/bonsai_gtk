@@ -36,15 +36,15 @@ let () =
      the patch guard has to be the real one rather than a constant [false]. *)
   let scheduled = ref 0 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
-  let ctx : P.ctx =
-    { signals =
+  let ctx =
+    P.create_ctx
+      ~signals:
         { schedule = (fun _ -> incr scheduled)
         ; in_patch = (fun () -> Scheduler.in_patch scheduler)
         ; on_exn =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
-    ; on_window_created = (fun _ -> ())
-    }
+      ~on_window_created:(fun _ -> ())
   in
   let tex = texture "\255\000\000\255\000\255\000\255\000\000\255\255\255\255\255\255" in
   let png = Stdlib.Filename.temp_file "bonsai_gtk" ".png" in
@@ -298,5 +298,196 @@ let () =
      like a nested window, and the patcher raises on it rather than dropping the child.
      There is nothing here that can provoke it: every [Slots] node comes from a
      constructor whose slot list is written beside the impl's. *)
-  P.destroy ctx live
+  P.destroy ctx live;
+  (* Grid: the third child moves cell without changing key, so it must be detached and
+     re-attached at the new coordinates -- and be the same GObject afterwards. *)
+  let grid_view ~span =
+    Node.window
+      ~title:"grid"
+      (Node.grid
+         ~row_spacing:6
+         ~column_spacing:12
+         [ Node.label ~key:"k" ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "Name"
+         ; Node.label ~key:"v" ~attrs:[ Attr.grid_cell ~column:1 ~row:0 () ] "Bach"
+         ; Node.label
+             ~key:"note"
+             ~attrs:
+               [ (if span
+                  then Attr.grid_cell ~column:0 ~row:1 ~width:2 ()
+                  else Attr.grid_cell ~column:0 ~row:2 ())
+               ]
+             "note"
+         ])
+  in
+  let grid_child (live : P.live) i =
+    match live.children with
+    | Single (Some g) ->
+      (match g.children with
+       | List cs -> (List.nth_exn cs i).P.widget
+       | No_children | Single _ | Slots _ -> assert false)
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (grid_view ~span:false) in
+  print_s (Live_tree.dump live.widget);
+  let note_before = grid_child live 2 in
+  let live = P.patch ctx ~path:"root" ~is_root:true live (grid_view ~span:true) in
+  print_s (Live_tree.dump live.widget);
+  printf
+    "same widget after re-attach: %b\n"
+    (Gobject.same note_before (grid_child live 2));
+  (* Reordering the children without changing their cells is a [Move] the grid drops:
+     nothing in GTK may shift. *)
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (Node.window
+         ~title:"grid"
+         (Node.grid
+            ~row_spacing:6
+            ~column_spacing:12
+            [ Node.label
+                ~key:"note"
+                ~attrs:[ Attr.grid_cell ~column:0 ~row:1 ~width:2 () ]
+                "note"
+            ; Node.label ~key:"k" ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "Name"
+            ; Node.label ~key:"v" ~attrs:[ Attr.grid_cell ~column:1 ~row:0 () ] "Bach"
+            ]))
+  in
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* A grid child with no cell is a bug worth failing on. *)
+  (match
+     P.mount
+       ctx
+       ~path:"root"
+       ~is_root:true
+       (Node.window ~title:"g" (Node.grid [ Node.label "cell-less" ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: grid child without a cell accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* Stack: the switcher is declared *above* the stack it drives, so it can only be wired
+     up after the whole tree exists -- which is what [run_fixups] is for. *)
+  let stack_view ~visible ~pages =
+    Node.window
+      ~title:"stack"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack_switcher ~stack:"nav" ()
+         ; Node.stack_sidebar ~stack:"nav" ()
+         ; Node.stack
+             ~name:"nav"
+             ~transition:None_
+             ~visible_child:visible
+             ~attrs:[ Attr.on_visible_child_changed (fun _ -> Ui_effect.Ignore) ]
+             (List.map pages ~f:(fun (key, title) ->
+                Node.label ~key ~attrs:[ Attr.page_title title ] key))
+         ])
+  in
+  let live =
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (stack_view
+         ~visible:"library"
+         ~pages:[ "library", "Library"; "practice", "Practice" ])
+  in
+  P.run_fixups ctx;
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (stack_view
+         ~visible:"practice"
+         ~pages:[ "library", "Library!"; "practice", "Practice"; "setlists", "Setlists" ])
+  in
+  P.run_fixups ctx;
+  print_s (Live_tree.dump live.widget);
+  (* A page dropped from the list leaves the stack, and the selection moves with the model
+     rather than with whatever GTK fell back to. *)
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (stack_view
+         ~visible:"setlists"
+         ~pages:[ "practice", "Practice"; "setlists", "Setlists" ])
+  in
+  P.run_fixups ctx;
+  print_s (Live_tree.dump live.widget);
+  (* The visible child is controlled: the user clicking a switcher button moves it, and a
+     model that renders the same [~visible_child] again must put it back. *)
+  let stack : P.live =
+    match live.children with
+    | Single (Some box) ->
+      (match box.children with
+       | List cs -> List.nth_exn cs 2
+       | No_children | Single _ | Slots _ -> assert false)
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  W.Stack.set_visible_child_name (cast stack.widget) "practice";
+  let before = !scheduled in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live =
+        P.patch
+          ctx
+          ~path:"root"
+          ~is_root:true
+          live
+          (stack_view
+             ~visible:"setlists"
+             ~pages:[ "practice", "Practice"; "setlists", "Setlists" ])
+      in
+      P.run_fixups ctx;
+      live)
+  in
+  printf
+    "declined visible child: %s; reached Bonsai: %d\n"
+    (Option.value (W.Stack.get_visible_child_name (cast stack.widget)) ~default:"?")
+    (!scheduled - before);
+  (* Outside a patch the same notify is a user click, and does reach Bonsai. *)
+  let before = !scheduled in
+  Gobject.Property.notify stack.widget ~name:"visible-child-name";
+  printf "visible-child notify reaching Bonsai: %d\n" (!scheduled - before);
+  (* An unresolvable stack name names both ends of the mistake. *)
+  (match
+     let stray =
+       P.mount
+         ctx
+         ~path:"stray"
+         ~is_root:true
+         (Node.window ~title:"s" (Node.stack_switcher ~stack:"nope" ()))
+     in
+     P.run_fixups ctx;
+     stray
+   with
+   | (_ : P.live) -> print_endline "BUG: unresolvable stack name accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  P.destroy ctx live;
+  (* Two stacks under one name would make [~stack] ambiguous, so the second one to be
+     mounted says so rather than quietly winning or losing the registration. *)
+  match
+    P.mount
+      ctx
+      ~path:"dup"
+      ~is_root:true
+      (Node.window
+         ~title:"d"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.stack ~name:"nav" ~visible_child:"a" [ Node.label ~key:"a" "a" ]
+            ; Node.stack ~name:"nav" ~visible_child:"b" [ Node.label ~key:"b" "b" ]
+            ]))
+  with
+  | (_ : P.live) -> print_endline "BUG: two stacks with one name accepted"
+  | exception Invalid_argument msg -> printf "rejected: %s\n" msg
 ;;

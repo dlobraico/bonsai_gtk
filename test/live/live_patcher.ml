@@ -39,15 +39,15 @@ let nth_box_child (live : P.live) i : Widget.t =
 let () =
   ignore (Ocgtk_gtk.GMain.init () : string array);
   let scheduled = ref [] in
-  let ctx : P.ctx =
-    { signals =
+  let ctx =
+    P.create_ctx
+      ~signals:
         { schedule = (fun e -> scheduled := e :: !scheduled)
         ; in_patch = (fun () -> false)
         ; on_exn =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
-    ; on_window_created = (fun _ -> print_endline "window created")
-    }
+      ~on_window_created:(fun _ -> print_endline "window created")
   in
   let view label items =
     Node.window

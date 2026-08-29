@@ -5,7 +5,54 @@ open Gtk_import
 type ctx =
   { signals : Signals.ctx
   ; on_window_created : Widget.t -> unit
+  ; (* Live [GtkStack]s by their [Node.stack ~name]. A [stack_switcher] cannot hold a
+       widget -- the vtree has no way to name one -- so it names a stack and is wired up
+       after the pass that mounts them both. *)
+    stacks : (string, Widget.t) Hashtbl.t
+  ; (* Work deferred to the end of a mount/patch pass, so that a node may refer to another
+       node regardless of which of them the walk reaches first. *)
+    fixups : (unit -> unit) Queue.t
   }
+
+let create_ctx ~signals ~on_window_created =
+  { signals
+  ; on_window_created
+  ; stacks = Hashtbl.create (module String)
+  ; fixups = Queue.create ()
+  }
+;;
+
+let register_stack ctx ~path ~name widget =
+  match Hashtbl.add ctx.stacks ~key:name ~data:widget with
+  | `Ok -> ()
+  | `Duplicate -> invalid_argf "%s: two Node.stacks are named %S in one tree" path name ()
+;;
+
+let resolve_stack ctx ~path ~name : Widget.t =
+  match Hashtbl.find ctx.stacks name with
+  | Some w -> w
+  | None ->
+    invalid_argf
+      "%s: no Node.stack is named %S (a stack_switcher/stack_sidebar must name a stack \
+       that exists somewhere in the same tree)"
+      path
+      name
+      ()
+;;
+
+(* Runs everything the pass just finished deferred, then empties the queue. Called by
+   [Driver.frame] inside the patch guard; a test driving the patcher by hand calls it
+   itself. Fixups may not enqueue further fixups -- nothing needs to, and a queue that
+   feeds itself is a hang.
+
+   Emptied even when a fixup raises: the queue describes one pass, and carrying a failed
+   pass's work into the next one would raise again from a frame that had nothing to do
+   with it. *)
+let run_fixups ctx =
+  Exn.protect
+    ~f:(fun () -> Queue.iter ctx.fixups ~f:(fun f -> f ()))
+    ~finally:(fun () -> Queue.clear ctx.fixups)
+;;
 
 type live =
   { mutable node : Node.t
@@ -18,6 +65,101 @@ type live =
   }
 
 let child_path path i = sprintf "%s/%d" path i
+
+(* A container's child op may reject the node it is handed -- a grid child with no
+   [Attr.grid_cell], a stack page with no [~key]. The op knows nothing about where in the
+   tree it is, so the path is added here rather than threaded into every impl (spec §11).
+   Only the op call is wrapped, never the recursive [mount]/[patch] beside it, so a nested
+   container's message is prefixed once. *)
+let child_op ~path f =
+  try f () with
+  | Invalid_argument msg -> invalid_argf "%s: %s" path msg ()
+;;
+
+(* Every kind whose mount, patch or teardown the patcher itself has something to do about,
+   beyond what the impl does. Matched exhaustively at each of the three sites so that a
+   new kind with a registration or a fixup cannot be added without the compiler asking. *)
+type interest =
+  | Nothing
+  | Window
+  | Stack of Kind.stack_props
+  | Stack_ref of [ `Switcher | `Sidebar ] * string
+
+let interest_of_kind (kind : Kind.t) =
+  match kind with
+  | Window _ -> Window
+  | Stack p -> Stack p
+  | Stack_switcher { stack } -> Stack_ref (`Switcher, stack)
+  | Stack_sidebar { stack } -> Stack_ref (`Sidebar, stack)
+  | Label _
+  | Button _
+  | Toggle_button _
+  | Check_button _
+  | Switch _
+  | Entry _
+  | Password_entry _
+  | Search_entry _
+  | Spin_button _
+  | Scale _
+  | Progress_bar _
+  | Spinner _
+  | Image _
+  | Picture _
+  | Separator _
+  | Scrolled_window _
+  | Frame _
+  | Expander _
+  | Revealer _
+  | Center_box _
+  | Paned _
+  | Overlay _
+  | Grid _
+  | Box _
+  | Native _ -> Nothing
+;;
+
+(* The deferred half of realizing a node: a window is presented, a stack registers its
+   name and asks for its selection to be applied once its pages exist, and a switcher or
+   sidebar asks for the stack it names to be looked up once the whole tree does. Shared by
+   [mount] and [patch], which differ only in [pass]. *)
+let note_interest
+  ctx
+  ~path
+  ~widget
+  ~(interest : interest)
+  ~(pass : [ `Mount | `Patch of Kind.t ])
+  =
+  match interest with
+  | Nothing -> ()
+  | Window ->
+    (* Once per window, at mount: the runtime presents it and holds onto it. *)
+    (match pass with
+     | `Mount -> ctx.on_window_created widget
+     | `Patch _ -> ())
+  | Stack { name; visible_child; _ } ->
+    (match pass with
+     | `Mount -> register_stack ctx ~path ~name widget
+     | `Patch old_kind ->
+       (* A renamed stack drops its old entry, so a switcher still naming it fails loudly
+          rather than driving a stack the tree no longer calls that. *)
+       (match old_kind with
+        | Kind.Stack { name = old_name; _ } when not (String.equal old_name name) ->
+          Hashtbl.remove ctx.stacks old_name
+        | _ -> ());
+       Hashtbl.set ctx.stacks ~key:name ~data:widget);
+    (* Enqueued rather than applied: the pages are attached after this on a mount, and
+       patched after this on a patch, and a page GTK does not have yet cannot be selected. *)
+    Queue.enqueue ctx.fixups (fun () -> W_stack.select widget ~visible_child)
+  | Stack_ref (which, name) ->
+    (* Re-enqueued on every patch rather than only when the name changed: it is one
+       hashtable lookup and one setter per switcher per frame, and it is the only thing
+       that keeps a switcher pointing at a stack that was itself replaced. *)
+    Queue.enqueue ctx.fixups (fun () ->
+      let stack = resolve_stack ctx ~path ~name in
+      match which with
+      | `Switcher -> W_stack_switcher.attach widget stack
+      | `Sidebar -> W_stack_sidebar.attach widget stack)
+;;
 
 (* Spec §11: structural misuse is rejected loudly and early. A [GtkWindow] is a toplevel,
    so parenting one would make GTK log a critical and leave a silently broken tree — and
@@ -51,9 +193,7 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   let children =
     mount_children ctx ~path ~impl_name:impl.name widget node.children impl.children
   in
-  (match node.kind with
-   | Window _ -> ctx.on_window_created widget
-   | _ -> ());
+  note_interest ctx ~path ~widget ~interest:(interest_of_kind node.kind) ~pass:`Mount;
   { node; widget; impl; defaults; slots; handler_ids; children }
 
 (* One shape, mounted. The three helpers below are what a top-level shape and a slot of
@@ -72,8 +212,9 @@ and mount_list ctx ~path parent ~(ops : Widget_impl.list_ops) (cs : Node.t list)
   let lives =
     List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
   in
-  List.fold lives ~init:None ~f:(fun after l ->
-    ops.insert parent ~after ~node:l.node l.widget;
+  List.foldi lives ~init:None ~f:(fun i after l ->
+    child_op ~path:(child_path path i) (fun () ->
+      ops.insert parent ~after ~node:l.node l.widget);
     Some l.widget)
   |> (ignore : Widget.t option -> unit);
   lives
@@ -131,6 +272,7 @@ and destroy ctx (live : live) =
   match live.node.kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
   | Window _ -> W.Window.destroy (cast live.widget)
+  | Stack { name; _ } -> Hashtbl.remove ctx.stacks name
   | Native n -> Native_gtk.destroy_payload n live.widget
   | Label _
   | Button _
@@ -154,6 +296,9 @@ and destroy ctx (live : live) =
   | Center_box _
   | Paned _
   | Overlay _
+  | Grid _
+  | Stack_switcher _
+  | Stack_sidebar _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.
@@ -206,6 +351,14 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
     List.iter attr_ops ~f:(Attr_apply.apply ~defaults:live.defaults live.widget);
     Signals.update_slots live.slots node.attrs;
     live.children <- patch_children ctx ~path live node;
+    (* Before [live.node <- node]: a renamed stack has to drop the name it was registered
+       under, and that name is only on the *old* node. *)
+    note_interest
+      ctx
+      ~path
+      ~widget:live.widget
+      ~interest:(interest_of_kind node.kind)
+      ~pass:(`Patch live.node.kind);
     live.node <- node;
     live)
 
@@ -261,19 +414,21 @@ and patch_list
     | Remove { index } ->
       let l = List.nth_exn !cur index in
       disarm l;
-      ops.remove parent l.widget;
+      child_op ~path:(child_path path index) (fun () -> ops.remove parent l.widget);
       destroy ctx l;
       cur := List.filteri !cur ~f:(fun i _ -> i <> index)
     | Insert { index; item } ->
       let l = mount ctx ~path:(child_path path index) ~is_root:false item in
-      ops.insert parent ~after:(after_of !cur index) ~node:item l.widget;
+      child_op ~path:(child_path path index) (fun () ->
+        ops.insert parent ~after:(after_of !cur index) ~node:item l.widget);
       cur := List.take !cur index @ (l :: List.drop !cur index)
     | Move { from; to_ } ->
       let l = List.nth_exn !cur from in
       (* [to_] indexes the list as it will be *after* the move, so the predecessor is
          computed with [l] already removed. *)
       let without = List.filteri !cur ~f:(fun i _ -> i <> from) in
-      ops.move parent ~child:l.widget ~after:(after_of without to_);
+      child_op ~path:(child_path path to_) (fun () ->
+        ops.move parent ~child:l.widget ~after:(after_of without to_));
       cur := List.take without to_ @ (l :: List.drop without to_)
     | Update { index; item; old = _ } ->
       let l = List.nth_exn !cur index in
@@ -283,7 +438,9 @@ and patch_list
       let old_node = l.node in
       let l' = patch ctx ~path:(child_path path index) ~is_root:false l item in
       if phys_equal l l'
-      then ops.updated parent ~old:old_node ~node:item l'.widget
+      then
+        child_op ~path:(child_path path index) (fun () ->
+          ops.updated parent ~old:old_node ~node:item l'.widget)
       else (
         (* The kind changed, so [patch] mounted a replacement and destroyed [l]; [l]'s
            widget is still parented here. Remove it, then place the replacement where it
@@ -294,8 +451,9 @@ and patch_list
            own [destroy] unparents it — but is worth re-checking if windows ever become
            list children.) *)
         let without = List.filteri !cur ~f:(fun i _ -> i <> index) in
-        ops.remove parent l.widget;
-        ops.insert parent ~after:(after_of without index) ~node:item l'.widget);
+        child_op ~path:(child_path path index) (fun () ->
+          ops.remove parent l.widget;
+          ops.insert parent ~after:(after_of without index) ~node:item l'.widget));
       cur := List.mapi !cur ~f:(fun i x -> if i = index then l' else x));
   !cur
 

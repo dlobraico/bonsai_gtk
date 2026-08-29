@@ -66,7 +66,11 @@ let frame t =
         <- Some
              (match t.root with
               | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
-              | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node));
+              | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node);
+        (* Inside the guard, and after the whole tree exists: this is where a
+           [stack_switcher] finds the stack it names and a stack selects its page, and
+           both write properties GTK notifies about. *)
+        Patcher.run_fixups t.ctx);
       t.last <- Some node);
     Bonsai_driver.trigger_lifecycles t.bonsai;
     (* [trigger_lifecycles] *schedules* the after-display effects rather than applying
@@ -105,8 +109,9 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
   let cell = ref None in
   let this () = Option.value_exn !cell in
   let scheduler = Scheduler.create ~run_frame:(fun () -> frame (this ())) in
-  let ctx : Patcher.ctx =
-    { signals =
+  let ctx =
+    Patcher.create_ctx
+      ~signals:
         { schedule = (fun effect -> schedule_event (this ()) effect)
         ; in_patch = (fun () -> Scheduler.in_patch scheduler)
         ; on_exn =
@@ -116,8 +121,7 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
                 node_path
                 (Exn.to_string exn))
         }
-    ; on_window_created
-    }
+      ~on_window_created
   in
   let t =
     { bonsai

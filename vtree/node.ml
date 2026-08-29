@@ -269,6 +269,55 @@ let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children 
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;
 
+let grid
+  ?key
+  ?attrs
+  ?(row_spacing = 0)
+  ?(column_spacing = 0)
+  ?(row_homogeneous = false)
+  ?(column_homogeneous = false)
+  children
+  =
+  make
+    ?key
+    ?attrs
+    (Grid { row_spacing; column_spacing; row_homogeneous; column_homogeneous })
+    (List children)
+;;
+
+let stack
+  ?key
+  ?attrs
+  ?(transition = Stack_transition.None_)
+  ?(transition_duration = 200)
+  ?(hhomogeneous = true)
+  ?(vhomogeneous = true)
+  ~name
+  ~visible_child
+  children
+  =
+  make
+    ?key
+    ?attrs
+    (Stack
+       { name
+       ; visible_child
+       ; transition
+       ; transition_duration
+       ; hhomogeneous
+       ; vhomogeneous
+       })
+    (List children)
+;;
+
+let stack_switcher ?key ?attrs ~stack () =
+  make ?key ?attrs (Stack_switcher { stack }) No_children
+;;
+
+let stack_sidebar ?key ?attrs ~stack () =
+  make ?key ?attrs (Stack_sidebar { stack }) No_children
+;;
+
 (* The slot containers. Each names its children by role, so the shape is [Slots] and each
    slot carries the shape it wants: three optional singles for a centre box, two required
    singles for a paned, and a single plus a list for an overlay. *)

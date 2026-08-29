@@ -22,6 +22,8 @@ module Name : sig
     | Cursor_name
     | Test_id
     | Measure_overlay
+    | Grid_cell
+    | Page_title
     | On_clicked
     | On_toggled
     | On_changed
@@ -31,6 +33,7 @@ module Name : sig
     | On_expanded_changed
     | On_revealed
     | On_position_changed
+    | On_visible_child_changed
   [@@deriving sexp_of, compare, equal]
 
   (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
@@ -62,6 +65,8 @@ type t =
   | Cursor_name of string
   | Test_id of string
   | Measure_overlay of bool
+  | Grid_cell of Grid_cell.t
+  | Page_title of string
   | On_clicked of unit Handler.t
   | On_toggled of bool Handler.t
   | On_changed of string Handler.t
@@ -71,6 +76,7 @@ type t =
   | On_expanded_changed of bool Handler.t
   | On_revealed of bool Handler.t
   | On_position_changed of int Handler.t
+  | On_visible_child_changed of string Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -147,6 +153,30 @@ val test_id : string -> t
     it. [gtk_overlay_set_clip_overlay] is the same mechanism and is not exposed; it is
     three lines beside this one if it is wanted. *)
 val measure_overlay : bool -> t
+
+(** Where this child sits in its parent {!Node.grid}. Required on every grid child --
+    there is no default, and defaulting to (0,0) would stack the whole grid in one cell
+    and look like a layout bug rather than the missing attribute it is. A grid child
+    without one is [Invalid_argument], naming the child's path.
+
+    [column] and [row] are zero-based and may be sparse: nothing has to fill row 1 for
+    something to sit in row 2. [width] and [height] (both [1]) are the number of columns
+    and rows the child spans.
+
+    Like {!measure_overlay} this is a container-placement attr: [gtk_grid_attach] is a
+    call on the {i grid}, so the coordinates are a setting the grid holds about this child
+    rather than a property of the child widget. The grid's impl reads it off the child
+    node -- on insert, and again through [Widget_impl.list_ops.updated], where a changed
+    cell is a detach and a re-attach of the same widget because GTK has no "move an
+    attached child". Inert on any widget whose parent is not a grid. *)
+val grid_cell : column:int -> row:int -> ?width:int -> ?height:int -> unit -> t
+
+(** The label a {!Node.stack}'s switcher or sidebar shows for this page. The page's
+    {i name} -- what [~visible_child] selects it by -- is the node's {!Key.t}, not this.
+
+    A container-placement attr like {!grid_cell}: it is held by the [GtkStackPage] the
+    stack wraps around this child, not by the child. Inert outside a stack. *)
+val page_title : string -> t
 
 val on_clicked : unit Ui_effect.t -> t
 
@@ -231,6 +261,19 @@ val on_revealed : (bool -> unit Ui_effect.t) -> t
     simply does not learn where the user left the handle. Attach it when the position must
     survive a restart, or be mirrored somewhere else in the UI. *)
 val on_position_changed : (int -> unit Ui_effect.t) -> t
+
+(** Fires when a {!Node.stack}'s visible page changes, carrying the new page's name -- the
+    child's {!Key.t}.
+
+    This is [notify::visible-child-name], so it also fires for the library's own writes;
+    the patcher's reentrancy guard drops those, which leaves the user clicking a
+    {!Node.stack_switcher} button or a {!Node.stack_sidebar} row.
+
+    [~visible_child] is {i controlled} (spec §6.5), so a stack that carries no
+    [on_visible_child_changed] -- or whose model ignores it -- snaps back to the model's
+    page. Attaching it to a widget that emits no such signal raises [Invalid_argument]
+    when the node is mounted or patched. *)
+val on_visible_child_changed : (string -> unit Ui_effect.t) -> t
 
 val many : t list -> t
 val empty : t

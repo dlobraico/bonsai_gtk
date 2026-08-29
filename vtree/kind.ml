@@ -206,6 +206,35 @@ type paned_props =
 (* A [GtkOverlay] has no properties of its own: it is entirely its children. *)
 type overlay_props = unit [@@deriving sexp_of, equal]
 
+(* [Grid] holds no per-child anything: a child's cell is on the child node's attrs
+   ([Attr.grid_cell]), because [gtk_grid_attach] is a call on the grid rather than a
+   property of either widget. *)
+type grid_props =
+  { row_spacing : int [@sexp_drop_if Int.equal 0]
+  ; column_spacing : int [@sexp_drop_if Int.equal 0]
+  ; row_homogeneous : bool [@sexp_drop_if fun b -> not b]
+  ; column_homogeneous : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+(* [name] is what a [Stack_switcher] or [Stack_sidebar] elsewhere in the tree finds this
+   stack by, and [visible_child] is the page name -- the child node's [Key.t] -- to show.
+   Neither carries a [@sexp_drop_if]: both are required labelled arguments, so their value
+   is always something the caller asked for. *)
+type stack_props =
+  { name : string
+  ; visible_child : string
+  ; transition : Stack_transition.t [@sexp_drop_if Stack_transition.equal None_]
+  ; transition_duration : int [@sexp_drop_if Int.equal 200]
+  ; hhomogeneous : bool [@sexp_drop_if fun b -> b]
+  ; vhomogeneous : bool [@sexp_drop_if fun b -> b]
+  }
+[@@deriving sexp_of, equal]
+
+(* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
+   they are: each names the [Stack] it drives and holds nothing else. *)
+type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
+
 type window_props =
   { title : string option [@sexp_drop_if Option.is_none]
   ; default_size : (int * int) option [@sexp_drop_if Option.is_none]
@@ -233,6 +262,10 @@ type t =
   | Expander of expander_props
   | Revealer of revealer_props
   | Box of box_props
+  | Grid of grid_props
+  | Stack of stack_props
+  | Stack_switcher of stack_ref_props
+  | Stack_sidebar of stack_ref_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
@@ -261,6 +294,10 @@ let name = function
   | Expander _ -> "Expander"
   | Revealer _ -> "Revealer"
   | Box _ -> "Box"
+  | Grid _ -> "Grid"
+  | Stack _ -> "Stack"
+  | Stack_switcher _ -> "StackSwitcher"
+  | Stack_sidebar _ -> "StackSidebar"
   | Center_box _ -> "CenterBox"
   | Paned _ -> "Paned"
   | Overlay _ -> "Overlay"
@@ -290,6 +327,10 @@ let same_kind a b =
   | Expander _, Expander _
   | Revealer _, Revealer _
   | Box _, Box _
+  | Grid _, Grid _
+  | Stack _, Stack _
+  | Stack_switcher _, Stack_switcher _
+  | Stack_sidebar _, Stack_sidebar _
   | Center_box _, Center_box _
   | Paned _, Paned _
   | Overlay _, Overlay _
@@ -320,6 +361,10 @@ let equal_props a b =
   | Expander a, Expander b -> equal_expander_props a b
   | Revealer a, Revealer b -> equal_revealer_props a b
   | Box a, Box b -> equal_box_props a b
+  | Grid a, Grid b -> equal_grid_props a b
+  | Stack a, Stack b -> equal_stack_props a b
+  | Stack_switcher a, Stack_switcher b | Stack_sidebar a, Stack_sidebar b ->
+    equal_stack_ref_props a b
   | Center_box a, Center_box b -> equal_center_box_props a b
   | Paned a, Paned b -> equal_paned_props a b
   | Overlay a, Overlay b -> equal_overlay_props a b

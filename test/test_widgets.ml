@@ -277,3 +277,60 @@ let%expect_test "find_by_test_id descends into slots" =
   print_s [%sexp (Option.is_some (Node.find_by_test_id view "badge") : bool)];
   [%expect {| true |}]
 ;;
+
+let%expect_test "grid children carry their cells; stack pages carry their keys" =
+  print_s
+    [%sexp
+      (Node.grid
+         ~row_spacing:6
+         ~column_spacing:12
+         [ Node.label ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "Name"
+         ; Node.entry ~attrs:[ Attr.grid_cell ~column:1 ~row:0 () ] ~text:"" ()
+         ; Node.label
+             ~attrs:[ Attr.grid_cell ~column:0 ~row:1 ~width:2 () ]
+             "spans both columns"
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Grid ((row_spacing 6) (column_spacing 12)))) (attrs ())
+     (children
+      (List
+       (((kind (Label ((text Name))))
+         (attrs ((Grid_cell ((column 0) (row 0) (width 1) (height 1)))))
+         (children No_children))
+        ((kind (Entry ((text ""))))
+         (attrs ((Grid_cell ((column 1) (row 0) (width 1) (height 1)))))
+         (children No_children))
+        ((kind (Label ((text "spans both columns"))))
+         (attrs ((Grid_cell ((column 0) (row 1) (width 2) (height 1)))))
+         (children No_children))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack_switcher ~stack:"nav" ()
+         ; Node.stack
+             ~name:"nav"
+             ~visible_child:"library"
+             [ Node.label ~key:"library" ~attrs:[ Attr.page_title "Library" ] "L"
+             ; Node.label ~key:"practice" ~attrs:[ Attr.page_title "Practice" ] "P"
+             ]
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Box ((orientation Vertical)))) (attrs ())
+     (children
+      (List
+       (((kind (Stack_switcher ((stack nav)))) (attrs ()) (children No_children))
+        ((kind (Stack ((name nav) (visible_child library)))) (attrs ())
+         (children
+          (List
+           (((kind (Label ((text L)))) (key library)
+             (attrs ((Page_title Library))) (children No_children))
+            ((kind (Label ((text P)))) (key practice)
+             (attrs ((Page_title Practice))) (children No_children))))))))))
+    |}]
+;;

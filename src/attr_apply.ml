@@ -101,14 +101,16 @@ let set (w : Widget.t) (attr : Attr.t) =
   (* [Test_id] is inert at runtime; the [On_*] attrs are handled by [Signals]. [Many] is
      flattened away by [Attrs.of_list] and never reaches here.
 
-     [Measure_overlay] is the first of the container-placement attrs: a setting
-     the *parent* holds about this child (an overlay's measure flag, and later a grid cell
-     or a stack page's title), which no property of the child widget corresponds to. The
+     [Measure_overlay], [Grid_cell] and [Page_title] are the container-placement attrs: a
+     setting the *parent* holds about this child (an overlay's measure flag, a grid cell,
+     a stack page's title), which no property of the child widget corresponds to. The
      parent's impl reads it off the child node through [Widget_impl.list_ops], so it is
      inert here by construction rather than by omission -- and inert, rather than an
-     error, on a widget whose parent is not an overlay. *)
+     error, on a widget whose parent is not the container that reads it. *)
   | Test_id _
   | Measure_overlay _
+  | Grid_cell _
+  | Page_title _
   | On_clicked _
   | On_toggled _
   | On_changed _
@@ -118,6 +120,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_expanded_changed _
   | On_revealed _
   | On_position_changed _
+  | On_visible_child_changed _
   | Many _ -> ()
 ;;
 
@@ -144,6 +147,8 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Cursor_name -> Widget.set_cursor w d.cursor
   | Test_id
   | Measure_overlay
+  | Grid_cell
+  | Page_title
   | On_clicked
   | On_toggled
   | On_changed
@@ -152,7 +157,8 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_value_changed
   | On_expanded_changed
   | On_revealed
-  | On_position_changed -> ()
+  | On_position_changed
+  | On_visible_child_changed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

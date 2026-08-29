@@ -340,6 +340,35 @@ let rec dump (w : Widget.t) : Sexp.t =
         with
         | [] -> []
         | idxs -> [ [%sexp `unmeasured (idxs : int list)] ])
+     (* A grid child's cell is held by the *grid*, so a child's own dump cannot show it;
+        print it from this side, in [widget_children] order so the list lines up with the
+        children printed underneath. *)
+     | "GtkGrid" ->
+       let g : W.Grid.t = cast w in
+       int_prop "row-spacing" (W.Grid.get_row_spacing g) ~default:0
+       @ int_prop "column-spacing" (W.Grid.get_column_spacing g) ~default:0
+       @ flag_prop "row-homogeneous" (W.Grid.get_row_homogeneous g)
+       @ flag_prop "column-homogeneous" (W.Grid.get_column_homogeneous g)
+       @
+         (match
+            List.map (widget_children w) ~f:(fun c ->
+              let column, row, width, height = W.Grid.query_child g c in
+              [%sexp (column : int), (row : int), (width : int), (height : int)])
+          with
+         | [] -> []
+         | cells -> [ Sexp.List (Atom "cells" :: cells) ])
+     (* A [GtkStack]'s pages are not children in the [get_first_child] sense -- the page
+        widgets themselves are what the recursion below walks -- so the only thing to add
+        is which of them is showing. *)
+     | "GtkStack" ->
+       [ [%sexp `visible (W.Stack.get_visible_child_name (cast w) : string option)] ]
+     (* Whether the fixup pass wired these up at all: the buttons or rows they build are
+        children, but a switcher pointing at nothing has none and so would dump the same
+        as one whose stack is simply empty. *)
+     | "GtkStackSwitcher" ->
+       flag_prop "has-stack" (Option.is_some (W.Stack_switcher.get_stack (cast w)))
+     | "GtkStackSidebar" ->
+       flag_prop "has-stack" (Option.is_some (W.Stack_sidebar.get_stack (cast w)))
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

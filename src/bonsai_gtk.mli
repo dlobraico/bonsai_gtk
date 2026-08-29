@@ -28,6 +28,8 @@ module Image_source = Bonsai_gtk_vtree.Image_source
 module Picture_source = Bonsai_gtk_vtree.Picture_source
 module Policy = Bonsai_gtk_vtree.Policy
 module Reveal_transition = Bonsai_gtk_vtree.Reveal_transition
+module Stack_transition = Bonsai_gtk_vtree.Stack_transition
+module Grid_cell = Bonsai_gtk_vtree.Grid_cell
 module Orientation = Bonsai_gtk_vtree.Orientation
 
 (** The escape hatch, for GTK widgets this library has no {!Node} constructor for. An

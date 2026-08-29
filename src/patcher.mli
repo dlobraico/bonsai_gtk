@@ -2,14 +2,44 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-(** What the patcher needs from the app runtime. *)
-type ctx =
+(** What the patcher needs from the app runtime, plus the two pieces of bookkeeping a
+    single pass cannot do on its own. Build it with {!create_ctx} rather than as a record
+    literal, so that the next field costs its callers nothing. *)
+type ctx = private
   { signals : Signals.ctx
   ; on_window_created : Widget.t -> unit
   (** Called once per {!Bonsai_gtk_vtree.Kind.Window} node, after its subtree is attached.
       The runtime uses it to present the window (and to hold onto it: GTK windows are not
-      owned by a parent widget). *)
+      owned by a parent widget). Called at mount only — a patched window is the same
+      window. *)
+  ; stacks : (string, Widget.t) Hashtbl.t
+  (** The live [GtkStack]s of this tree, by their {!Bonsai_gtk_vtree.Node.stack} [~name].
+      A [stack_switcher] cannot hold a widget — the vtree has no way to name one — so it
+      names a stack, and the name is looked up here after the pass that mounted them both.
+      Two stacks with one name is [Invalid_argument]. *)
+  ; fixups : (unit -> unit) Queue.t
+  (** Work deferred to the end of a mount or patch pass, so that a node may refer to
+      another node regardless of which of them the walk reaches first, and so that a
+      container may act on children that do not exist until the pass is over. Drained by
+      {!run_fixups}. *)
   }
+
+val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> ctx
+
+(** Runs everything the pass just finished deferred, then empties the queue — including
+    when a fixup raises, since the queue describes one pass and carrying its work into the
+    next frame would raise again from somewhere unrelated.
+
+    The runtime calls this inside its reentrancy guard, immediately after the
+    {!mount}/{!patch} of a frame; a test driving the patcher by hand must call it itself
+    before reading back anything a fixup decides — a [stack_switcher]'s stack, or a
+    stack's visible page.
+
+    Raises [Invalid_argument] if a [stack_switcher] or [stack_sidebar] names a stack no
+    node in the tree registered, naming both the switcher's path and the name it wanted. A
+    fixup may not enqueue another; nothing needs to, and a queue that feeds itself is a
+    hang. *)
+val run_fixups : ctx -> unit
 
 (** The shadow tree: one record per {!Bonsai_gtk_vtree.Node.t} currently realized, holding
     the GTK widget and everything needed to patch or tear it down. [node] is the node this
@@ -35,7 +65,13 @@ type live =
     index. [is_root] must be [true] only for the node the runtime treats as the tree's
     root; every recursive call passes [false].
 
-    Raises [Invalid_argument] if a node has children its widget cannot hold, or if a
+    Some of the work is deferred to {!run_fixups}, which the caller runs once the whole
+    pass is done: a [stack_switcher] resolving the stack it names, and a stack selecting
+    its visible page (which does not exist while the stack is being built).
+
+    Raises [Invalid_argument] if a node has children its widget cannot hold, if a
+    container rejects a child node — a {!Bonsai_gtk_vtree.Node.grid} child with no
+    {!Bonsai_gtk_vtree.Attr.grid_cell}, a stack page with no key — or if a
     {!Bonsai_gtk_vtree.Kind.Window} node appears anywhere but the root — a [GtkWindow] is
     a toplevel and cannot be parented, so nesting one produces a GTK critical and a
     silently broken tree. *)
