@@ -117,6 +117,32 @@ let () =
      | Some p -> Gobject.same p tex2);
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
+  (* A picture whose filename did not change must not have its source written again:
+     [gtk_picture_set_filename] loads the file and builds a fresh [GdkTexture], so a
+     source re-set on every frame re-reads from disk and hands the widget a different
+     image to draw. Whether that happened is not visible in a props dump, but it is
+     visible in the paintable's identity: the same [GdkTexture] across a patch that
+     changed some other prop is a source the patch left alone. *)
+  let same_file ~alt =
+    Node.window
+      ~title:"file"
+      (Node.picture ~alternative_text:(if alt then "after" else "before") (Filename png))
+  in
+  let paintable (live : P.live) =
+    match live.children with
+    | Single (Some p) -> W.Picture.get_paintable (cast p.widget)
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (same_file ~alt:false) in
+  let before = paintable live in
+  let live = P.patch ctx ~path:"root" ~is_root:true live (same_file ~alt:true) in
+  printf
+    "same paintable across a patch that left the filename alone: %b\n"
+    (Option.value_map
+       (Option.both before (paintable live))
+       ~default:false
+       ~f:(fun (a, b) -> Gobject.same a b));
+  P.destroy ctx live;
   Stdlib.Sys.remove png;
   (* Controlled [expanded] / [reveal], and the Single-child swap the patcher already
      handles: the frame's child changes kind, so the widget is replaced in place. *)
@@ -215,6 +241,44 @@ let () =
     (W.Revealer.get_child_revealed (cast (boxed live 2).widget))
     (!scheduled - before);
   P.destroy ctx live;
+  (* A scrolled window's [min_content_*] and [max_content_*] are not independent props:
+     GTK's setters assert min <= max and *drop* the write when they do not, so the order
+     the two are written in decides whether the widget ends up where the node says. Moving
+     the width's bounds up, past where the old max was, needs max written first; moving
+     the height's max down, below where the old min was, needs min written first. Both are
+     in one patch, so an impl that picked either order unconditionally fails one half. *)
+  let bounds ~raised =
+    Node.window
+      ~title:"bounds"
+      (Node.scrolled_window
+         ~min_content_width:(if raised then 400 else 80)
+         ~max_content_width:(if raised then 600 else 300)
+         ~min_content_height:(if raised then 20 else 100)
+         ~max_content_height:(if raised then 60 else 500)
+         (Node.label "content"))
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (bounds ~raised:false) in
+  let scroller (live : P.live) : W.Scrolled_window.t =
+    match live.children with
+    | Single (Some s) -> cast s.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let show_bounds label live =
+    let s = scroller live in
+    printf
+      "%s: width %d..%d, height %d..%d\n"
+      label
+      (W.Scrolled_window.get_min_content_width s)
+      (W.Scrolled_window.get_max_content_width s)
+      (W.Scrolled_window.get_min_content_height s)
+      (W.Scrolled_window.get_max_content_height s)
+  in
+  show_bounds "mounted" live;
+  let live = P.patch ctx ~path:"root" ~is_root:true live (bounds ~raised:true) in
+  show_bounds "crossed" live;
+  let live = P.patch ctx ~path:"root" ~is_root:true live (bounds ~raised:false) in
+  show_bounds "back" live;
+  P.destroy ctx live;
   (* Each container's [Single] slot on its own: the child's kind changes, so the patcher
      mounts a replacement and the container's [set] has to put it in the slot. The
      expander is opened for this, because a collapsed [GtkExpander] does not parent its
@@ -238,6 +302,24 @@ let () =
   let live = P.mount ctx ~path:"root" ~is_root:true (slots ~swapped:false) in
   print_s (Live_tree.dump live.widget);
   let live = P.patch ctx ~path:"root" ~is_root:true live (slots ~swapped:true) in
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* Opening an expander and changing its child in the same patch. A collapsed
+     [GtkExpander] does not parent its child at all -- GTK adds and removes it as the
+     expander opens and closes -- so this is the one child swap that happens while the
+     container is rearranging itself underneath it, and the replacement has to end up in
+     the slot either way round. *)
+  let opening ~open_ =
+    Node.window
+      ~title:"opening"
+      (Node.expander
+         ~label:"detail"
+         ~expanded:open_
+         (if open_ then Node.button ~label:"after" () else Node.label "before"))
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (opening ~open_:false) in
+  print_s (Live_tree.dump live.widget);
+  let live = P.patch ctx ~path:"root" ~is_root:true live (opening ~open_:true) in
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
   (* Slots: each is patched independently, so clearing one and replacing another's child

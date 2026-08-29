@@ -7,31 +7,36 @@ open! Core
    [@sexp_drop_if] on each field whose value is GTK's own default keeps a printed node
    about what the caller asked for rather than about the defaults: [Node.label "x"] prints
    as [(Label ((text x)))], and a property appears only once it has been set to something.
-   It is print-only — [equal_label_props] and friends still compare every field. *)
+   It is print-only — [equal_label_props] and friends still compare every field.
+
+   Each of those defaults is [Defaults.<Widget>.<field>] rather than a literal, because
+   the literal would also have to be written in [Node]'s optional argument and in this
+   file's mli: three copies that drift silently, and the drift prints a property the
+   caller did set as though it were never set. *)
 
 type label_props =
   { text : string
-  ; wrap : bool [@sexp_drop_if fun b -> not b]
-  ; xalign : float [@sexp_drop_if Float.equal 0.5]
+  ; wrap : bool [@sexp_drop_if Bool.equal Defaults.Label.wrap]
+  ; xalign : float [@sexp_drop_if Float.equal Defaults.Label.xalign]
   ; ellipsize : Ellipsize.t option [@sexp_drop_if Option.is_none]
-  ; max_width_chars : int [@sexp_drop_if Int.equal (-1)]
-  ; width_chars : int [@sexp_drop_if Int.equal (-1)]
-  ; selectable : bool [@sexp_drop_if fun b -> not b]
-  ; use_markup : bool [@sexp_drop_if fun b -> not b]
+  ; max_width_chars : int [@sexp_drop_if Int.equal Defaults.Label.max_width_chars]
+  ; width_chars : int [@sexp_drop_if Int.equal Defaults.Label.width_chars]
+  ; selectable : bool [@sexp_drop_if Bool.equal Defaults.Label.selectable]
+  ; use_markup : bool [@sexp_drop_if Bool.equal Defaults.Label.use_markup]
   }
 [@@deriving sexp_of, equal]
 
 type button_props =
   { label : string option [@sexp_drop_if Option.is_none]
   ; icon_name : string option [@sexp_drop_if Option.is_none]
-  ; has_frame : bool [@sexp_drop_if fun b -> b]
+  ; has_frame : bool [@sexp_drop_if Bool.equal Defaults.Button.has_frame]
   }
 [@@deriving sexp_of, equal]
 
 type toggle_button_props =
   { label : string option [@sexp_drop_if Option.is_none]
   ; icon_name : string option [@sexp_drop_if Option.is_none]
-  ; has_frame : bool [@sexp_drop_if fun b -> b]
+  ; has_frame : bool [@sexp_drop_if Bool.equal Defaults.Toggle_button.has_frame]
   ; active : bool
   }
 [@@deriving sexp_of, equal]
@@ -39,7 +44,7 @@ type toggle_button_props =
 type check_button_props =
   { label : string option [@sexp_drop_if Option.is_none]
   ; active : bool
-  ; inconsistent : bool [@sexp_drop_if fun b -> not b]
+  ; inconsistent : bool [@sexp_drop_if Bool.equal Defaults.Check_button.inconsistent]
   }
 [@@deriving sexp_of, equal]
 
@@ -50,20 +55,22 @@ type switch_props = { active : bool } [@@deriving sexp_of, equal]
 type entry_props =
   { text : string
   ; placeholder : string option [@sexp_drop_if Option.is_none]
-  ; editable : bool [@sexp_drop_if fun b -> b]
-  ; visibility : bool [@sexp_drop_if fun b -> b]
-  ; width_chars : int [@sexp_drop_if Int.equal (-1)]
-  ; max_width_chars : int [@sexp_drop_if Int.equal (-1)]
-  ; xalign : float [@sexp_drop_if Float.equal 0.]
-  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  ; editable : bool [@sexp_drop_if Bool.equal Defaults.Entry.editable]
+  ; visibility : bool [@sexp_drop_if Bool.equal Defaults.Entry.visibility]
+  ; width_chars : int [@sexp_drop_if Int.equal Defaults.Entry.width_chars]
+  ; max_width_chars : int [@sexp_drop_if Int.equal Defaults.Entry.max_width_chars]
+  ; xalign : float [@sexp_drop_if Float.equal Defaults.Entry.xalign]
+  ; activates_default : bool [@sexp_drop_if Bool.equal Defaults.Entry.activates_default]
   }
 [@@deriving sexp_of, equal]
 
 type password_entry_props =
   { text : string
   ; placeholder : string option [@sexp_drop_if Option.is_none]
-  ; show_peek_icon : bool [@sexp_drop_if fun b -> b]
-  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  ; show_peek_icon : bool
+       [@sexp_drop_if Bool.equal Defaults.Password_entry.show_peek_icon]
+  ; activates_default : bool
+       [@sexp_drop_if Bool.equal Defaults.Password_entry.activates_default]
   }
 [@@deriving sexp_of, equal]
 
@@ -82,11 +89,12 @@ type spin_button_props =
   { value : float
   ; min : float
   ; max : float
-  ; step : float [@sexp_drop_if Float.equal 1.]
-  ; digits : int [@sexp_drop_if Int.equal 0]
-  ; numeric : bool [@sexp_drop_if fun b -> b]
-  ; wrap : bool [@sexp_drop_if fun b -> not b]
-  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  ; step : float [@sexp_drop_if Float.equal Defaults.Spin_button.step]
+  ; digits : int [@sexp_drop_if Int.equal Defaults.Spin_button.digits]
+  ; numeric : bool [@sexp_drop_if Bool.equal Defaults.Spin_button.numeric]
+  ; wrap : bool [@sexp_drop_if Bool.equal Defaults.Spin_button.wrap]
+  ; activates_default : bool
+       [@sexp_drop_if Bool.equal Defaults.Spin_button.activates_default]
   }
 [@@deriving sexp_of, equal]
 
@@ -95,19 +103,19 @@ type scale_props =
   ; value : float
   ; min : float
   ; max : float
-  ; step : float [@sexp_drop_if Float.equal 1.]
-  ; digits : int [@sexp_drop_if Int.equal 1]
-  ; draw_value : bool [@sexp_drop_if fun b -> b]
-  ; has_origin : bool [@sexp_drop_if fun b -> b]
-  ; inverted : bool [@sexp_drop_if fun b -> not b]
+  ; step : float [@sexp_drop_if Float.equal Defaults.Scale.step]
+  ; digits : int [@sexp_drop_if Int.equal Defaults.Scale.digits]
+  ; draw_value : bool [@sexp_drop_if Bool.equal Defaults.Scale.draw_value]
+  ; has_origin : bool [@sexp_drop_if Bool.equal Defaults.Scale.has_origin]
+  ; inverted : bool [@sexp_drop_if Bool.equal Defaults.Scale.inverted]
   }
 [@@deriving sexp_of, equal]
 
 type progress_bar_props =
   { fraction : float
   ; text : string option [@sexp_drop_if Option.is_none]
-  ; show_text : bool [@sexp_drop_if fun b -> not b]
-  ; inverted : bool [@sexp_drop_if fun b -> not b]
+  ; show_text : bool [@sexp_drop_if Bool.equal Defaults.Progress_bar.show_text]
+  ; inverted : bool [@sexp_drop_if Bool.equal Defaults.Progress_bar.inverted]
   ; ellipsize : Ellipsize.t option [@sexp_drop_if Option.is_none]
   }
 [@@deriving sexp_of, equal]
@@ -119,15 +127,16 @@ type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
    a variant makes the exclusivity a type error and gives [equal_props] one line. *)
 type image_props =
   { source : Image_source.t
-  ; pixel_size : int [@sexp_drop_if Int.equal (-1)]
-  ; icon_size : Icon_size.t [@sexp_drop_if Icon_size.equal Inherit]
+  ; pixel_size : int [@sexp_drop_if Int.equal Defaults.Image.pixel_size]
+  ; icon_size : Icon_size.t [@sexp_drop_if Icon_size.equal Defaults.Image.icon_size]
   }
 [@@deriving sexp_of, equal]
 
 type picture_props =
   { source : Picture_source.t
-  ; content_fit : Content_fit.t [@sexp_drop_if Content_fit.equal Contain]
-  ; can_shrink : bool [@sexp_drop_if fun b -> b]
+  ; content_fit : Content_fit.t
+       [@sexp_drop_if Content_fit.equal Defaults.Picture.content_fit]
+  ; can_shrink : bool [@sexp_drop_if Bool.equal Defaults.Picture.can_shrink]
   ; alternative_text : string option [@sexp_drop_if Option.is_none]
   }
 [@@deriving sexp_of, equal]
@@ -138,23 +147,31 @@ type separator_props = { orientation : Orientation.t } [@@deriving sexp_of, equa
    from its child alone is the plain GTK widget -- which is why [kinetic_scrolling] and
    [overlay_scrolling] default to [true] and are dropped from the sexp when they are. *)
 type scrolled_window_props =
-  { hpolicy : Policy.t [@sexp_drop_if Policy.equal Automatic]
-  ; vpolicy : Policy.t [@sexp_drop_if Policy.equal Automatic]
-  ; min_content_width : int [@sexp_drop_if Int.equal (-1)]
-  ; min_content_height : int [@sexp_drop_if Int.equal (-1)]
-  ; max_content_width : int [@sexp_drop_if Int.equal (-1)]
-  ; max_content_height : int [@sexp_drop_if Int.equal (-1)]
-  ; propagate_natural_width : bool [@sexp_drop_if fun b -> not b]
-  ; propagate_natural_height : bool [@sexp_drop_if fun b -> not b]
-  ; has_frame : bool [@sexp_drop_if fun b -> not b]
-  ; kinetic_scrolling : bool [@sexp_drop_if fun b -> b]
-  ; overlay_scrolling : bool [@sexp_drop_if fun b -> b]
+  { hpolicy : Policy.t [@sexp_drop_if Policy.equal Defaults.Scrolled_window.hpolicy]
+  ; vpolicy : Policy.t [@sexp_drop_if Policy.equal Defaults.Scrolled_window.vpolicy]
+  ; min_content_width : int
+       [@sexp_drop_if Int.equal Defaults.Scrolled_window.min_content_width]
+  ; min_content_height : int
+       [@sexp_drop_if Int.equal Defaults.Scrolled_window.min_content_height]
+  ; max_content_width : int
+       [@sexp_drop_if Int.equal Defaults.Scrolled_window.max_content_width]
+  ; max_content_height : int
+       [@sexp_drop_if Int.equal Defaults.Scrolled_window.max_content_height]
+  ; propagate_natural_width : bool
+       [@sexp_drop_if Bool.equal Defaults.Scrolled_window.propagate_natural_width]
+  ; propagate_natural_height : bool
+       [@sexp_drop_if Bool.equal Defaults.Scrolled_window.propagate_natural_height]
+  ; has_frame : bool [@sexp_drop_if Bool.equal Defaults.Scrolled_window.has_frame]
+  ; kinetic_scrolling : bool
+       [@sexp_drop_if Bool.equal Defaults.Scrolled_window.kinetic_scrolling]
+  ; overlay_scrolling : bool
+       [@sexp_drop_if Bool.equal Defaults.Scrolled_window.overlay_scrolling]
   }
 [@@deriving sexp_of, equal]
 
 type frame_props =
   { label : string option [@sexp_drop_if Option.is_none]
-  ; label_align : float [@sexp_drop_if Float.equal 0.]
+  ; label_align : float [@sexp_drop_if Float.equal Defaults.Frame.label_align]
   }
 [@@deriving sexp_of, equal]
 
@@ -164,21 +181,23 @@ type frame_props =
 type expander_props =
   { label : string option [@sexp_drop_if Option.is_none]
   ; expanded : bool
-  ; use_markup : bool [@sexp_drop_if fun b -> not b]
+  ; use_markup : bool [@sexp_drop_if Bool.equal Defaults.Expander.use_markup]
   }
 [@@deriving sexp_of, equal]
 
 type revealer_props =
   { reveal : bool
-  ; transition : Reveal_transition.t [@sexp_drop_if Reveal_transition.equal None_]
-  ; transition_duration : int [@sexp_drop_if Int.equal 250]
+  ; transition : Reveal_transition.t
+       [@sexp_drop_if Reveal_transition.equal Defaults.Revealer.transition]
+  ; transition_duration : int
+       [@sexp_drop_if Int.equal Defaults.Revealer.transition_duration]
   }
 [@@deriving sexp_of, equal]
 
 type box_props =
   { orientation : Orientation.t
-  ; spacing : int [@sexp_drop_if Int.equal 0]
-  ; homogeneous : bool [@sexp_drop_if fun b -> not b]
+  ; spacing : int [@sexp_drop_if Int.equal Defaults.Box.spacing]
+  ; homogeneous : bool [@sexp_drop_if Bool.equal Defaults.Box.homogeneous]
   }
 [@@deriving sexp_of, equal]
 
@@ -186,7 +205,10 @@ type box_props =
    by role rather than position, and none of the props below is about a child -- an
    overlay's per-child measure flag lives on the child node's attrs, because it is a
    setting the overlay holds about that child rather than a property of either widget. *)
-type center_box_props = { shrink_center_last : bool [@sexp_drop_if fun b -> b] }
+type center_box_props =
+  { shrink_center_last : bool
+       [@sexp_drop_if Bool.equal Defaults.Center_box.shrink_center_last]
+  }
 [@@deriving sexp_of, equal]
 
 (* [position] is [None] for "leave GTK's own split". It is deliberately *not* controlled
@@ -195,11 +217,11 @@ type center_box_props = { shrink_center_last : bool [@sexp_drop_if fun b -> b] }
 type paned_props =
   { orientation : Orientation.t
   ; position : int option [@sexp_drop_if Option.is_none]
-  ; wide_handle : bool [@sexp_drop_if fun b -> not b]
-  ; resize_start : bool [@sexp_drop_if fun b -> b]
-  ; resize_end : bool [@sexp_drop_if fun b -> b]
-  ; shrink_start : bool [@sexp_drop_if fun b -> not b]
-  ; shrink_end : bool [@sexp_drop_if fun b -> not b]
+  ; wide_handle : bool [@sexp_drop_if Bool.equal Defaults.Paned.wide_handle]
+  ; resize_start : bool [@sexp_drop_if Bool.equal Defaults.Paned.resize_start]
+  ; resize_end : bool [@sexp_drop_if Bool.equal Defaults.Paned.resize_end]
+  ; shrink_start : bool [@sexp_drop_if Bool.equal Defaults.Paned.shrink_start]
+  ; shrink_end : bool [@sexp_drop_if Bool.equal Defaults.Paned.shrink_end]
   }
 [@@deriving sexp_of, equal]
 
@@ -210,10 +232,10 @@ type overlay_props = unit [@@deriving sexp_of, equal]
    ([Attr.grid_cell]), because [gtk_grid_attach] is a call on the grid rather than a
    property of either widget. *)
 type grid_props =
-  { row_spacing : int [@sexp_drop_if Int.equal 0]
-  ; column_spacing : int [@sexp_drop_if Int.equal 0]
-  ; row_homogeneous : bool [@sexp_drop_if fun b -> not b]
-  ; column_homogeneous : bool [@sexp_drop_if fun b -> not b]
+  { row_spacing : int [@sexp_drop_if Int.equal Defaults.Grid.row_spacing]
+  ; column_spacing : int [@sexp_drop_if Int.equal Defaults.Grid.column_spacing]
+  ; row_homogeneous : bool [@sexp_drop_if Bool.equal Defaults.Grid.row_homogeneous]
+  ; column_homogeneous : bool [@sexp_drop_if Bool.equal Defaults.Grid.column_homogeneous]
   }
 [@@deriving sexp_of, equal]
 
@@ -224,10 +246,11 @@ type grid_props =
 type stack_props =
   { name : string
   ; visible_child : string
-  ; transition : Stack_transition.t [@sexp_drop_if Stack_transition.equal None_]
-  ; transition_duration : int [@sexp_drop_if Int.equal 200]
-  ; hhomogeneous : bool [@sexp_drop_if fun b -> b]
-  ; vhomogeneous : bool [@sexp_drop_if fun b -> b]
+  ; transition : Stack_transition.t
+       [@sexp_drop_if Stack_transition.equal Defaults.Stack.transition]
+  ; transition_duration : int [@sexp_drop_if Int.equal Defaults.Stack.transition_duration]
+  ; hhomogeneous : bool [@sexp_drop_if Bool.equal Defaults.Stack.hhomogeneous]
+  ; vhomogeneous : bool [@sexp_drop_if Bool.equal Defaults.Stack.vhomogeneous]
   }
 [@@deriving sexp_of, equal]
 

@@ -13,17 +13,19 @@ let make ?key ?(attrs = []) kind children =
 ;;
 
 (* Every default here is GTK's own, so [Node.label "x"] describes exactly the widget a
-   bare [GtkLabel] already is. *)
+   bare [GtkLabel] already is. They are named in [Defaults] rather than written as
+   literals: the matching [Kind] field's [@sexp_drop_if] has to agree with each one, and a
+   literal in both places is a drift waiting to happen. *)
 let label
   ?key
   ?attrs
-  ?(wrap = false)
-  ?(xalign = 0.5)
+  ?(wrap = Defaults.Label.wrap)
+  ?(xalign = Defaults.Label.xalign)
   ?ellipsize
-  ?(max_width_chars = -1)
-  ?(width_chars = -1)
-  ?(selectable = false)
-  ?(use_markup = false)
+  ?(max_width_chars = Defaults.Label.max_width_chars)
+  ?(width_chars = Defaults.Label.width_chars)
+  ?(selectable = Defaults.Label.selectable)
+  ?(use_markup = Defaults.Label.use_markup)
   text
   =
   make
@@ -42,15 +44,39 @@ let label
     No_children
 ;;
 
-let button ?key ?attrs ?label ?icon_name ?(has_frame = true) ?child () =
+let button
+  ?key
+  ?attrs
+  ?label
+  ?icon_name
+  ?(has_frame = Defaults.Button.has_frame)
+  ?child
+  ()
+  =
   make ?key ?attrs (Button { label; icon_name; has_frame }) (Single child)
 ;;
 
-let toggle_button ?key ?attrs ?label ?icon_name ?(has_frame = true) ?child ~active () =
+let toggle_button
+  ?key
+  ?attrs
+  ?label
+  ?icon_name
+  ?(has_frame = Defaults.Toggle_button.has_frame)
+  ?child
+  ~active
+  ()
+  =
   make ?key ?attrs (Toggle_button { label; icon_name; has_frame; active }) (Single child)
 ;;
 
-let check_button ?key ?attrs ?label ?(inconsistent = false) ~active () =
+let check_button
+  ?key
+  ?attrs
+  ?label
+  ?(inconsistent = Defaults.Check_button.inconsistent)
+  ~active
+  ()
+  =
   (* [No_children], not [Single None]: a check button has no child slot in this library
      (see the mli), and the patcher rejects a children shape its impl does not hold. *)
   make ?key ?attrs (Check_button { label; active; inconsistent }) No_children
@@ -65,12 +91,12 @@ let entry
   ?key
   ?attrs
   ?placeholder
-  ?(editable = true)
-  ?(visibility = true)
-  ?(width_chars = -1)
-  ?(max_width_chars = -1)
-  ?(xalign = 0.)
-  ?(activates_default = false)
+  ?(editable = Defaults.Entry.editable)
+  ?(visibility = Defaults.Entry.visibility)
+  ?(width_chars = Defaults.Entry.width_chars)
+  ?(max_width_chars = Defaults.Entry.max_width_chars)
+  ?(xalign = Defaults.Entry.xalign)
+  ?(activates_default = Defaults.Entry.activates_default)
   ~text
   ()
   =
@@ -94,8 +120,8 @@ let password_entry
   ?key
   ?attrs
   ?placeholder
-  ?(show_peek_icon = true)
-  ?(activates_default = false)
+  ?(show_peek_icon = Defaults.Password_entry.show_peek_icon)
+  ?(activates_default = Defaults.Password_entry.activates_default)
   ~text
   ()
   =
@@ -116,11 +142,11 @@ let search_entry ?key ?attrs ?placeholder ?search_delay ~text () =
 let spin_button
   ?key
   ?attrs
-  ?(digits = 0)
-  ?(numeric = true)
-  ?(wrap = false)
-  ?(step = 1.)
-  ?(activates_default = false)
+  ?(digits = Defaults.Spin_button.digits)
+  ?(numeric = Defaults.Spin_button.numeric)
+  ?(wrap = Defaults.Spin_button.wrap)
+  ?(step = Defaults.Spin_button.step)
+  ?(activates_default = Defaults.Spin_button.activates_default)
   ~min
   ~max
   ~value
@@ -136,11 +162,11 @@ let spin_button
 let scale
   ?key
   ?attrs
-  ?(step = 1.)
-  ?(digits = 1)
-  ?(draw_value = true)
-  ?(has_origin = true)
-  ?(inverted = false)
+  ?(step = Defaults.Scale.step)
+  ?(digits = Defaults.Scale.digits)
+  ?(draw_value = Defaults.Scale.draw_value)
+  ?(has_origin = Defaults.Scale.has_origin)
+  ?(inverted = Defaults.Scale.inverted)
   ~orientation
   ~min
   ~max
@@ -159,8 +185,8 @@ let progress_bar
   ?key
   ?attrs
   ?text
-  ?(show_text = false)
-  ?(inverted = false)
+  ?(show_text = Defaults.Progress_bar.show_text)
+  ?(inverted = Defaults.Progress_bar.inverted)
   ?ellipsize
   ~fraction
   ()
@@ -177,15 +203,21 @@ let spinner ?key ?attrs ~spinning () = make ?key ?attrs (Spinner { spinning }) N
 (* [source] comes last and unlabelled on both of these: it is the one thing an image or a
    picture cannot do without, and putting it in final position is what lets the optional
    arguments before it be erased. *)
-let image ?key ?attrs ?(pixel_size = -1) ?(icon_size = Icon_size.Inherit) source =
+let image
+  ?key
+  ?attrs
+  ?(pixel_size = Defaults.Image.pixel_size)
+  ?(icon_size = Defaults.Image.icon_size)
+  source
+  =
   make ?key ?attrs (Image { source; pixel_size; icon_size }) No_children
 ;;
 
 let picture
   ?key
   ?attrs
-  ?(content_fit = Content_fit.Contain)
-  ?(can_shrink = true)
+  ?(content_fit = Defaults.Picture.content_fit)
+  ?(can_shrink = Defaults.Picture.can_shrink)
   ?alternative_text
   source
   =
@@ -210,17 +242,17 @@ let separator ?key ?attrs ~orientation () =
 let scrolled_window
   ?key
   ?attrs
-  ?(hpolicy = Policy.Automatic)
-  ?(vpolicy = Policy.Automatic)
-  ?(min_content_width = -1)
-  ?(min_content_height = -1)
-  ?(max_content_width = -1)
-  ?(max_content_height = -1)
-  ?(propagate_natural_width = false)
-  ?(propagate_natural_height = false)
-  ?(has_frame = false)
-  ?(kinetic_scrolling = true)
-  ?(overlay_scrolling = true)
+  ?(hpolicy = Defaults.Scrolled_window.hpolicy)
+  ?(vpolicy = Defaults.Scrolled_window.vpolicy)
+  ?(min_content_width = Defaults.Scrolled_window.min_content_width)
+  ?(min_content_height = Defaults.Scrolled_window.min_content_height)
+  ?(max_content_width = Defaults.Scrolled_window.max_content_width)
+  ?(max_content_height = Defaults.Scrolled_window.max_content_height)
+  ?(propagate_natural_width = Defaults.Scrolled_window.propagate_natural_width)
+  ?(propagate_natural_height = Defaults.Scrolled_window.propagate_natural_height)
+  ?(has_frame = Defaults.Scrolled_window.has_frame)
+  ?(kinetic_scrolling = Defaults.Scrolled_window.kinetic_scrolling)
+  ?(overlay_scrolling = Defaults.Scrolled_window.overlay_scrolling)
   child
   =
   make
@@ -242,19 +274,26 @@ let scrolled_window
     (Single (Some child))
 ;;
 
-let frame ?key ?attrs ?label ?(label_align = 0.) child =
+let frame ?key ?attrs ?label ?(label_align = Defaults.Frame.label_align) child =
   make ?key ?attrs (Frame { label; label_align }) (Single (Some child))
 ;;
 
-let expander ?key ?attrs ?label ?(use_markup = false) ~expanded child =
+let expander
+  ?key
+  ?attrs
+  ?label
+  ?(use_markup = Defaults.Expander.use_markup)
+  ~expanded
+  child
+  =
   make ?key ?attrs (Expander { label; expanded; use_markup }) (Single (Some child))
 ;;
 
 let revealer
   ?key
   ?attrs
-  ?(transition = Reveal_transition.None_)
-  ?(transition_duration = 250)
+  ?(transition = Defaults.Revealer.transition)
+  ?(transition_duration = Defaults.Revealer.transition_duration)
   ~reveal
   child
   =
@@ -265,17 +304,24 @@ let revealer
     (Single (Some child))
 ;;
 
-let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =
+let box
+  ?key
+  ?attrs
+  ?(spacing = Defaults.Box.spacing)
+  ?(homogeneous = Defaults.Box.homogeneous)
+  ~orientation
+  children
+  =
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;
 
 let grid
   ?key
   ?attrs
-  ?(row_spacing = 0)
-  ?(column_spacing = 0)
-  ?(row_homogeneous = false)
-  ?(column_homogeneous = false)
+  ?(row_spacing = Defaults.Grid.row_spacing)
+  ?(column_spacing = Defaults.Grid.column_spacing)
+  ?(row_homogeneous = Defaults.Grid.row_homogeneous)
+  ?(column_homogeneous = Defaults.Grid.column_homogeneous)
   children
   =
   make
@@ -288,10 +334,10 @@ let grid
 let stack
   ?key
   ?attrs
-  ?(transition = Stack_transition.None_)
-  ?(transition_duration = 200)
-  ?(hhomogeneous = true)
-  ?(vhomogeneous = true)
+  ?(transition = Defaults.Stack.transition)
+  ?(transition_duration = Defaults.Stack.transition_duration)
+  ?(hhomogeneous = Defaults.Stack.hhomogeneous)
+  ?(vhomogeneous = Defaults.Stack.vhomogeneous)
   ~name
   ~visible_child
   children
@@ -321,7 +367,15 @@ let stack_sidebar ?key ?attrs ~stack () =
 (* The slot containers. Each names its children by role, so the shape is [Slots] and each
    slot carries the shape it wants: three optional singles for a centre box, two required
    singles for a paned, and a single plus a list for an overlay. *)
-let center_box ?key ?attrs ?(shrink_center_last = true) ?start ?center ?end_ () =
+let center_box
+  ?key
+  ?attrs
+  ?(shrink_center_last = Defaults.Center_box.shrink_center_last)
+  ?start
+  ?center
+  ?end_
+  ()
+  =
   make
     ?key
     ?attrs
@@ -335,11 +389,11 @@ let paned
   ?key
   ?attrs
   ?position
-  ?(wide_handle = false)
-  ?(resize_start = true)
-  ?(resize_end = true)
-  ?(shrink_start = false)
-  ?(shrink_end = false)
+  ?(wide_handle = Defaults.Paned.wide_handle)
+  ?(resize_start = Defaults.Paned.resize_start)
+  ?(resize_end = Defaults.Paned.resize_end)
+  ?(shrink_start = Defaults.Paned.shrink_start)
+  ?(shrink_end = Defaults.Paned.shrink_end)
   ~orientation
   ~start
   ~end_

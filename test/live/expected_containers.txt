@@ -20,6 +20,7 @@ shows the new texture: true
     (GtkPicture (content-fit cover) no-shrink)
     (GtkPicture has-paintable (content-fit cover))
     (GtkSeparator (orientation vertical) (css (vertical)))))))
+same paintable across a patch that left the filename alone: true
 (GtkWindow (title (containers)) (css (background)) hidden
  (children
   (GtkScrolledWindow (hpolicy never) (min-content-height 120)
@@ -81,6 +82,9 @@ shows the new texture: true
        (children (GtkGizmo (children (GtkGizmo)))))))))))
 notify reaching Bonsai outside a patch: 2
 declined expander true, revealer true (revealed true); reached Bonsai: 0
+mounted: width 80..300, height 100..500
+crossed: width 400..600, height 20..60
+back: width 80..300, height 100..500
 (GtkWindow (title (slots)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))
@@ -138,6 +142,26 @@ declined expander true, revealer true (revealed true); reached Bonsai: 0
      (children
       (GtkButton (label (revealed)) (css (text-button))
        (children (GtkLabel (text revealed))))))))))
+(GtkWindow (title (opening)) (css (background)) hidden
+ (children
+  (GtkExpander (label (detail))
+   (children
+    (GtkBox (spacing 0) (css (vertical))
+     (children
+      (GtkBox (spacing 0) (css (horizontal))
+       (children (GtkBuiltinIcon (css (horizontal)))
+        (GtkLabel (text detail))))))))))
+(GtkWindow (title (opening)) (css (background)) hidden
+ (children
+  (GtkExpander (label (detail)) expanded
+   (children
+    (GtkBox (spacing 0) (css (vertical))
+     (children
+      (GtkBox (spacing 0) (css (horizontal))
+       (children (GtkBuiltinIcon (css (horizontal)))
+        (GtkLabel (text detail))))
+      (GtkButton (label (after)) (css (text-button))
+       (children (GtkLabel (text after))))))))))
 (GtkWindow (title (slots)) (css (background)) hidden
  (children
   (GtkPaned (position 120) position-set (css (horizontal))

@@ -136,6 +136,10 @@ let%expect_test "the numeric family's constructors" =
     |}]
 ;;
 
+(* The [Resource] sources and a non-default [icon_size] have no live test: a resource is
+   whatever the application compiled into its binary, and there is none here to name. What
+   is checkable headlessly is that both reach the kind and print -- which is what says the
+   constructor did not quietly drop them. *)
 let%expect_test "images, pictures and separators" =
   print_s
     [%sexp
@@ -143,7 +147,10 @@ let%expect_test "images, pictures and separators" =
          ~orientation:Vertical
          [ Node.image ~pixel_size:16 (Icon_name "list-add-symbolic")
          ; Node.image Empty
+         ; Node.image ~icon_size:Large (Resource "/org/example/app/icons/add.svg")
+         ; Node.image ~icon_size:Normal (File "/tmp/add.png")
          ; Node.picture ~content_fit:Contain ~can_shrink:true (Filename "/tmp/thumb.png")
+         ; Node.picture ~content_fit:Cover (Resource "/org/example/app/thumb.png")
          ; Node.separator ~orientation:Horizontal ()
          ]
        : Node.t)];
@@ -155,8 +162,18 @@ let%expect_test "images, pictures and separators" =
        (((kind (Image ((source (Icon_name list-add-symbolic)) (pixel_size 16))))
          (attrs ()) (children No_children))
         ((kind (Image ((source Empty)))) (attrs ()) (children No_children))
+        ((kind
+          (Image
+           ((source (Resource /org/example/app/icons/add.svg)) (icon_size Large))))
+         (attrs ()) (children No_children))
+        ((kind (Image ((source (File /tmp/add.png)) (icon_size Normal))))
+         (attrs ()) (children No_children))
         ((kind (Picture ((source (Filename /tmp/thumb.png))))) (attrs ())
          (children No_children))
+        ((kind
+          (Picture
+           ((source (Resource /org/example/app/thumb.png)) (content_fit Cover))))
+         (attrs ()) (children No_children))
         ((kind (Separator ((orientation Horizontal)))) (attrs ())
          (children No_children))))))
     |}]

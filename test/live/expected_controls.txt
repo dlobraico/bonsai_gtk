@@ -90,6 +90,8 @@ entry signals reaching Bonsai: 8
 declined toggle true, check true, switch true (state true); reached Bonsai: 0
 rejected: root/0: Label does not emit On_toggled
 rejected at patch: late/0: Label does not emit On_toggled
+rejected: root/0: Label does not emit On_expanded_changed
+rejected: root/0: Label does not emit On_revealed
 (GtkWindow (title (slot)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))

@@ -9,6 +9,31 @@ let policy : Policy.t -> Gtk_enums.policytype = function
   | External_ -> `EXTERNAL
 ;;
 
+(* [min_content_*] and [max_content_*] are one constraint spread over two properties:
+   GTK's [set_min_content_width] asserts the new minimum is not above the maximum
+   currently set, [set_max_content_width] asserts the mirror of that, and a failed
+   assertion *drops the write* -- the widget keeps its old bound and only a Gtk-CRITICAL
+   on stderr says so. So a fixed write order silently loses one of the two whenever the
+   new pair sits entirely above or below the old one: bumping a window's bounds from
+   80..300 up to 400..600 writes min=400 against a max still at 300, and the minimum never
+   lands.
+
+   Move whichever bound is in the way first: the maximum, when the new minimum is above
+   the maximum currently set; the minimum otherwise. [-1] is GTK's "unset" and asserts
+   against nothing, which is why the sentinel is checked rather than compared. Creation
+   needs none of this -- a fresh [GtkScrolledWindow] has both bounds unset. *)
+let set_bounds ~set_min ~set_max ~old_min ~old_max ~new_min ~new_max =
+  let write_min () = if old_min <> new_min then set_min new_min in
+  let write_max () = if old_max <> new_max then set_max new_max in
+  if new_min >= 0 && old_max >= 0 && new_min > old_max
+  then (
+    write_max ();
+    write_min ())
+  else (
+    write_min ();
+    write_max ())
+;;
+
 (* Nothing here is controlled: a scrolled window's only user-driven state is its scroll
    position, which is deliberately not a prop (see the mli). *)
 let impl : Widget_impl.t =
@@ -44,14 +69,20 @@ let impl : Widget_impl.t =
                   && Policy.equal old.vpolicy new_.vpolicy)
             then
               W.Scrolled_window.set_policy s (policy new_.hpolicy) (policy new_.vpolicy);
-            if old.min_content_width <> new_.min_content_width
-            then W.Scrolled_window.set_min_content_width s new_.min_content_width;
-            if old.min_content_height <> new_.min_content_height
-            then W.Scrolled_window.set_min_content_height s new_.min_content_height;
-            if old.max_content_width <> new_.max_content_width
-            then W.Scrolled_window.set_max_content_width s new_.max_content_width;
-            if old.max_content_height <> new_.max_content_height
-            then W.Scrolled_window.set_max_content_height s new_.max_content_height;
+            set_bounds
+              ~set_min:(W.Scrolled_window.set_min_content_width s)
+              ~set_max:(W.Scrolled_window.set_max_content_width s)
+              ~old_min:old.min_content_width
+              ~old_max:old.max_content_width
+              ~new_min:new_.min_content_width
+              ~new_max:new_.max_content_width;
+            set_bounds
+              ~set_min:(W.Scrolled_window.set_min_content_height s)
+              ~set_max:(W.Scrolled_window.set_max_content_height s)
+              ~old_min:old.min_content_height
+              ~old_max:old.max_content_height
+              ~new_min:new_.min_content_height
+              ~new_max:new_.max_content_height;
             if not (Bool.equal old.propagate_natural_width new_.propagate_natural_width)
             then
               W.Scrolled_window.set_propagate_natural_width s new_.propagate_natural_width;

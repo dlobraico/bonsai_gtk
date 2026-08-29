@@ -171,6 +171,23 @@ let () =
    | exception Invalid_argument msg -> printf "rejected at patch: %s\n" msg);
   P.destroy ctx late_live;
   P.destroy ctx live;
+  (* The container signals are the same typo with a different name, and the rejection has
+     to name the widget rather than the attr: [on_expanded_changed] belongs to an expander
+     and [on_revealed] to a revealer, and a label emits neither. *)
+  List.iter
+    [ Attr.on_expanded_changed (fun _ -> Ui_effect.Ignore)
+    ; Attr.on_revealed (fun _ -> Ui_effect.Ignore)
+    ]
+    ~f:(fun attr ->
+      match
+        P.mount
+          ctx
+          ~path:"root"
+          ~is_root:true
+          (Node.window ~title:"bad" (Node.label ~attrs:[ attr ] "x"))
+      with
+      | (_ : P.live) -> print_endline "BUG: a container signal on a label accepted"
+      | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   (* [label], [icon_name] and [child] all compete for a [GtkButton]'s one slot, and the
      patcher applies props before children -- so swapping a custom child for a label has
      to leave the label showing rather than an empty button, and swapping back has to put
