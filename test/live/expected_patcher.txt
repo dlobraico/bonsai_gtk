@@ -1,0 +1,41 @@
+window created
+(GtkWindow (title (T)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 4) (css (vertical))
+   (children (GtkLabel (text v1) (css (title)))
+    (GtkButton (label (A)) (css (text-button))
+     (children (GtkLabel (text A))))
+    (GtkButton (label (B)) (css (text-button))
+     (children (GtkLabel (text B))))))))
+(GtkWindow (title (T)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 4) (css (vertical))
+   (children (GtkLabel (text v2) (css (title)))
+    (GtkButton (label (B)) (css (text-button))
+     (children (GtkLabel (text B))))
+    (GtkButton (label (C)) (css (text-button))
+     (children (GtkLabel (text C))))
+    (GtkButton (label (A!)) (css (text-button))
+     (children (GtkLabel (text A!))))))))
+same widget for a: true
+scheduled effects: 1
+(GtkWindow (title (T)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 4) (css (vertical))
+   (children (GtkLabel (text v3) (css (title)))
+    (GtkLabel (text "b is a label now"))
+    (GtkButton (label (C)) (css (text-button))
+     (children (GtkLabel (text C))))
+    (GtkButton (label (A!)) (css (text-button))
+     (children (GtkLabel (text A!))))))))
+(GtkWindow (title (T)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical)) (children (GtkLabel (text 1))))))
+(GtkWindow (title (T)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical)) (children (GtkLabel (text 2))))))
+same widget for native: true
+native destroyed
+(GtkWindow (title (T)) (css (background)) hidden
+ (children (GtkLabel (text replaced))))
+destroyed

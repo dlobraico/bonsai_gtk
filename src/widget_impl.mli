@@ -32,10 +32,11 @@ type t =
     list at its old position). [None] means "at the beginning", which is what GTK's
     [*_child_after] calls take for a null sibling.
 
-    Precondition: [index] is within the considered child list, i.e. at most its length. A
-    larger [index] has no sibling to name and also yields [None], which places the child
-    at the beginning rather than the end — so the patcher must keep GTK's live child order
-    in step with the list the reconciler computed indices against. *)
+    Raises [Invalid_argument] if [index] exceeds the length of the considered child list:
+    such an [index] has no sibling to name, and answering [None] would silently place the
+    child at the *beginning* rather than the end. Reaching that case means GTK's live
+    child order has drifted from the list the reconciler computed indices against, so it
+    is a bug worth failing on rather than mis-ordering the tree. *)
 val sibling_before : Widget.t -> index:int -> except:Widget.t option -> Widget.t option
 
 (** Raises [Invalid_argument]: impl [name] was handed a kind it does not own. *)

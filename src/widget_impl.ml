@@ -30,7 +30,10 @@ let sibling_before parent ~index ~except : Widget.t option =
         | None -> true
         | Some e -> not (Gobject.same c e))
     in
-    List.nth kids (index - 1))
+    match List.nth kids (index - 1) with
+    | Some _ as sibling -> sibling
+    | None ->
+      invalid_argf "sibling_before: index %d > %d children" index (List.length kids) ())
 ;;
 
 let wrong_kind name kind = invalid_argf "%s impl received %s" name (Kind.name kind) ()

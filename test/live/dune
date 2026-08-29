@@ -1,0 +1,27 @@
+(executables
+ (names live_patcher)
+ (libraries
+  core
+  bonsai_gtk
+  bonsai_gtk.vtree
+  virtual_dom.ui_effect
+  ocgtk.gtk
+  ocgtk.common)
+ (preprocess
+  (pps ppx_jane)))
+
+; Live tests drive a real GTK display, so they run only under xvfb and only when
+; explicitly asked for:
+;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_patcher.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_patcher.txt
+    (run %{exe:live_patcher.exe}))
+   (diff expected_patcher.txt output_patcher.txt))))
