@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "bonsai_gtk",
+  "project_id": "4bb68beb-4c6a-4b9e-9623-29042b4cad2c"
+}
