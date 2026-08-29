@@ -390,6 +390,23 @@ subtree, recursively, without disconnecting anything or touching the widget; the
 remove op; then `destroy` for real. `disarm` is `destroy`'s slot-clearing step split out so
 it can close that window ahead of everything else.
 
+**M1 amendment (2026-08-29).** Step 1 is the other way round in the
+implementation, deliberately: `mount new_node` runs *first*, and only then is
+the old `live` destroyed, so that the subtree being replaced stays alive and
+parented until the replacement exists. Two consequences follow. A native node's
+replacement has its `create` called while the instance it replaces has not yet
+had its `destroy` — an impl that acquires an exclusive resource must expect the
+overlap. And the old subtree's `Stack` name registrations are given up before
+the mount (`Patcher.drop_stack_names`), because otherwise re-declaring the same
+`Node.stack ~name` inside the replacement — which is all that wrapping a stack
+in a `Node.frame` does — would collide with the copy of itself on its way out.
+The collision check is not weakened by that: a genuine collision is two stacks
+both still in the tree, and the other one is by definition not in the subtree
+being discarded.
+
+Step 2's order is likewise props → `reassert` (§6.5) → attrs → slots → children,
+rather than attrs before props.
+
 ### 6.3 `Reconcile.diff` (pure)
 
 ```ocaml
@@ -423,6 +440,22 @@ is connected **once** to a trampoline closure that:
 5. `Driver.schedule_event (handler event)`; `Scheduler.request_frame`.
 
 Updating a handler is a slot write. Nothing is disconnected until `destroy`.
+
+**M1 amendment (2026-08-29).** A spec's `connect` returns a
+`Signals.connection` — the handler id *and the GObject it was issued for* —
+rather than a bare `handler_id`, and `Signals.disconnect` disconnects each from
+its own object. A handler id is only unique per object, so an id returned by a
+connection to something other than the widget (a `GtkTextBuffer`, a list model,
+one of the event controllers named below) cannot be disconnected from the
+widget: at best a GLib critical, at worst it disconnects an unrelated handler
+that happens to share the number while the real one stays connected, pinning its
+slot and closure alive as the GC root §6.1 warns about. Every spec builds its
+result with `Signals.connected obj id`.
+
+`fire` returning `None` means "nothing to schedule", which covers two cases: the
+attr in the slot is not the one this spec handles, and this particular emission
+is not one the application should hear about. The second is what
+`GtkSearchEntry` needs — see §6.5.
 Signals ocgtk does not generate as `on_*` but which GLib can deliver through
 the generic marshaller — the `notify::<prop>` family (`Switch` `active`,
 `DropDown` `selected`, `Revealer` `child-revealed`) — are connected with
@@ -459,6 +492,17 @@ The rule reaches beyond text: `ToggleButton`, `CheckButton` and `Switch`
   selects may not exist yet. The fixup pass runs after the whole tree is built
   and inside the same guard, and is also where a `StackSwitcher`/`StackSidebar`
   resolves the stack it names through the patcher's name registry.
+- **`SearchEntry`'s debounced signal is filtered rather than guarded.** Every
+  other signal in M1 is emitted synchronously from the setter, which is what
+  makes the `in_patch` guard (§4.4) work. `GtkSearchEntry::search-changed` is
+  emitted from a `g_timeout` armed by the text change, `search_delay` ms later,
+  long after the frame has returned — so a controlled write would come back to
+  the application as a search the user never performed, once per write, and
+  oscillate for any model whose normalisation is not a fixed point. The widget
+  impl records what the library last wrote (weakly, keyed on the widget) and the
+  spec's `fire` returns `None` while the widget's text still equals it. Any later
+  deferred signal needs the same treatment; the synchronous guard cannot cover
+  one.
 - **`Paned`'s position is deliberately uncontrolled** (`reassert = None`):
   writing it every frame would fight the user's drag handle.
   `Attr.on_position_changed` reports where it was left, and an app that wants it
@@ -509,6 +553,11 @@ in. (Custom Cairo drawing via `DrawingArea` is *not* possible: ocgtk does not bi
 `Gdk.Memory_texture`, say) where the declarative `Node.picture` takes a file,
 resource or icon source. `Node.image` has no paintable source by design — it
 would be a second native widget, and paintables belong on `GtkPicture`.
+
+Because of §6.2's mount-before-destroy order, a native node whose parent's kind
+changes has its replacement `create`d before the instance it replaces is
+`destroy`ed. An impl that acquires something exclusive — a port, a lock, a
+singleton subscription — has to tolerate the two overlapping.
 
 Native nodes carry `Attr.t`s like any other node, but they declare no signal
 specs, so `Signals.require_specs` **rejects an event attribute on a native node**
@@ -620,6 +669,17 @@ without a display:
    them; the directory is `(enabled_if (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))`
    so plain `dune runtest` without a display stays green.
 
+**M1 amendment (2026-08-29).** No test directory may straddle the two packages.
+Each generated `.opam` runs `dune build -p <pkg> ... @runtest` under
+`--with-test`, and `--only-packages` hides every library owned by another
+package in the workspace — so a directory depending on `bonsai_gtk.vtree` *and*
+`bonsai_gtk_test` fails whichever package is being built, while `dune build
+@all` stays green. Layer 1 (`test/`, package `bonsai_gtk`) therefore depends on
+`bonsai_gtk.vtree` alone, and the tests that exercise the handle live in
+`test/handle/` (package `bonsai_gtk_test`). `scripts/ci.sh` runs both `-p`
+builds; the second needs `bonsai_gtk` installed first, as opam installs it, so
+the script installs it into a temporary prefix.
+
 ## 10. Repository layout and packaging
 
 ```
@@ -631,7 +691,8 @@ vtree/                      library bonsai_gtk.vtree (ocgtk-free)
 src/                        library bonsai_gtk (runtime)
 src/widgets/                one module per widget
 test_lib/                   library bonsai_gtk_test (ocgtk-free)
-test/                       pure + headless expect tests
+test/                       pure expect tests (package bonsai_gtk)
+test/handle/                headless expect tests (package bonsai_gtk_test; see §9)
 test/live/                  xvfb tests (plain executables + diff rules)
 examples/                   counter, todo, gallery (grows per milestone)
 ocgtk-pin.json              the fork commit both opam and Nix pin (owner/repo/rev/hash)
@@ -659,6 +720,14 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
   root — a `GtkWindow` is a toplevel and cannot be parented — duplicate sibling
   keys, event attr on a widget that lacks the signal) raises `Invalid_argument`
   with the node path at mount/patch time — loud and early.
+- **M1 amendment (2026-08-29).** "Mount/patch time" is literal, and so is "the
+  node path". Duplicate sibling keys are checked by `Patcher.mount_list` as well
+  as by `Reconcile.diff` — the reconciler only runs on a patch, so without the
+  mount-time check a duplicate was accepted on the first frame and rejected on
+  the second, which for a `Node.stack` means GTK had already been handed two
+  pages under one name and `get_child_by_name` was already ambiguous. Both call
+  sites are wrapped in the patcher's path-prefixing helper, as every other
+  child-list rejection already was.
 - **M1 amendment (2026-08-29).** "Mount/patch time" is literal:
   `Signals.require_specs` is called from `Patcher.mount` and again from
   `Patcher.patch` (guarded on the attrs having changed), because handlers are
@@ -671,7 +740,12 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
   kind`, `node's children do not match <impl>'s shape` — and the stack name
   registry: `two Node.stacks are named "<name>" in one tree` (at mount, and
   identically when a patch renames a stack onto a name another stack holds), and
-  a `stack_switcher`/`stack_sidebar` naming a stack no node declares.
+  a `stack_switcher`/`stack_sidebar` naming a stack no node declares. That last
+  one is also what a rename onto a *free* name produces for a switcher still
+  naming the old one — a renamed stack drops its old registration rather than
+  answering to both. A subtree being replaced gives its registrations up before
+  the replacement is mounted (§6.2), so re-declaring the same stack inside the
+  replacement is not a collision.
 - Exceptions inside a signal trampoline are caught before they reach C
   (undefined behaviour otherwise), logged to stderr with the node path, and
   do not tear down the main loop.

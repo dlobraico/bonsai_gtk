@@ -85,7 +85,7 @@ looks like on screen.
 |---|---|
 | **Display** | `label` (wrap, xalign, ellipsize, max-width-chars, markup), `image`, `picture`, `separator`, `progress_bar`, `spinner` |
 | **Controls** | `button` (label / icon / arbitrary child / frameless), `toggle_button`, `check_button`, `switch`, `spin_button`, `scale` |
-| **Text** | `entry`, `password_entry`, `search_entry` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret |
+| **Text** | `entry`, `password_entry`, `search_entry` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret. `on_search_changed` reports only searches the *user* produced: GTK arms its debounce from any text change, so the library filters out the emission carrying back a write it made itself |
 | **Layout** | `box`, `grid` (`Attr.grid_cell`), `center_box`, `paned`, `overlay` (`Attr.measure_overlay`), `frame`, `expander`, `revealer`, `scrolled_window` |
 | **Navigation** | `stack` + `stack_switcher` + `stack_sidebar` (pages keyed by `Key.t`, switchers name their stack) |
 | **Window** | `window` (one per app until M3) |
@@ -114,7 +114,7 @@ See §7 of the design doc for what M2 (lists & text) and M3 (chrome & popups) ad
 
 Apps that keep their view function in a `bonsai_gtk.vtree`-only module (the same rule
 `bonsai_web` apps already follow) can be tested with `Bonsai_gtk_test`, no display required.
-From `test/test_handle.ml`:
+From `test/handle/test_handle.ml`:
 
 ```ocaml
 open! Core
@@ -159,17 +159,30 @@ widget). Each fails loudly if the node it names carries no matching handler.
 click that depends on the state the first click just set needs a `recompute_view` between
 them — see the doc comment on `Bonsai_gtk_test.create` for why.
 
+The handle validates nothing structural. It depends on `bonsai_gtk.vtree` alone — that is
+what keeps it and your view functions free of ocgtk — so it cannot see which signals a
+widget can emit, and an `Attr.on_clicked` on a `Node.label` takes a `Click` and goes green
+while mounting the same tree raises on the first frame. Same for a `grid` child with no
+`Attr.grid_cell`, duplicate sibling keys, and the rest of the list under
+[Limitations](#limitations). A headless suite is not a substitute for running the app.
+
 ## Development
 
     nix develop                 # dev shell (GTK4 stack, opam, xvfb)
     ./scripts/setup-switch.sh   # once: creates ./_opam (OxCaml) and pins ocgtk
     dune build && dune runtest
     BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest  # live GTK tests
-    ./scripts/ci.sh             # everything above, plus the ocgtk pin and the example smoke test
+    ./scripts/ci.sh             # everything above, plus the ocgtk pin, the per-package
+                                # `-p` builds and the example smoke test
 
-`dune runtest` alone only runs the pure and headless suites (`test/`, ocgtk-free); the live
-tests under `test/live/` drive a real GTK display via `xvfb-run` and are opt-in through
-`BONSAI_GTK_LIVE_TESTS=1`, which is what `scripts/ci.sh` sets.
+`dune runtest` alone only runs the pure and headless suites (`test/` and `test/handle/`,
+both ocgtk-free); the live tests under `test/live/` drive a real GTK display via `xvfb-run`
+and are opt-in through `BONSAI_GTK_LIVE_TESTS=1`, which is what `scripts/ci.sh` sets.
+
+The two suites are split across the two packages on purpose: `dune build -p <pkg> @runtest`
+is what `opam install <pkg> --with-test` runs, and it hides every library belonging to the
+*other* package, so no test directory may depend on both. `scripts/ci.sh` runs both `-p`
+builds so that cannot regress.
 
 See `docs/superpowers/specs/2026-08-28-bonsai-gtk-design.md` for the design.
 
@@ -210,6 +223,12 @@ case. What is deliberately still out:
 - **`Attr.t` and `Bonsai_gtk_test.Action.t` are unsealed public variants**, so every
   attribute or action a later milestone adds is a breaking change for a downstream
   exhaustive match. Sealing them is on the backlog (`docs/m1-backlog.md`).
+- **Structural mistakes are caught at mount, not by `Bonsai_gtk_test`** — a non-window
+  root, a `Node.window` below the root, duplicate keys among siblings, an event attribute
+  on a widget with no such signal, a `grid` child with no `Attr.grid_cell`, a `stack` page
+  with no key, two `stack`s under one name, a `stack_switcher` naming a stack that does not
+  exist. All are `Invalid_argument` carrying the node path, raised on the frame that builds
+  or patches that node; none of them stops a headless test.
 - **Every frame patches**, including frames on which Bonsai hands back the physically
   identical root — that is what puts a widget back after the model declines the user's
   edit. An idle frame walks the shadow tree and makes no GTK call; a walk restricted to
