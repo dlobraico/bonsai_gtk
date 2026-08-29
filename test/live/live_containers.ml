@@ -585,6 +585,33 @@ let () =
    with
    | (_ : P.live) -> print_endline "BUG: two stacks with one name accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* A pass that raises never reaches [run_fixups], so what it deferred is still sitting
+     in the queue: closures over widgets from a tree that was only half built. The stack
+     below is mounted (and enqueues its [select]) before the nested window beside it is
+     rejected. [abandon_fixups] is what [Driver.frame] calls on its way out of a frame
+     that raised; without it a later pass would drain this one's work along with its own
+     -- which is exactly what the rejections earlier in this file have been quietly
+     accumulating, so the queue is emptied first to make the count below about this pass
+     alone. *)
+  P.abandon_fixups ctx;
+  (match
+     P.mount
+       ctx
+       ~path:"halfbuilt"
+       ~is_root:true
+       (Node.window
+          ~title:"h"
+          (Node.box
+             ~orientation:Vertical
+             [ Node.stack ~name:"halfbuilt" ~visible_child:"a" [ Node.label ~key:"a" "a" ]
+             ; Node.window ~title:"nested" (Node.label "x")
+             ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: a nested window accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  printf "fixups left behind by the failed pass: %d\n" (Queue.length ctx.fixups);
+  P.abandon_fixups ctx;
+  printf "fixups after abandon_fixups: %d\n" (Queue.length ctx.fixups);
   (* And renaming one stack *onto* another's name is the same collision arriving a frame
      later, so it has to be the same rejection: a patch that quietly rebound the name
      would silently re-point every switcher in the tree at the wrong stack. *)

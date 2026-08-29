@@ -335,4 +335,7 @@ visible-child notify reaching Bonsai: 1
 rejected: stray/0: no Node.stack is named "nope" (a stack_switcher/stack_sidebar must name a stack that exists somewhere in the same tree)
 rejected: keyless/0/0: Stack child has no ~key (a stack page's key is its GTK page name)
 rejected: dup/0/1: two Node.stacks are named "nav" in one tree
+rejected: halfbuilt/0/1: a Node.window may only be the root node, not a child of another node
+fixups left behind by the failed pass: 1
+fixups after abandon_fixups: 0
 rejected: ren/0/1: two Node.stacks are named "first" in one tree

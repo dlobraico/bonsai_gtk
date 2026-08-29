@@ -13,8 +13,13 @@ type t =
 
 let schedule_event t effect =
   (* A broken driver renders nothing again (see [frame]), so queueing effects into it only
-     grows a queue nobody drains — a frozen window whose memory keeps climbing. *)
-  if not (Scheduler.broken t.scheduler)
+     grows a queue nobody drains — a frozen window whose memory keeps climbing. [stopped]
+     is worse still: [stop] has invalidated the computation's observers, so scheduling
+     into that graph is scheduling into a value nothing will ever read. Neither is
+     reachable through a handler the patcher connected (all of them are disconnected by
+     [stop]), but an embedder holding the driver, and a [Native] widget whose own handler
+     outlives its [destroy], both are. *)
+  if (not t.stopped) && not (Scheduler.broken t.scheduler)
   then (
     Bonsai_driver.schedule_event t.bonsai effect;
     Scheduler.request_frame t.scheduler)
@@ -28,6 +33,51 @@ let check_root (node : Node.t) =
       "Bonsai_gtk: the root node must be a Node.window, got %s"
       (Kind.name k)
       ()
+;;
+
+let frame_body t =
+  if t.advance_wall_clock
+  then (
+    Bonsai.Time_source.advance_clock t.time_source ~to_:(Time_ns.now ());
+    Bonsai.Time_source.Private.flush t.time_source);
+  Bonsai_driver.flush t.bonsai;
+  let node = Bonsai_driver.result t.bonsai in
+  (* Every frame patches, including the frames on which Bonsai hands back the physically
+     same node.
+
+     Skipping those looks like a free optimisation and is not. A model that *declines* a
+     user's edit -- the digits-only field handed a letter, the switch the model refuses to
+     flip, the stack page it will not navigate to -- leaves its state exactly as it was,
+     so its view is the same value it was last frame. The patch that would put the widget
+     back is therefore precisely the patch a physical-equality guard throws away, and the
+     declined edit stands on screen. That is the bug spec §6.5 exists to prevent, and both
+     halves of the cure -- [Widget_impl.reassert] and the stack-selection fixup -- live
+     inside the patch being skipped.
+
+     The cost is bounded rather than free: a frame that changed nothing still walks the
+     shadow tree, but [Kind.equal_props] skips every impl [update] and [Attrs.diff] writes
+     nothing, so no GTK call is made. Frames only happen on an event or on the tick. *)
+  check_root node;
+  Scheduler.with_patch_guard t.scheduler (fun () ->
+    t.root
+    <- Some
+         (match t.root with
+          | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
+          | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node);
+    (* Inside the guard, and after the whole tree exists: this is where a [stack_switcher]
+       finds the stack it names and a stack selects its page, and both write properties
+       GTK notifies about. *)
+    Patcher.run_fixups t.ctx);
+  Bonsai_driver.trigger_lifecycles t.bonsai;
+  (* [trigger_lifecycles] *schedules* the after-display effects rather than applying them,
+     so another frame is needed before their results are on screen. Under a tick that
+     frame is already coming. Without one we ask for it — but on the rate-limited path,
+     never the idle: [has_after_display_events] is true whenever the computation contains
+     an after-display handler at all (one [Clock.every] is enough), so every frame would
+     request its successor and an idle would run them back to back at full CPU. *)
+  if Bonsai_driver.has_after_display_events t.bonsai
+     && not (Scheduler.ticking t.scheduler)
+  then Scheduler.request_frame_soon t.scheduler
 ;;
 
 let frame t =
@@ -44,50 +94,24 @@ let frame t =
        returns rather than raising. *)
     ()
   else (
-    if t.advance_wall_clock
-    then (
-      Bonsai.Time_source.advance_clock t.time_source ~to_:(Time_ns.now ());
-      Bonsai.Time_source.Private.flush t.time_source);
-    Bonsai_driver.flush t.bonsai;
-    let node = Bonsai_driver.result t.bonsai in
-    (* Every frame patches, including the frames on which Bonsai hands back the physically
-       same node.
+    (* Whichever way the frame is driven, a raise ends this driver: the patcher mutates
+       GTK as it walks and writes the shadow tree back only on success, so a frame that
+       dies part-way leaves the two describing different trees. Under the scheduler that
+       also cancels the tick; a hand-driven frame has no tick to cancel, but the next
+       [frame] call has to be the no-op the [broken] contract promises rather than a diff
+       against a half-patched shadow tree.
 
-       Skipping those looks like a free optimisation and is not. A model that *declines* a
-       user's edit -- the digits-only field handed a letter, the switch the model refuses
-       to flip, the stack page it will not navigate to -- leaves its state exactly as it
-       was, so its view is the same value it was last frame. The patch that would put the
-       widget back is therefore precisely the patch a physical-equality guard throws away,
-       and the declined edit stands on screen. That is the bug spec §6.5 exists to
-       prevent, and both halves of the cure -- [Widget_impl.reassert] and the
-       stack-selection fixup -- live inside the patch being skipped.
-
-       The cost is bounded rather than free: a frame that changed nothing still walks the
-       shadow tree, but [Kind.equal_props] skips every impl [update] and [Attrs.diff]
-       writes nothing, so no GTK call is made. Frames only happen on an event or on the
-       tick. *)
-    check_root node;
-    Scheduler.with_patch_guard t.scheduler (fun () ->
-      t.root
-      <- Some
-           (match t.root with
-            | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
-            | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node);
-      (* Inside the guard, and after the whole tree exists: this is where a
-         [stack_switcher] finds the stack it names and a stack selects its page, and both
-         write properties GTK notifies about. *)
-      Patcher.run_fixups t.ctx);
-    Bonsai_driver.trigger_lifecycles t.bonsai;
-    (* [trigger_lifecycles] *schedules* the after-display effects rather than applying
-       them, so another frame is needed before their results are on screen. Under a tick
-       that frame is already coming. Without one we ask for it — but on the rate-limited
-       path, never the idle: [has_after_display_events] is true whenever the computation
-       contains an after-display handler at all (one [Clock.every] is enough), so every
-       frame would request its successor and an idle would run them back to back at full
-       CPU. *)
-    if Bonsai_driver.has_after_display_events t.bonsai
-       && not (Scheduler.ticking t.scheduler)
-    then Scheduler.request_frame_soon t.scheduler)
+       The fixup queue goes with it. It holds what *this* pass deferred, so running it in
+       some later pass would raise from a frame that had nothing to do with it — the very
+       thing [run_fixups] empties the queue to prevent, on the one path that never reaches
+       [run_fixups] at all. *)
+    match frame_body t with
+    | () -> ()
+    | exception exn ->
+      let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+      Scheduler.mark_broken t.scheduler;
+      Patcher.abandon_fixups t.ctx;
+      Stdlib.Printexc.raise_with_backtrace exn backtrace)
 ;;
 
 let create ?time_source ?(optimize = true) ~on_window_created app =
@@ -153,6 +177,9 @@ let stop t =
     Scheduler.stop t.scheduler;
     Option.iter t.root ~f:(Patcher.destroy t.ctx);
     t.root <- None;
+    (* A last frame that raised inside [mount]/[patch] left its deferred work behind, and
+       those closures hold widgets from that pass. *)
+    Patcher.abandon_fixups t.ctx;
     (* Without this the incremental graph and every observer Bonsai built for it stay
        reachable from [t.bonsai] for as long as the driver value is, which for an embedder
        that creates a driver per dialog is a real leak. *)

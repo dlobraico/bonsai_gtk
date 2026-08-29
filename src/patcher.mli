@@ -46,6 +46,14 @@ val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> 
     hang. *)
 val run_fixups : ctx -> unit
 
+(** Drops everything the pass deferred, running none of it.
+
+    For the pass that raised out of {!mount} or {!patch} and so never reached
+    {!run_fixups}: its queue describes a tree that was only half built, and the closures
+    in it pin the widgets they captured. The runtime calls this on the way out of a frame
+    that raised. *)
+val abandon_fixups : ctx -> unit
+
 (** The shadow tree: one record per {!Bonsai_gtk_vtree.Node.t} currently realized, holding
     the GTK widget and everything needed to patch or tear it down. [node] is the node this
     widget was last rendered from, and is what the next {!patch} diffs against. *)

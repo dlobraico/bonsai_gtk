@@ -22,6 +22,10 @@ frame on broken driver returned, still broken: true
     (GtkButton (label (+)) (css (text-button))
      (children (GtkLabel (text +))))))))
 broken driver stopped
+hand-driven frame raised: root/0/1: a Node.window may only be the root node, not a child of another node
+broken after a hand-driven raise: true
+the frame after that was a no-op
+rejected: Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph and tears the widget tree down; build a new driver instead)
 (GtkWindow (title (reentry)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))

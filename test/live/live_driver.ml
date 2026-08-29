@@ -178,6 +178,36 @@ let () =
   print_s (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget broken)));
   Expert.Driver.stop broken;
   print_endline "broken driver stopped";
+  (* The same claim for a frame nobody guarded. An embedder with its own main loop calls
+     [Expert.Driver.frame] itself, so the exception comes back to *it* rather than to the
+     scheduler -- and the driver has to be just as dead afterwards, because the shadow
+     tree is just as half-written: the box's first child was patched before the second one
+     was rejected. Without this the next hand-driven frame would diff a frame-3 node
+     against a tree that is part frame 1 and part frame 2. *)
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let by_hand =
+    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) breaking_app
+  in
+  Expert.Driver.frame by_hand;
+  let plus_by_hand () =
+    let root = Option.value_exn (Expert.Driver.root_widget by_hand) in
+    List.hd_exn (widget_children (List.hd_exn (widget_children root)))
+  in
+  Gobject.Signal.emit_by_name (plus_by_hand ()) ~name:"clicked";
+  (match Expert.Driver.frame by_hand with
+   | () -> print_endline "BUG: a hand-driven frame swallowed the exception"
+   | exception Invalid_argument msg -> printf "hand-driven frame raised: %s\n" msg);
+  printf "broken after a hand-driven raise: %b\n" (Expert.Driver.broken by_hand);
+  (* And the next one does nothing at all rather than raising again or, worse, patching. *)
+  Expert.Driver.frame by_hand;
+  print_endline "the frame after that was a no-op";
+  drain ();
+  Expert.Driver.stop by_hand;
+  (* [frame] after [stop] is caller error, not a broken app: the Bonsai graph's observers
+     are invalidated and the widget tree is gone, so there is nothing to render into. *)
+  (match Expert.Driver.frame by_hand with
+   | () -> print_endline "BUG: frame on a stopped driver accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
   let reentrant =
     Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) reentrant_app

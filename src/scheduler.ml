@@ -38,20 +38,38 @@ let stop t =
   t.soon <- None
 ;;
 
+(* Saved and restored rather than cleared: a nested [with_patch_guard] that cleared the
+   flag on its own exit would leave the rest of the outer patch dispatching signals into
+   Bonsai mid-patch, and silently. Nothing in M1 nests — [Driver.frame] is the only caller
+   and no GTK call the patcher makes spins the main loop — so this is about the next thing
+   that does (a dialog, anything that iterates the loop) rather than about a live bug. *)
 let with_patch_guard t f =
+  let was = t.in_patch in
   t.in_patch <- true;
-  Exn.protect ~f ~finally:(fun () -> t.in_patch <- false)
+  Exn.protect ~f ~finally:(fun () -> t.in_patch <- was)
 ;;
 
-(* Every frame runs underneath a GLib callback, so nothing may escape: an OCaml exception
-   crossing a C frame would at best skip GLib's own bookkeeping.
-
-   A raising frame stops the scheduler rather than being logged and retried. The patcher
+(* A raising frame stops the scheduler rather than being logged and retried. The patcher
    mutates GTK as it walks the ops and only then writes the shadow tree back, so a frame
    that dies part-way leaves GTK's tree ahead of the shadow tree's idea of it. Every later
    frame would diff from that stale shadow tree — wrong ordering at best, and the same
    exception again at tick rate at worst. One clear error and a frozen (but still
-   displayed) window beats a live app patching a tree it no longer describes. *)
+   displayed) window beats a live app patching a tree it no longer describes.
+
+   This is the whole of the state transition, and it lives here rather than inside
+   [guarded_frame] because a frame driven by hand — an embedder with its own main loop, a
+   test — raises out of [Driver.frame] without ever reaching the scheduler's guarded path,
+   and the promise that nothing patches the tree again has to hold for that frame too. *)
+let mark_broken t =
+  t.broken <- true;
+  stop t
+;;
+
+(* Every frame runs underneath a GLib callback, so nothing may escape: an OCaml exception
+   crossing a C frame would at best skip GLib's own bookkeeping. [run_frame] is expected
+   to have called [mark_broken] on its way out (that is what [Driver.frame] does); calling
+   it again here is idempotent and keeps this scheduler's own contract independent of who
+   drives it. *)
 let guarded_frame t =
   match t.run_frame () with
   | () -> ()
@@ -59,8 +77,7 @@ let guarded_frame t =
     eprintf
       "bonsai_gtk: exception in frame, stopping the driver: %s\n%!"
       (Exn.to_string exn);
-    t.broken <- true;
-    stop t
+    mark_broken t
 ;;
 
 let request_frame t =

@@ -21,6 +21,15 @@ type t
     see {!broken}. *)
 val create : run_frame:(unit -> unit) -> t
 
+(** Records that a frame raised: {!broken} becomes [true] and the scheduler {!stop}s, so
+    no later frame runs. Idempotent.
+
+    It is public because the frame itself has to call it. A frame driven by hand does not
+    go through the scheduler's guarded path, so nothing here would otherwise see it raise
+    — and {!broken}'s promise that the tree is never patched again has to hold for a
+    hand-driven frame as much as for a scheduled one. *)
+val mark_broken : t -> unit
+
 (** Arms a coalesced high-priority idle that runs one frame. A no-op if a frame is already
     armed or the scheduler has been {!stop}ped. *)
 val request_frame : t -> unit
@@ -39,7 +48,7 @@ val request_frame_soon : t -> unit
 (** [true] while {!with_patch_guard}'s [f] is running. *)
 val in_patch : t -> bool
 
-(** Runs [f] with {!in_patch} set, restoring it even if [f] raises. *)
+(** Runs [f] with {!in_patch} set, restoring its previous value even if [f] raises. *)
 val with_patch_guard : t -> (unit -> 'a) -> 'a
 
 (** Starts a repeating timeout that runs a frame [fps] times a second. Calling it twice

@@ -54,6 +54,12 @@ let run_fixups ctx =
     ~finally:(fun () -> Queue.clear ctx.fixups)
 ;;
 
+(* The same emptying, for a pass that never reached [run_fixups] because [mount] or
+   [patch] raised part-way through it. Without this the queue keeps that pass's closures
+   -- which pin the widgets they captured, and which would run against the *next* pass's
+   tree if one ever happened. *)
+let abandon_fixups ctx = Queue.clear ctx.fixups
+
 type live =
   { mutable node : Node.t
   ; widget : Widget.t
