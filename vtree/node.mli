@@ -183,6 +183,111 @@ val search_entry
   -> unit
   -> t
 
+(** A [GtkSpinButton]: a numeric field with a pair of steppers.
+
+    [value] is {i controlled}, on the identical rule to {!entry}'s [text] (spec §6.5, and
+    the plan's Open Question 2): on every patch the widget is written only when the
+    model's value differs from the one the widget currently holds — not from the previous
+    node's, which is stale the moment the user spins it. A model that follows the user
+    causes no write; a model that clamps or refuses pulls the widget back. Pair it with
+    {!Attr.on_value_changed} or the control is inert: a spin button whose model never
+    learns what was typed resets to the model's value on the next unrelated re-render.
+
+    [min], [max] and [value] are required for that reason and because an implicit 0–100
+    range is a bug generator; every real use names its own. GTK clamps [value] into
+    [[min, max]] and rounds it to [digits], so the value read back by
+    {!Attr.on_value_changed} — and dumped by the live tree — is GTK's, not necessarily the
+    one that was written.
+
+    [step] is the increment one stepper click applies. GTK also needs a {i page}
+    increment, for Page Up/Down; it is [step *. 10.] rather than a prop of its own,
+    because [new_with_range] has to pick something and no caller has wanted to name it
+    separately. [digits] is the number of decimal places shown ([0], whole numbers, is
+    GTK's own). [numeric:true] — the default here, though GTK's own is [false] — refuses
+    non-numeric keystrokes: a spin button whose text can be arbitrary is a trap.
+    [wrap:true] makes the value roll around between the bounds. [activates_default:true]
+    makes Enter activate the window's default widget.
+
+    Not exposed: [climb_rate], [snap_to_ticks] and [update_policy] (M2 at the earliest —
+    none has a caller), and the adjustment itself, which [new_with_range] builds and every
+    prop that touches it is re-derived from the node. *)
+val spin_button
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?digits:int
+  -> ?numeric:bool
+  -> ?wrap:bool
+  -> ?step:float
+  -> ?activates_default:bool
+  -> min:float
+  -> max:float
+  -> value:float
+  -> unit
+  -> t
+
+(** A [GtkScale]: the slider.
+
+    [value] is controlled on the same rule as {!spin_button}'s, and wants an
+    {!Attr.on_value_changed} for the same reason. The consequence is worth stating
+    plainly: a drag the model declines snaps back, because the alternative — letting the
+    widget and the model diverge silently — is the bug §6.5 exists to prevent. (The
+    deliberate exception elsewhere in this library is a paned handle's position, which is
+    dragged continuously and would be immovable if re-asserted every frame.)
+
+    [step] is the arrow-key increment (the page increment is [step *. 10.], as on
+    {!spin_button}). [digits] is the number of decimals shown beside the slider, and GTK
+    rounds the value to it — [1] is GTK's own default. [draw_value:false] hides that
+    number. [has_origin:false] stops the trough being filled from the bottom/left up to
+    the slider. [inverted:true] puts the high end at the top/left.
+
+    Marks ([gtk_scale_add_mark]) are deliberately absent: they are a list-valued property
+    with no "remove one" operation — only [clear_marks] — so diffing them means clearing
+    and re-adding the whole set on any change. That is implementable and was not worth
+    M1's budget; a scale with marks is a {!native} node until it is. *)
+val scale
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?step:float
+  -> ?digits:int
+  -> ?draw_value:bool
+  -> ?has_origin:bool
+  -> ?inverted:bool
+  -> orientation:Orientation.t
+  -> min:float
+  -> max:float
+  -> value:float
+  -> unit
+  -> t
+
+(** A [GtkProgressBar]. [fraction] is [0.]–[1.]; GTK clamps anything outside.
+
+    Nothing here is controlled: a progress bar has no user input to decline, so [fraction]
+    is an ordinary prop written whenever it changes.
+
+    [show_text:true] prints [text] beside the bar — or, when [text] is absent, the
+    percentage. [ellipsize] applies to that text. [inverted:true] fills from the
+    right/bottom.
+
+    [gtk_progress_bar_pulse] is deliberately absent: pulsing is a stateful animation the
+    widget owns, advanced by repeated calls on a timer, which is not something a
+    declarative tree can describe. An indeterminate progress indicator is {!spinner}; a
+    pulsing bar is a {!native} node. *)
+val progress_bar
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?text:string
+  -> ?show_text:bool
+  -> ?inverted:bool
+  -> ?ellipsize:Ellipsize.t
+  -> fraction:float
+  -> unit
+  -> t
+
+(** A [GtkSpinner]: the indeterminate "working" indicator. [spinning:false] leaves it in
+    the tree, stopped and invisible — use [Attr.visible false] to take it out of the
+    layout. *)
+val spinner : ?key:Key.t -> ?attrs:Attr.t list -> spinning:bool -> unit -> t
+
 val box
   :  ?key:Key.t
   -> ?attrs:Attr.t list

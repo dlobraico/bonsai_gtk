@@ -99,3 +99,39 @@ let%expect_test "the entry family's constructors" =
          (children No_children))))))
     |}]
 ;;
+
+let%expect_test "the numeric family's constructors" =
+  print_s
+    [%sexp
+      (Node.box
+         ~orientation:Vertical
+         [ Node.spin_button ~min:40. ~max:280. ~value:120. ~step:1. ()
+         ; Node.scale
+             ~orientation:Horizontal
+             ~min:1.
+             ~max:32.
+             ~value:7.
+             ~draw_value:false
+             ()
+         ; Node.progress_bar ~fraction:0.25 ~text:"loading" ~show_text:true ()
+         ; Node.spinner ~spinning:true ()
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Box ((orientation Vertical)))) (attrs ())
+     (children
+      (List
+       (((kind (Spin_button ((value 120) (min 40) (max 280)))) (attrs ())
+         (children No_children))
+        ((kind
+          (Scale
+           ((orientation Horizontal) (value 7) (min 1) (max 32)
+            (draw_value false))))
+         (attrs ()) (children No_children))
+        ((kind
+          (Progress_bar ((fraction 0.25) (text (loading)) (show_text true))))
+         (attrs ()) (children No_children))
+        ((kind (Spinner ((spinning true)))) (attrs ()) (children No_children))))))
+    |}]
+;;

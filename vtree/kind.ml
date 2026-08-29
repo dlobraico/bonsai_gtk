@@ -74,6 +74,46 @@ type search_entry_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The numeric family. [value], [min] and [max] are required labelled arguments, so like
+   the entries' [text] they carry no [@sexp_drop_if]: a range widget with an implicit
+   0-100 is a bug generator. [digits] differs per class -- GTK's [GtkSpinButton] shows
+   whole numbers and its [GtkScale] one decimal -- so the two defaults differ here too. *)
+type spin_button_props =
+  { value : float
+  ; min : float
+  ; max : float
+  ; step : float [@sexp_drop_if Float.equal 1.]
+  ; digits : int [@sexp_drop_if Int.equal 0]
+  ; numeric : bool [@sexp_drop_if fun b -> b]
+  ; wrap : bool [@sexp_drop_if fun b -> not b]
+  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type scale_props =
+  { orientation : Orientation.t
+  ; value : float
+  ; min : float
+  ; max : float
+  ; step : float [@sexp_drop_if Float.equal 1.]
+  ; digits : int [@sexp_drop_if Int.equal 1]
+  ; draw_value : bool [@sexp_drop_if fun b -> b]
+  ; has_origin : bool [@sexp_drop_if fun b -> b]
+  ; inverted : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type progress_bar_props =
+  { fraction : float
+  ; text : string option [@sexp_drop_if Option.is_none]
+  ; show_text : bool [@sexp_drop_if fun b -> not b]
+  ; inverted : bool [@sexp_drop_if fun b -> not b]
+  ; ellipsize : Ellipsize.t option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
+type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
+
 type box_props =
   { orientation : Orientation.t
   ; spacing : int [@sexp_drop_if Int.equal 0]
@@ -96,6 +136,10 @@ type t =
   | Entry of entry_props
   | Password_entry of password_entry_props
   | Search_entry of search_entry_props
+  | Spin_button of spin_button_props
+  | Scale of scale_props
+  | Progress_bar of progress_bar_props
+  | Spinner of spinner_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t
@@ -110,6 +154,10 @@ let name = function
   | Entry _ -> "Entry"
   | Password_entry _ -> "PasswordEntry"
   | Search_entry _ -> "SearchEntry"
+  | Spin_button _ -> "SpinButton"
+  | Scale _ -> "Scale"
+  | Progress_bar _ -> "ProgressBar"
+  | Spinner _ -> "Spinner"
   | Box _ -> "Box"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
@@ -125,6 +173,10 @@ let same_kind a b =
   | Entry _, Entry _
   | Password_entry _, Password_entry _
   | Search_entry _, Search_entry _
+  | Spin_button _, Spin_button _
+  | Scale _, Scale _
+  | Progress_bar _, Progress_bar _
+  | Spinner _, Spinner _
   | Box _, Box _
   | Window _, Window _ -> true
   | Native a, Native b -> String.equal a.name b.name
@@ -141,6 +193,10 @@ let equal_props a b =
   | Entry a, Entry b -> equal_entry_props a b
   | Password_entry a, Password_entry b -> equal_password_entry_props a b
   | Search_entry a, Search_entry b -> equal_search_entry_props a b
+  | Spin_button a, Spin_button b -> equal_spin_button_props a b
+  | Scale a, Scale b -> equal_scale_props a b
+  | Progress_bar a, Progress_bar b -> equal_progress_bar_props a b
+  | Spinner a, Spinner b -> equal_spinner_props a b
   | Box a, Box b -> equal_box_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload

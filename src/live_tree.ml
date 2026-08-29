@@ -75,6 +75,15 @@ let layout_props (w : Widget.t) =
     ]
 ;;
 
+(* Both range widgets' value and bounds, printed unconditionally: they are what the node
+   asked for rather than GTK defaults, and a dump that omitted them could not show a
+   controlled write landing (or failing to). *)
+let range_props ~value ~lower ~upper =
+  [ Sexp.List [ Atom "value"; Atom (sprintf "%g" value) ]
+  ; Sexp.List [ Atom "range"; Atom (sprintf "%g" lower); Atom (sprintf "%g" upper) ]
+  ]
+;;
+
 (* Shared by [GtkButton] and [GtkToggleButton], which sets the same three properties
    through the same [GtkButton] setters. *)
 let button_props (b : W.Button.t) =
@@ -156,6 +165,42 @@ let rec dump (w : Widget.t) : Sexp.t =
            else [ Sexp.Atom "no-peek-icon" ]
          | _ ->
            int_prop "search-delay" (W.Search_entry.get_search_delay (cast w)) ~default:150)
+     (* [GtkSpinButton] is *not* a [GtkRange] -- it owns its own adjustment and its own
+        getters -- so these two arms share their shape and none of their calls. *)
+     | "GtkScale" ->
+       let s : W.Scale.t = cast w in
+       let r : W.Range.t = cast w in
+       let a = W.Range.get_adjustment r in
+       range_props
+         ~value:(W.Range.get_value r)
+         ~lower:(W.Adjustment.get_lower a)
+         ~upper:(W.Adjustment.get_upper a)
+       @ int_prop "digits" (W.Scale.get_digits s) ~default:1
+       @ (if W.Scale.get_draw_value s then [] else [ Sexp.Atom "no-value" ])
+       @ (if W.Scale.get_has_origin s then [] else [ Sexp.Atom "no-origin" ])
+       @ flag_prop "inverted" (W.Range.get_inverted r)
+     | "GtkSpinButton" ->
+       let s : W.Spin_button.t = cast w in
+       let lower, upper = W.Spin_button.get_range s in
+       range_props ~value:(W.Spin_button.get_value s) ~lower ~upper
+       @ int_prop "digits" (W.Spin_button.get_digits s) ~default:0
+       @ flag_prop "numeric" (W.Spin_button.get_numeric s)
+       @ flag_prop "wrap" (W.Spin_button.get_wrap s)
+     | "GtkProgressBar" ->
+       let b : W.Progress_bar.t = cast w in
+       [ Sexp.List
+           [ Atom "fraction"; Atom (sprintf "%g" (W.Progress_bar.get_fraction b)) ]
+       ]
+       @ (match W.Progress_bar.get_text b with
+          | None -> []
+          | Some t -> [ Sexp.List [ Atom "text"; Atom t ] ])
+       @ flag_prop "show-text" (W.Progress_bar.get_show_text b)
+       @ flag_prop "inverted" (W.Progress_bar.get_inverted b)
+       @
+         (match W.Progress_bar.get_ellipsize b with
+         | `NONE -> []
+         | e -> [ Sexp.List [ Atom "ellipsize"; Atom (ellipsize_name e) ] ])
+     | "GtkSpinner" -> flag_prop "spinning" (W.Spinner.get_spinning (cast w))
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

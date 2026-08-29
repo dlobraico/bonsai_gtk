@@ -96,6 +96,10 @@ and destroy ctx (live : live) =
   | Entry _
   | Password_entry _
   | Search_entry _
+  | Spin_button _
+  | Scale _
+  | Progress_bar _
+  | Spinner _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.

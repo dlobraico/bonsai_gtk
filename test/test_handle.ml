@@ -244,7 +244,7 @@ let%expect_test "Activate fires on_activate, which sees the text the model settl
     |}]
 ;;
 
-let%expect_test "Set_text and Activate need the matching handler" =
+let%expect_test "Set_text, Activate and Set_value need the matching handler" =
   let handle = Bonsai_gtk_test.create shouty in
   Bonsai_gtk_test.Handle.recompute_view handle;
   Expect_test_helpers_core.require_does_raise (fun () ->
@@ -252,5 +252,49 @@ let%expect_test "Set_text and Activate need the matching handler" =
   [%expect {| (Failure "Bonsai_gtk_test: node echo has no on_changed handler") |}];
   Expect_test_helpers_core.require_does_raise (fun () ->
     Bonsai_gtk_test.Handle.do_actions handle [ Activate "echo" ]);
-  [%expect {| (Failure "Bonsai_gtk_test: node echo has no on_activate handler") |}]
+  [%expect {| (Failure "Bonsai_gtk_test: node echo has no on_activate handler") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_value ("echo", 1.) ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node echo has no on_value_changed handler") |}]
+;;
+
+let clamped (graph @ local) =
+  let v, set_v = Bonsai.state 5. graph in
+  let%arr v and set_v in
+  Node.window
+    ~title:"Clamped"
+    (Node.scale
+       ~attrs:
+         [ Attr.test_id "s"; Attr.on_value_changed (fun x -> set_v (Float.min x 8.)) ]
+       ~orientation:Horizontal
+       ~min:0.
+       ~max:10.
+       ~value:v
+       ())
+;;
+
+let%expect_test "Set_value goes through the model, which may refuse it" =
+  let handle = Bonsai_gtk_test.create clamped in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Clamped))))) (attrs ())
+     (children
+      (Single
+       (((kind (Scale ((orientation Horizontal) (value 5) (min 0) (max 10))))
+         (attrs ((Test_id s) (On_value_changed <handler>)))
+         (children No_children))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_value ("s", 9.5) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Clamped))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Scale ((orientation Horizontal) (value 5) (min 0) (max 10))))
+    +|   (((kind (Scale ((orientation Horizontal) (value 8) (min 0) (max 10))))
+           (attrs ((Test_id s) (On_value_changed <handler>)))
+           (children No_children))))))
+    |}]
 ;;

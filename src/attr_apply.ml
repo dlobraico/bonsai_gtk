@@ -106,6 +106,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_changed _
   | On_activate _
   | On_search_changed _
+  | On_value_changed _
   | Many _ -> ()
 ;;
 
@@ -130,7 +131,13 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Can_focus -> Widget.set_can_focus w d.can_focus
   | Widget_name -> Widget.set_name w d.widget_name
   | Cursor_name -> Widget.set_cursor w d.cursor
-  | Test_id | On_clicked | On_toggled | On_changed | On_activate | On_search_changed -> ()
+  | Test_id
+  | On_clicked
+  | On_toggled
+  | On_changed
+  | On_activate
+  | On_search_changed
+  | On_value_changed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

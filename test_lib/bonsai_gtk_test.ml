@@ -7,6 +7,7 @@ module Action = struct
     | Toggle of string
     | Set_text of string * string
     | Activate of string
+    | Set_value of string * float
   [@@deriving sexp_of]
 end
 
@@ -57,6 +58,16 @@ module Result_spec = struct
       (match Attrs.find n.attrs On_activate with
        | Some (On_activate h) -> h ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_activate handler" id ())
+    (* Like [Set_text], and unlike [Toggle]: the node's own [value] is never consulted,
+       because "the user moved it to here" is what a drag or a spin produces whatever the
+       widget was showing. Headless, there is also no adjustment to clamp or round it, so
+       a value outside the node's [min]/[max] reaches the handler as written -- which is
+       the point, since clamping is the model's job to demonstrate. *)
+    | Set_value (id, value) ->
+      let n = node_exn node id in
+      (match Attrs.find n.attrs On_value_changed with
+       | Some (On_value_changed h) -> h value
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_value_changed handler" id ())
   ;;
 end
 

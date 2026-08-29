@@ -18,6 +18,14 @@ module Action : sig
         a controlled text widget guarantees. *)
     | Activate of string
     (** test_id of a node carrying [Attr.on_activate] — the user pressed Enter in it. *)
+    | Set_value of string * float
+    (** test_id of a [scale] or [spin_button] carrying [Attr.on_value_changed], and the
+        value the user moved it to. Fires that handler with exactly that float — the
+        node's own [value] prop is never consulted, for the same reason [Set_text] does
+        not consult [text]. Nor are [min]/[max]: there is no GTK adjustment headless, so
+        an out-of-range value reaches the handler unclamped, which is what lets a test
+        show the {i model} clamping it. What the model does then shows up as the next
+        render's [value] prop, which is the whole of what a controlled value guarantees. *)
   [@@deriving sexp_of]
 end
 

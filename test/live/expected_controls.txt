@@ -109,3 +109,40 @@ echo is a no-op: ab (the patch wrote: false)
 changed events reaching Bonsai from patches: 0
 (GtkWindow (title (e)) (css (background)) hidden
  (children (GtkEntry (text ab) (children (GtkText (cursor text))))))
+(GtkWindow (title (n)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkScale (value 3) (range 0 10) (css (horizontal))
+     (children (GtkLabel (text 3.0) (css (top)) (width-request 30))
+      (GtkGizmo (children (GtkGizmo (css (top))) (GtkGizmo)))))
+    (GtkSpinButton (value 3) (range 0 100) numeric (css (horizontal))
+     (children (GtkText hexpand vexpand (cursor text))
+      (GtkButton (label ()) (icon value-decrease-symbolic)
+       (css (image-button down)) (children (GtkImage (valign center))))
+      (GtkButton (label ()) (icon value-increase-symbolic)
+       (css (image-button up)) (children (GtkImage (valign center))))))
+    (GtkProgressBar (fraction 0.3) (text p) show-text (css (horizontal))
+     (children (GtkLabel (text p))
+      (GtkGizmo (valign center) hexpand (children (GtkGizmo (css (left)))))))
+    (GtkSpinner spinning)))))
+value-changed reaching Bonsai outside a patch: 2
+model wins: scale 3, spin 3
+value-changed reaching Bonsai from patches: 0
+(GtkWindow (title (n)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkScale (value 6) (range 0 10) (css (horizontal))
+     (children (GtkLabel (text 6.0) (css (top)) (width-request 30))
+      (GtkGizmo (children (GtkGizmo (css (top))) (GtkGizmo)))))
+    (GtkSpinButton (value 6) (range 0 100) numeric (css (horizontal))
+     (children (GtkText hexpand vexpand (cursor text))
+      (GtkButton (label ()) (icon value-decrease-symbolic)
+       (css (image-button down)) (children (GtkImage (valign center))))
+      (GtkButton (label ()) (icon value-increase-symbolic)
+       (css (image-button up)) (children (GtkImage (valign center))))))
+    (GtkProgressBar (fraction 0.6) (text p) show-text (css (horizontal))
+     (children (GtkLabel (text p))
+      (GtkGizmo (valign center) hexpand (children (GtkGizmo (css (left)))))))
+    (GtkSpinner spinning)))))

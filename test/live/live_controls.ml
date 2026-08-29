@@ -251,5 +251,52 @@ let () =
   let live = observe "echo is a no-op" live (entry_view "ab") in
   printf "changed events reaching Bonsai from patches: %d\n" !reached_bonsai;
   print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* The controlled-value rule, the numeric twin of the entry case above: drag the scale
+     and spin the spin button behind the model's back, re-render the old value, and the
+     model wins. Both classes carry their own [value-changed] -- the scale's through
+     [GtkRange], the spin button's its own -- so both are fired outside a patch first, to
+     show each spec is connected at all. *)
+  let numeric_attrs = Attr.on_value_changed (fun _ -> Ui_effect.Ignore) in
+  let scale_view value =
+    Node.window
+      ~title:"n"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.scale
+             ~attrs:[ numeric_attrs ]
+             ~orientation:Horizontal
+             ~min:0.
+             ~max:10.
+             ~value
+             ()
+         ; Node.spin_button ~attrs:[ numeric_attrs ] ~min:0. ~max:100. ~value ()
+         ; Node.progress_bar ~fraction:(value /. 10.) ~text:"p" ~show_text:true ()
+         ; Node.spinner ~spinning:true ()
+         ])
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (scale_view 3.) in
+  print_s (Live_tree.dump live.widget);
+  let before = !scheduled in
+  Gobject.Signal.emit_by_name (nth_child live 0).widget ~name:"value-changed";
+  Gobject.Signal.emit_by_name (nth_child live 1).widget ~name:"value-changed";
+  printf "value-changed reaching Bonsai outside a patch: %d\n" (!scheduled - before);
+  W.Range.set_value (cast (nth_child live 0).widget) 7.;
+  W.Spin_button.set_value (cast (nth_child live 1).widget) 42.;
+  let before = !scheduled in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"root" ~is_root:true live (scale_view 3.))
+  in
+  printf
+    "model wins: scale %g, spin %g\n"
+    (W.Range.get_value (cast (nth_child live 0).widget))
+    (W.Spin_button.get_value (cast (nth_child live 1).widget));
+  printf "value-changed reaching Bonsai from patches: %d\n" (!scheduled - before);
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"root" ~is_root:true live (scale_view 6.))
+  in
+  print_s (Live_tree.dump live.widget);
   P.destroy ctx live
 ;;

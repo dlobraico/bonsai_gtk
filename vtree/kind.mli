@@ -72,6 +72,46 @@ type search_entry_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The numeric family. [value], [min] and [max] are required labelled arguments, so like
+   the entries' [text] they carry no [@sexp_drop_if]: a range widget with an implicit
+   0-100 is a bug generator. [digits] differs per class -- GTK's [GtkSpinButton] shows
+   whole numbers and its [GtkScale] one decimal -- so the two defaults differ here too. *)
+type spin_button_props =
+  { value : float
+  ; min : float
+  ; max : float
+  ; step : float [@sexp_drop_if Float.equal 1.]
+  ; digits : int [@sexp_drop_if Int.equal 0]
+  ; numeric : bool [@sexp_drop_if fun b -> b]
+  ; wrap : bool [@sexp_drop_if fun b -> not b]
+  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type scale_props =
+  { orientation : Orientation.t
+  ; value : float
+  ; min : float
+  ; max : float
+  ; step : float [@sexp_drop_if Float.equal 1.]
+  ; digits : int [@sexp_drop_if Int.equal 1]
+  ; draw_value : bool [@sexp_drop_if fun b -> b]
+  ; has_origin : bool [@sexp_drop_if fun b -> b]
+  ; inverted : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type progress_bar_props =
+  { fraction : float
+  ; text : string option [@sexp_drop_if Option.is_none]
+  ; show_text : bool [@sexp_drop_if fun b -> not b]
+  ; inverted : bool [@sexp_drop_if fun b -> not b]
+  ; ellipsize : Ellipsize.t option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
+type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
+
 type box_props =
   { orientation : Orientation.t
   ; spacing : int [@sexp_drop_if Int.equal 0]
@@ -94,6 +134,10 @@ type t =
   | Entry of entry_props
   | Password_entry of password_entry_props
   | Search_entry of search_entry_props
+  | Spin_button of spin_button_props
+  | Scale of scale_props
+  | Progress_bar of progress_bar_props
+  | Spinner of spinner_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t

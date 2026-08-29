@@ -26,6 +26,7 @@ module Name : sig
     | On_changed
     | On_activate
     | On_search_changed
+    | On_value_changed
   [@@deriving sexp_of, compare, equal]
 
   (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
@@ -61,6 +62,7 @@ type t =
   | On_changed of string Handler.t
   | On_activate of unit Handler.t
   | On_search_changed of string Handler.t
+  | On_value_changed of float Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -154,6 +156,20 @@ val on_activate : unit Ui_effect.t -> t
     store; use {!on_changed} when the model owns the text. A search entry that carries
     both fires both — immediately, then again once typing settles. *)
 val on_search_changed : (string -> unit Ui_effect.t) -> t
+
+(** Fires when a [scale]'s or [spin_button]'s value changes, carrying the value the widget
+    now holds — read back off the widget, so it is GTK's own clamped and rounded number
+    rather than whatever a drag notionally aimed at.
+
+    As with the toggles, only user-driven changes reach the handler: the value a patch
+    writes is emitted inside the patcher's reentrancy guard and dropped there, because the
+    model is already the source of it.
+
+    Both widgets' values are {i controlled} (spec §6.5), so a scale or spin button that
+    carries no [on_value_changed] — or whose model ignores it — snaps back to the model's
+    value on the next render. Attaching it to a widget that emits no such signal raises
+    [Invalid_argument] when the node is mounted or patched. *)
+val on_value_changed : (float -> unit Ui_effect.t) -> t
 
 val many : t list -> t
 val empty : t

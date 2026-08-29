@@ -110,6 +110,70 @@ let search_entry ?key ?attrs ?placeholder ?search_delay ~text () =
   make ?key ?attrs (Search_entry { text; placeholder; search_delay }) No_children
 ;;
 
+(* [min], [max] and [value] are required on both range widgets for the reason [text] is
+   required on the entries: a widget whose value nothing feeds back is uncontrolled, and
+   an implicit 0-100 range is a bug generator. *)
+let spin_button
+  ?key
+  ?attrs
+  ?(digits = 0)
+  ?(numeric = true)
+  ?(wrap = false)
+  ?(step = 1.)
+  ?(activates_default = false)
+  ~min
+  ~max
+  ~value
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Spin_button { value; min; max; step; digits; numeric; wrap; activates_default })
+    No_children
+;;
+
+let scale
+  ?key
+  ?attrs
+  ?(step = 1.)
+  ?(digits = 1)
+  ?(draw_value = true)
+  ?(has_origin = true)
+  ?(inverted = false)
+  ~orientation
+  ~min
+  ~max
+  ~value
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Scale
+       { orientation; value; min; max; step; digits; draw_value; has_origin; inverted })
+    No_children
+;;
+
+let progress_bar
+  ?key
+  ?attrs
+  ?text
+  ?(show_text = false)
+  ?(inverted = false)
+  ?ellipsize
+  ~fraction
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Progress_bar { fraction; text; show_text; inverted; ellipsize })
+    No_children
+;;
+
+let spinner ?key ?attrs ~spinning () = make ?key ?attrs (Spinner { spinning }) No_children
+
 let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;
