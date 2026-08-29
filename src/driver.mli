@@ -41,8 +41,16 @@ val schedule_event : t -> unit Ui_effect.t -> unit
 val root_widget : t -> Widget.t option
 
 (** Starts running a frame [fps] times a second, which is what services [Bonsai.Clock] and
-    any after-display handlers. A non-positive [fps] leaves the driver purely reactive:
-    frames then happen only when an effect is scheduled. *)
+    any after-display handlers.
+
+    A non-positive [fps] installs no tick. Frames then happen when an effect is scheduled,
+    plus a ~16 ms cadence for as long as the computation has an after-display handler
+    registered — enough to keep those handlers running, and nothing at all at rest for a
+    computation that has none.
+
+    That cadence is not a substitute for the tick. The wall clock only advances inside a
+    frame, so a computation built on [Bonsai.Clock] makes essentially no progress without
+    a tick: it renders when something else causes a frame and otherwise sits still. *)
 val start_tick : t -> fps:float -> unit
 
 (** Stops the scheduler and tears the widget tree down. The Bonsai computation itself is

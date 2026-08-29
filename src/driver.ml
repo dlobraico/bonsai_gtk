@@ -53,13 +53,13 @@ let frame t =
   Bonsai_driver.trigger_lifecycles t.bonsai;
   (* [trigger_lifecycles] *schedules* the after-display effects rather than applying them,
      so another frame is needed before their results are on screen. Under a tick that
-     frame is already coming; without one we have to ask for it. The distinction matters:
-     [has_after_display_events] is true whenever the computation contains an after-display
-     handler at all (a single [Edge.on_change] is enough), so arming an idle
-     unconditionally would spin the main loop at full speed for the life of the app. *)
+     frame is already coming. Without one we ask for it — but on the rate-limited path,
+     never the idle: [has_after_display_events] is true whenever the computation contains
+     an after-display handler at all (one [Clock.every] is enough), so every frame would
+     request its successor and an idle would run them back to back at full CPU. *)
   if Bonsai_driver.has_after_display_events t.bonsai
      && not (Scheduler.ticking t.scheduler)
-  then Scheduler.request_frame t.scheduler
+  then Scheduler.request_frame_soon t.scheduler
 ;;
 
 let create ?time_source ?(optimize = true) ~on_window_created app =

@@ -1,5 +1,6 @@
 open! Core
 module Bonsai = Bonsai
+module Widget = Gtk_import.Widget
 module Node = Bonsai_gtk_vtree.Node
 module Attr = Bonsai_gtk_vtree.Attr
 module Key = Bonsai_gtk_vtree.Key
@@ -15,7 +16,7 @@ module Native = struct
   let node = Native_gtk.node
 end
 
-module Effect = Bonsai_gtk__Effect
+module Effect = Gtk_effect
 
 let start = Loop.start
 
@@ -26,8 +27,8 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private = struct
   module Attr_apply = Attr_apply
-  module Live_tree = Live_tree
   module Gtk_import = Gtk_import
+  module Live_tree = Live_tree
   module Native_gtk = Native_gtk
   module Patcher = Patcher
   module Registry = Registry

@@ -23,6 +23,17 @@ val create : run_frame:(unit -> unit) -> t
     armed or the scheduler has been {!stop}ped. *)
 val request_frame : t -> unit
 
+(** Like {!request_frame}, but on a ~16 ms one-shot timeout rather than an idle, and
+    likewise coalesced.
+
+    This is for a frame that wants the *next* frame rather than one right now — the
+    after-display case, where every frame asks for its successor. An idle there would run
+    back-to-back frames as fast as the CPU allows, since a GLib idle, unlike a browser's
+    animation frame, has no rate cap; the timeout gives the same 60Hz cadence a tick
+    would. A no-op when an idle is already armed: that frame arrives sooner and
+    re-requests if it still needs to. *)
+val request_frame_soon : t -> unit
+
 (** [true] while {!with_patch_guard}'s [f] is running. *)
 val in_patch : t -> bool
 

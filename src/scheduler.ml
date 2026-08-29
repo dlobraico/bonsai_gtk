@@ -1,16 +1,27 @@
 open! Core
 open Gtk_import
 
+(* The cadence {!request_frame_soon} runs at, in milliseconds: one 60Hz frame, the same
+   rate the default tick would have provided. *)
+let soon_ms = 16
+
 type t =
   { run_frame : unit -> unit
   ; mutable idle_armed : bool
+  ; mutable soon : Glib.Timeout.id option
   ; mutable in_patch : bool
   ; mutable tick : Glib.Timeout.id option
   ; mutable stopped : bool
   }
 
 let create ~run_frame =
-  { run_frame; idle_armed = false; in_patch = false; tick = None; stopped = false }
+  { run_frame
+  ; idle_armed = false
+  ; soon = None
+  ; in_patch = false
+  ; tick = None
+  ; stopped = false
+  }
 ;;
 
 let in_patch t = t.in_patch
@@ -43,6 +54,24 @@ let request_frame t =
        : Glib.Idle.id))
 ;;
 
+let request_frame_soon t =
+  (* An idle already armed will run a frame sooner than this timeout would, and that frame
+     re-requests if it still needs to — so there is nothing to add here. *)
+  if (not t.stopped) && (not t.idle_armed) && Option.is_none t.soon
+  then
+    t.soon
+    <- Some
+         (Glib.Timeout.add
+            ~ms:soon_ms
+            ~callback:(fun () ->
+              (* Cleared first, for the same reason [request_frame] clears its flag first:
+                 the frame this runs may well ask for the next one. *)
+              t.soon <- None;
+              if not t.stopped then guarded_frame t;
+              false)
+            ())
+;;
+
 let start_tick t ~fps =
   Option.iter t.tick ~f:Glib.Timeout.remove;
   t.tick <- None;
@@ -67,5 +96,7 @@ let start_tick t ~fps =
 let stop t =
   t.stopped <- true;
   Option.iter t.tick ~f:Glib.Timeout.remove;
-  t.tick <- None
+  t.tick <- None;
+  Option.iter t.soon ~f:Glib.Timeout.remove;
+  t.soon <- None
 ;;
