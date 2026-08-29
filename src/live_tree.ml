@@ -15,8 +15,25 @@ let align_name : Gtk_enums.align -> string = function
   | `BASELINE_CENTER -> "baseline-center"
 ;;
 
+let ellipsize_name : Ocgtk_pango.Pango.ellipsizemode -> string = function
+  | `NONE -> "none"
+  | `START -> "start"
+  | `MIDDLE -> "middle"
+  | `END -> "end"
+;;
+
 let int_prop name value ~default =
   if value = default then [] else [ Sexp.List [ Atom name; Atom (Int.to_string value) ] ]
+;;
+
+let float_prop name value ~default =
+  if Float.equal value default
+  then []
+  else [ Sexp.List [ Atom name; Atom (sprintf "%g" value) ] ]
+;;
+
+let string_prop name value ~default =
+  if String.equal value default then [] else [ Sexp.List [ Atom name; Atom value ] ]
 ;;
 
 let flag_prop name value = if value then [ Sexp.Atom name ] else []
@@ -43,14 +60,41 @@ let layout_props (w : Widget.t) =
        | Some s -> [ Sexp.List [ Atom "tooltip"; Atom s ] ])
     ; int_prop "width-request" width ~default:(-1)
     ; int_prop "height-request" height ~default:(-1)
+    ; float_prop "opacity" (Widget.get_opacity w) ~default:1.
+      (* GTK's [get_name] falls back to the widget's class name when no name was set, so
+         that — not the empty string — is the "unnamed" value to suppress. *)
+    ; string_prop "name" (Widget.get_name w) ~default:(type_name w)
+    ; (match Widget.get_cursor w with
+       | None -> []
+       | Some c ->
+         [ Sexp.List
+             [ Atom "cursor"
+             ; Atom (Option.value (Ocgtk_gdk.Gdk.Wrappers.Cursor.get_name c) ~default:"?")
+             ]
+         ])
     ]
 ;;
 
+(* [focusable] and [can_focus] are deliberately absent: their defaults are per widget
+   class, so there is no constant to compare against and an unconditional print would
+   churn every expected file. The live attr test covers them instead, by asserting that a
+   widget which had them set and then unset dumps identically to one that never did. *)
 let rec dump (w : Widget.t) : Sexp.t =
   let ty = type_name w in
   let props =
     (match ty with
-     | "GtkLabel" -> [ [%sexp `text (W.Label.get_text (cast w) : string)] ]
+     | "GtkLabel" ->
+       let l = cast w in
+       [ [%sexp `text (W.Label.get_text l : string)] ]
+       @ flag_prop "wrap" (W.Label.get_wrap l)
+       @ float_prop "xalign" (W.Label.get_xalign l) ~default:0.5
+       @ (match W.Label.get_ellipsize l with
+          | `NONE -> []
+          | e -> [ Sexp.List [ Atom "ellipsize"; Atom (ellipsize_name e) ] ])
+       @ int_prop "max-width-chars" (W.Label.get_max_width_chars l) ~default:(-1)
+       @ int_prop "width-chars" (W.Label.get_width_chars l) ~default:(-1)
+       @ flag_prop "selectable" (W.Label.get_selectable l)
+       @ flag_prop "markup" (W.Label.get_use_markup l)
      | "GtkButton" -> [ [%sexp `label (W.Button.get_label (cast w) : string option)] ]
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]

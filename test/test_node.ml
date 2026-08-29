@@ -19,16 +19,20 @@ let%expect_test "constructors and sexp" =
   print_s [%sexp (view : Node.t)];
   [%expect
     {|
-    ((kind (Window (title (Counter)) (default_size ((200 100))))) (attrs ())
+    ((kind (Window ((title (Counter)) (default_size ((200 100)))))) (attrs ())
      (children
       (Single
-       (((kind (Box (orientation Vertical) (spacing 6) (homogeneous false)))
+       (((kind (Box ((orientation Vertical) (spacing 6) (homogeneous false))))
          (attrs ())
          (children
           (List
-           (((kind (Label (text "Count: 0"))) (key count) (attrs ())
-             (children No_children))
-            ((kind (Button (label (+))))
+           (((kind
+              (Label
+               ((text "Count: 0") (wrap false) (xalign 0.5) (ellipsize ())
+                (max_width_chars -1) (width_chars -1) (selectable false)
+                (use_markup false))))
+             (key count) (attrs ()) (children No_children))
+            ((kind (Button ((label (+)))))
              (attrs ((Test_id inc) (On_clicked <handler>)))
              (children No_children))))))))))
     |}]
@@ -43,16 +47,17 @@ let%expect_test "find_by_test_id" =
   print_s
     [%sexp
       (Option.map (Node.find_by_test_id view "b") ~f:(fun n -> n.kind) : Kind.t option)];
-  [%expect {| ((Button (label (B)))) |}];
+  [%expect {| ((Button ((label (B))))) |}];
   print_s [%sexp (Node.find_by_test_id view "zzz" : Node.t option)];
   [%expect {| () |}]
 ;;
 
 let%expect_test "same_kind ignores props; native compares by name" =
   let open Kind in
-  print_s [%sexp (same_kind (Label { text = "a" }) (Label { text = "b" }) : bool)];
+  let label text = (Node.label text).Node.kind in
+  print_s [%sexp (same_kind (label "a") (label "b") : bool)];
   [%expect {| true |}];
-  print_s [%sexp (same_kind (Label { text = "a" }) (Button { label = None }) : bool)];
+  print_s [%sexp (same_kind (label "a") (Button { label = None }) : bool)];
   [%expect {| false |}];
   let n name = Native { Native.name; payload = Native.Unit } in
   print_s

@@ -16,6 +16,11 @@ module Name = struct
       | Tooltip
       | Width_request
       | Height_request
+      | Opacity
+      | Focusable
+      | Can_focus
+      | Widget_name
+      | Cursor_name
       | Test_id
       | On_clicked
     [@@deriving sexp_of, compare, equal]
@@ -40,6 +45,11 @@ type t =
   | Tooltip of string
   | Width_request of int
   | Height_request of int
+  | Opacity of float
+  | Focusable of bool
+  | Can_focus of bool
+  | Widget_name of string
+  | Cursor_name of string
   | Test_id of string
   | On_clicked of unit Handler.t
   | Many of t list
@@ -60,14 +70,22 @@ let name = function
   | Tooltip _ -> Some Tooltip
   | Width_request _ -> Some Width_request
   | Height_request _ -> Some Height_request
+  | Opacity _ -> Some Opacity
+  | Focusable _ -> Some Focusable
+  | Can_focus _ -> Some Can_focus
+  | Widget_name _ -> Some Widget_name
+  | Cursor_name _ -> Some Cursor_name
   | Test_id _ -> Some Test_id
   | On_clicked _ -> Some On_clicked
 ;;
 
 let rec equal a b =
   match a, b with
-  | Css_class a, Css_class b | Tooltip a, Tooltip b | Test_id a, Test_id b ->
-    String.equal a b
+  | Css_class a, Css_class b
+  | Tooltip a, Tooltip b
+  | Test_id a, Test_id b
+  | Widget_name a, Widget_name b
+  | Cursor_name a, Cursor_name b -> String.equal a b
   | Margin_start a, Margin_start b
   | Margin_end a, Margin_end b
   | Margin_top a, Margin_top b
@@ -78,7 +96,10 @@ let rec equal a b =
   | Hexpand a, Hexpand b
   | Vexpand a, Vexpand b
   | Sensitive a, Sensitive b
-  | Visible a, Visible b -> Bool.equal a b
+  | Visible a, Visible b
+  | Focusable a, Focusable b
+  | Can_focus a, Can_focus b -> Bool.equal a b
+  | Opacity a, Opacity b -> Float.equal a b
   | On_clicked a, On_clicked b -> Handler.equal a b
   | Many a, Many b -> List.equal equal a b
   | _ -> false
@@ -99,6 +120,11 @@ let visible b = Visible b
 let tooltip s = Tooltip s
 let width_request n = Width_request n
 let height_request n = Height_request n
+let opacity f = Opacity f
+let focusable b = Focusable b
+let can_focus b = Can_focus b
+let widget_name s = Widget_name s
+let cursor_name s = Cursor_name s
 let test_id s = Test_id s
 let on_clicked eff = On_clicked (fun () -> eff)
 let many l = Many l

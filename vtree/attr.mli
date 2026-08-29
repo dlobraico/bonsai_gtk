@@ -15,6 +15,11 @@ module Name : sig
     | Tooltip
     | Width_request
     | Height_request
+    | Opacity
+    | Focusable
+    | Can_focus
+    | Widget_name
+    | Cursor_name
     | Test_id
     | On_clicked
   [@@deriving sexp_of, compare, equal]
@@ -37,6 +42,11 @@ type t =
   | Tooltip of string
   | Width_request of int
   | Height_request of int
+  | Opacity of float
+  | Focusable of bool
+  | Can_focus of bool
+  | Widget_name of string
+  | Cursor_name of string
   | Test_id of string
   | On_clicked of unit Handler.t
   | Many of t list
@@ -66,6 +76,28 @@ val visible : bool -> t
 val tooltip : string -> t
 val width_request : int -> t
 val height_request : int -> t
+
+(** [0.] is fully transparent, [1.] fully opaque. GTK still lays the widget out and still
+    routes input to it — use [visible false] to take it out of the layout. *)
+val opacity : float -> t
+
+(** Whether the widget takes keyboard focus itself. GTK's defaults differ per widget class
+    (a [GtkButton] is focusable, a [GtkLabel] is not), so unsetting this restores that
+    widget's own class default rather than a constant. *)
+val focusable : bool -> t
+
+(** Whether focus may travel {i into} this widget or its children. As with {!focusable},
+    the default is per widget class and unsetting restores that class's own. *)
+val can_focus : bool -> t
+
+(** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]
+    because {!name} already means "which attribute is this". *)
+val widget_name : string -> t
+
+(** A CSS cursor name — ["pointer"], ["text"], ["not-allowed"], ["default"]. An unknown
+    name is GTK's problem, not ours: it logs and falls back. *)
+val cursor_name : string -> t
+
 val test_id : string -> t
 val on_clicked : unit Ui_effect.t -> t
 val many : t list -> t

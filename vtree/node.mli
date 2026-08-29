@@ -8,7 +8,27 @@ type t =
   }
 [@@deriving sexp_of]
 
-val label : ?key:Key.t -> ?attrs:Attr.t list -> string -> t
+(** A [GtkLabel]. Every optional property defaults to GTK's own default, so a label built
+    from text alone is a plain [GtkLabel].
+
+    [xalign] is horizontal alignment of the text {i within} the label's allocation ([0.]
+    left, [0.5] centred, [1.] right) — distinct from [Attr.halign], which places the label
+    within its parent. [ellipsize] absent means "do not ellipsize". [max_width_chars] and
+    [width_chars] are [-1] for "no request". [use_markup] parses the text as Pango markup;
+    malformed markup is GTK's problem — it logs and shows the raw string. *)
+val label
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?wrap:bool
+  -> ?xalign:float
+  -> ?ellipsize:Ellipsize.t
+  -> ?max_width_chars:int
+  -> ?width_chars:int
+  -> ?selectable:bool
+  -> ?use_markup:bool
+  -> string
+  -> t
+
 val button : ?key:Key.t -> ?attrs:Attr.t list -> ?label:string -> unit -> t
 
 val box

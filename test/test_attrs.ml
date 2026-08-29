@@ -51,3 +51,29 @@ let%expect_test "handlers compare physically" =
       (Attrs.diff ~old ~new_:(Attrs.of_list [ Attr.on_clicked noop ]) : Attrs.op list)];
   [%expect {| ((Set (On_clicked <handler>))) |}]
 ;;
+
+let%expect_test "M1 widget-wide attrs round-trip through of_list and diff" =
+  let attrs =
+    Attrs.of_list
+      [ Attr.opacity 0.5
+      ; Attr.focusable true
+      ; Attr.can_focus false
+      ; Attr.widget_name "sidebar"
+      ; Attr.cursor_name "pointer"
+      ]
+  in
+  print_s [%sexp (attrs : Attrs.t)];
+  [%expect
+    {|
+    ((Opacity 0.5) (Focusable true) (Can_focus false) (Widget_name sidebar)
+     (Cursor_name pointer))
+    |}];
+  print_s
+    [%sexp
+      (Attrs.diff ~old:attrs ~new_:(Attrs.of_list [ Attr.opacity 1.0 ]) : Attrs.op list)];
+  [%expect
+    {|
+    ((Set (Opacity 1)) (Unset Focusable) (Unset Can_focus) (Unset Widget_name)
+     (Unset Cursor_name))
+    |}]
+;;

@@ -1,6 +1,7 @@
 module Key = Key
 module Orientation = Orientation
 module Align = Align
+module Ellipsize = Ellipsize
 module Handler = Handler
 module Attr = Attr
 module Attrs = Attrs

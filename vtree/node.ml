@@ -12,7 +12,36 @@ let make ?key ?(attrs = []) kind children =
   { kind; key; attrs = Attrs.of_list attrs; children }
 ;;
 
-let label ?key ?attrs text = make ?key ?attrs (Label { text }) No_children
+(* Every default here is GTK's own, so [Node.label "x"] describes exactly the widget a
+   bare [GtkLabel] already is. *)
+let label
+  ?key
+  ?attrs
+  ?(wrap = false)
+  ?(xalign = 0.5)
+  ?ellipsize
+  ?(max_width_chars = -1)
+  ?(width_chars = -1)
+  ?(selectable = false)
+  ?(use_markup = false)
+  text
+  =
+  make
+    ?key
+    ?attrs
+    (Label
+       { text
+       ; wrap
+       ; xalign
+       ; ellipsize
+       ; max_width_chars
+       ; width_chars
+       ; selectable
+       ; use_markup
+       })
+    No_children
+;;
+
 let button ?key ?attrs ?label () = make ?key ?attrs (Button { label }) No_children
 
 let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =

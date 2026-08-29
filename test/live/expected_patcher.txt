@@ -44,7 +44,23 @@ window created
  (children
   (GtkLabel (text styled) (margin-start 1) (margin-end 2) (margin-top 3)
    (margin-bottom 4) (halign start) (valign center) hexpand vexpand
-   (tooltip hi) (width-request 20) (height-request 30) hidden insensitive)))
+   (tooltip hi) (width-request 20) (height-request 30) (opacity 0.501961)
+   (name styled-label) (cursor pointer) hidden insensitive)))
 (GtkWindow (title (attrs)) (css (background)) hidden
  (children (GtkLabel (text styled))))
+focus restored: true true
+window created
+(GtkWindow (title (vis)) (css (background))
+ (children (GtkLabel (text l) hidden)))
+(GtkWindow (title (vis)) (css (background)) hidden
+ (children (GtkLabel (text l))))
+window created
+(GtkWindow (title (label)) (css (background)) hidden
+ (children
+  (GtkLabel (text text) wrap (xalign 0) (ellipsize middle)
+   (max-width-chars 14) (width-chars 6) selectable (cursor text))))
+(GtkWindow (title (label)) (css (background)) hidden
+ (children (GtkLabel (text bold) markup)))
+(GtkWindow (title (label)) (css (background)) hidden
+ (children (GtkLabel (text text))))
 nested window rejected: root/0/0: a Node.window may only be the root node, not a child of another node

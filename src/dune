@@ -12,6 +12,7 @@
   ocgtk.gtk
   ocgtk.gio
   ocgtk.gdk
+  ocgtk.pango
   ocgtk.common)
  (flags
   (:standard -w +a-4-40-41-42-44-45-66-70 -open Core))

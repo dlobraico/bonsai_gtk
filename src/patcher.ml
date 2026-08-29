@@ -11,6 +11,7 @@ type live =
   { mutable node : Node.t
   ; widget : Widget.t
   ; impl : Widget_impl.t
+  ; defaults : Attr_apply.defaults
   ; slots : Signals.slots
   ; handler_ids : Gobject.Signal.handler_id list
   ; mutable children : live Children.t
@@ -35,6 +36,9 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   check_placement ~path ~is_root node;
   let impl = Registry.for_kind node.kind in
   let widget = impl.create node.kind in
+  (* Before any attr touches it: this is the widget class's own defaults, which is what a
+     later [Unset] restores. *)
+  let defaults = Attr_apply.snapshot widget in
   Attr_apply.apply_all widget node.attrs;
   let slots, handler_ids =
     Signals.connect_all ctx.signals ~node_path:path widget impl.signals
@@ -64,7 +68,7 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   (match node.kind with
    | Window _ -> ctx.on_window_created widget
    | _ -> ());
-  { node; widget; impl; slots; handler_ids; children }
+  { node; widget; impl; defaults; slots; handler_ids; children }
 
 and destroy ctx (live : live) =
   (* Slots are emptied before anything is torn down: GTK emits signals synchronously from
@@ -111,7 +115,7 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
     then live.impl.update live.widget ~old:live.node.kind node.kind;
     List.iter
       (Attrs.diff ~old:live.node.attrs ~new_:node.attrs)
-      ~f:(Attr_apply.apply live.widget);
+      ~f:(Attr_apply.apply ~defaults:live.defaults live.widget);
     Signals.update_slots live.slots node.attrs;
     live.children <- patch_children ctx ~path live node;
     live.node <- node;

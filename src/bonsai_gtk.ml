@@ -5,6 +5,7 @@ module Node = Bonsai_gtk_vtree.Node
 module Attr = Bonsai_gtk_vtree.Attr
 module Key = Bonsai_gtk_vtree.Key
 module Align = Bonsai_gtk_vtree.Align
+module Ellipsize = Bonsai_gtk_vtree.Ellipsize
 module Orientation = Bonsai_gtk_vtree.Orientation
 
 module Native = struct

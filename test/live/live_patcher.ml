@@ -130,9 +130,9 @@ let () =
   P.destroy ctx live;
   print_endline "destroyed";
   (* Every ordinary attribute, set and then dropped. [Attr_apply.unset] is the half with
-     the non-obvious choices in it (a [-1] size request means "no request"; [`FILL] is the
-     alignment default; a dropped [visible] means visible again), and the second dump is
-     what proves each of those actually lands. *)
+     the non-obvious choices in it — it restores the value the widget was created with,
+     snapshotted before any attr touched it — and the second dump is what proves each of
+     those actually lands. *)
   let attr_view attrs = Node.window ~title:"attrs" (Node.label ~attrs "styled") in
   let live =
     P.mount
@@ -153,10 +153,85 @@ let () =
          ; Attr.visible false
          ; Attr.width_request 20
          ; Attr.height_request 30
+         ; Attr.opacity 0.5
+         ; Attr.focusable true
+         ; Attr.can_focus false
+         ; Attr.widget_name "styled-label"
+         ; Attr.cursor_name "pointer"
          ])
   in
   print_s (Live_tree.dump live.widget);
   let live = P.patch ctx ~path:"root" ~is_root:true live (attr_view []) in
+  print_s (Live_tree.dump live.widget);
+  (* [focusable]/[can_focus] have no place in the dump (their defaults are per widget
+     class), so they are checked by reading them back and comparing against a label that
+     never had them set. *)
+  let styled =
+    (Option.value_exn
+       (match live.children with
+        | Single c -> c
+        | No_children | List _ -> None))
+      .P.widget
+  in
+  let pristine = (W.Label.new_ (Some "l") :> Widget.t) in
+  printf
+    "focus restored: %b %b\n"
+    (Bool.equal (Widget.get_focusable styled) (Widget.get_focusable pristine))
+    (Bool.equal (Widget.get_can_focus styled) (Widget.get_can_focus pristine));
+  P.destroy ctx live;
+  (* A [GtkWindow] is created hidden; a [GtkLabel] is created visible. "Unset" means "put
+     back what this widget had", not a constant, so the same op restores different values
+     here. *)
+  let live =
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (Node.window
+         ~attrs:[ Attr.visible true ]
+         ~title:"vis"
+         (Node.label ~attrs:[ Attr.visible false ] "l"))
+  in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (Node.window ~title:"vis" (Node.label "l"))
+  in
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* Every [Node.label] text property, set and then dropped back to GTK's defaults. *)
+  let label_view label = Node.window ~title:"label" (label "text") in
+  let live =
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (label_view
+         (Node.label
+            ~wrap:true
+            ~xalign:0.
+            ~ellipsize:Middle
+            ~max_width_chars:14
+            ~width_chars:6
+            ~selectable:true))
+  in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (Node.window ~title:"label" (Node.label ~use_markup:true "<b>bold</b>"))
+  in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch ctx ~path:"root" ~is_root:true live (label_view (fun t -> Node.label t))
+  in
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
   (* Spec §11: a window below the root is structural misuse, not something to render. *)
