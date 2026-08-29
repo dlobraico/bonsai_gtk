@@ -46,6 +46,7 @@ let impl : Widget_impl.t =
             if not (Bool.equal (W.Check_button.get_active c) new_.active)
             then W.Check_button.set_active c new_.active)
         | _, k -> Widget_impl.wrong_kind "CheckButton" k)
+  ; controlled = true
   ; signals = [ toggled ]
   ; children = Widget_impl.No_children
   }

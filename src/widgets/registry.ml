@@ -7,6 +7,9 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Toggle_button _ -> W_toggle_button.impl
   | Check_button _ -> W_check_button.impl
   | Switch _ -> W_switch.impl
+  | Entry _ -> W_entry.impl
+  | Password_entry _ -> W_password_entry.impl
+  | Search_entry _ -> W_search_entry.impl
   | Box _ -> W_box.impl
   | Window _ -> W_window.impl
   | Native n -> Native_gtk.impl_of_payload n

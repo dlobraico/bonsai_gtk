@@ -101,6 +101,83 @@ val check_button
     which is what {!Attr.on_toggled} connects. *)
 val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
 
+(** A [GtkEntry], the plain single-line text field.
+
+    [text] is {i controlled}, and required for that reason: on every patch the widget is
+    written only when the model's text differs from what the widget currently shows — not
+    from what the previous node said, which is stale the moment the user types. A model
+    that echoes what was typed causes no write and so no caret jump; a model that rewrites
+    it (uppercasing, clamping, rejecting) still wins, and the caret is put back where it
+    was. There is no uncontrolled mode: an entry whose text no [Attr.on_changed] feeds
+    back into the model resets to the model's value the next time anything re-renders,
+    which is the bug the required argument exists to make impossible to write by accident.
+
+    [placeholder] is the grey prompt shown while the entry is empty. [visibility:false] is
+    password-style masking — prefer {!password_entry}, which is the accessible widget for
+    that. [editable:false] keeps the text selectable but read-only. [width_chars] and
+    [max_width_chars] are size requests in characters ([-1] for none); [xalign] positions
+    the text within the entry when it is shorter than the widget ([0.] left, [1.] right).
+    [activates_default:true] makes Enter activate the window's default widget instead of
+    only emitting [Attr.on_activate].
+
+    Not exposed: [GtkEntry]'s icon API ([set_icon_from_icon_name] and friends), whose
+    [icon-press]/[icon-release] signals carry a [GtkEntryIconPosition] and so make a
+    per-icon handler story better designed alongside M3's action routing; and
+    [GtkEditable::insert-text], which ocgtk does not bind (it has an in-out [int] position
+    parameter). *)
+val entry
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?placeholder:string
+  -> ?editable:bool
+  -> ?visibility:bool
+  -> ?width_chars:int
+  -> ?max_width_chars:int
+  -> ?xalign:float
+  -> ?activates_default:bool
+  -> text:string
+  -> unit
+  -> t
+
+(** A [GtkPasswordEntry]: the masked field, with the accessibility and input-method hints
+    that {!entry} with [visibility:false] does not carry.
+
+    [text] is controlled on the same rule as {!entry}'s, and required for the same reason.
+    [show_peek_icon] is the eye icon that reveals the text while held; it defaults to
+    GTK's own [true]. *)
+val password_entry
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?placeholder:string
+  -> ?show_peek_icon:bool
+  -> ?activates_default:bool
+  -> text:string
+  -> unit
+  -> t
+
+(** A [GtkSearchEntry]: an {!entry} with the magnifier and clear icons, and a debounced
+    signal.
+
+    [text] is controlled on the same rule as {!entry}'s. Both change signals are available
+    and a search entry may carry either or both: {!Attr.on_changed} fires immediately on
+    every keystroke and is what a model that owns the text wants, while
+    {!Attr.on_search_changed} fires [search_delay] ms after typing stops and is what a
+    filter-as-you-type query against a store wants. [search_delay] left absent keeps GTK's
+    own (150 ms).
+
+    [set_key_capture_widget] — which makes typing anywhere in a window focus the search
+    box — is deliberately absent: it names another {i live widget}, which a virtual tree
+    cannot. {!native} is the escape hatch until a later milestone designs cross-node
+    references. *)
+val search_entry
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?placeholder:string
+  -> ?search_delay:int
+  -> text:string
+  -> unit
+  -> t
+
 val box
   :  ?key:Key.t
   -> ?attrs:Attr.t list

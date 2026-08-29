@@ -4,6 +4,7 @@ module Gobject = Bonsai_gtk.Private.Gtk_import.Gobject
 module Live_tree = Bonsai_gtk.Private.Live_tree
 module P = Bonsai_gtk.Private.Patcher
 module Scheduler = Bonsai_gtk.Private.Scheduler
+module W = Bonsai_gtk.Private.Gtk_import.W
 
 let nth_child (live : P.live) i : P.live =
   match live.children with
@@ -28,6 +29,7 @@ let () =
     ; on_window_created = (fun _ -> ())
     }
   in
+  let text_attrs = Attr.on_changed (fun _ -> Ui_effect.Ignore) in
   let view ~active =
     Node.window
       ~title:"controls"
@@ -47,6 +49,41 @@ let () =
              ~active
              ()
          ; Node.switch ~attrs:[ Attr.on_toggled (fun _ -> Ui_effect.Ignore) ] ~active ()
+           (* The entry kinds, for their own props rather than for [active]: they are
+              identical in both views, so they take no part in the patch below. Their
+              event attrs are here so that every spec each impl declares has a slot to
+              fire out of -- emitted by hand further down. *)
+         ; Node.entry
+             ~attrs:[ text_attrs; Attr.on_activate Ui_effect.Ignore ]
+             ~placeholder:"name"
+             ~width_chars:8
+             ~text:"typed"
+             ()
+         ; Node.entry
+             ~attrs:[ text_attrs ]
+             ~text:"secret"
+             ~visibility:false
+             ~editable:false
+             ~xalign:1.
+             ~max_width_chars:20
+             ~activates_default:true
+             ()
+         ; Node.password_entry
+             ~attrs:[ text_attrs; Attr.on_activate Ui_effect.Ignore ]
+             ~placeholder:"passphrase"
+             ~show_peek_icon:false
+             ~text:""
+             ()
+         ; Node.search_entry
+             ~attrs:
+               [ text_attrs
+               ; Attr.on_activate Ui_effect.Ignore
+               ; Attr.on_search_changed (fun _ -> Ui_effect.Ignore)
+               ]
+             ~placeholder:"filter"
+             ~search_delay:200
+             ~text:"bach"
+             ()
          ])
   in
   let live = P.mount ctx ~path:"root" ~is_root:true (view ~active:false) in
@@ -66,6 +103,18 @@ let () =
   Gobject.Signal.emit_by_name (nth_child live 4).widget ~name:"toggled";
   Gobject.Property.notify (nth_child live 5).widget ~name:"active";
   printf "scheduled outside patch: %d\n" (!scheduled - before);
+  (* Every spec the three entry impls declare, fired from its own widget: [changed] comes
+     through [GtkEditable] on all four entries, [activate] off each concrete class, and
+     [search-changed] off the search entry alone. Eight in all -- the read-only entry
+     carries no [on_activate] -- and each spec that failed to connect would drop this
+     count. *)
+  let before = !scheduled in
+  List.iter [ 6; 7; 8; 9 ] ~f:(fun i ->
+    Gobject.Signal.emit_by_name (nth_child live i).widget ~name:"changed");
+  List.iter [ 6; 8; 9 ] ~f:(fun i ->
+    Gobject.Signal.emit_by_name (nth_child live i).widget ~name:"activate");
+  Gobject.Signal.emit_by_name (nth_child live 9).widget ~name:"search-changed";
+  printf "entry signals reaching Bonsai: %d\n" (!scheduled - before);
   (* An event attr the widget cannot emit is a typo, and a loud one. *)
   (match
      P.mount
@@ -78,6 +127,26 @@ let () =
    with
    | (_ : P.live) -> print_endline "BUG: on_toggled on a label accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* Spec §11 says mount *and* patch time. An event attr a later render adds -- the
+     conditional [if editing then Attr.on_toggled ...] -- lands on a widget that was
+     mounted without it, so only the patch is in a position to reject it. *)
+  let late = Node.window ~title:"late" (Node.label ~attrs:[ Attr.tooltip "t" ] "x") in
+  let late_live = P.mount ctx ~path:"late" ~is_root:true late in
+  (match
+     P.patch
+       ctx
+       ~path:"late"
+       ~is_root:true
+       late_live
+       (Node.window
+          ~title:"late"
+          (Node.label
+             ~attrs:[ Attr.tooltip "t"; Attr.on_toggled (fun _ -> Ui_effect.Ignore) ]
+             "x"))
+   with
+   | (_ : P.live) -> print_endline "BUG: on_toggled added by a patch accepted"
+   | exception Invalid_argument msg -> printf "rejected at patch: %s\n" msg);
+  P.destroy ctx late_live;
   P.destroy ctx live;
   (* [label], [icon_name] and [child] all compete for a [GtkButton]'s one slot, and the
      patcher applies props before children -- so swapping a custom child for a label has
@@ -104,6 +173,60 @@ let () =
       live
       (slot_view (Node.button ~child:(Node.label "custom again") ()))
   in
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* Controlled text (spec §6.5). Render "a", then let the "user" type "ab" straight into
+     the widget, then re-render a node that still says "a" -- the model declined the edit,
+     or has not caught up -- and the widget must be corrected back to "a". Then type "ab"
+     again and re-render a node that says "ab" -- the model echoed -- and nothing must be
+     written at all.
+
+     "Nothing was written" is observed directly, with a counter connected to the widget's
+     own [changed] signal: it fires for every [set_text], the patcher's reentrancy guard
+     notwithstanding, so a patch that wrote is a patch this counter saw. (Whether it saw
+     one or two is GTK's business -- [gtk_editable_set_text] is a delete followed by an
+     insert -- hence the boolean.) The guard is what the third line measures, and the two
+     are different claims: a write Bonsai never hears about is still a caret jump the user
+     feels. *)
+  let entry_view text =
+    Node.window
+      ~title:"e"
+      (Node.entry ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ] ~text ())
+  in
+  (* Re-read through the current [live]: [patch] returns a fresh record whenever the kind
+     changes, and the widget is only ever reachable through the record we hold now. *)
+  let editable_of (live : P.live) =
+    match live.children with
+    | Single (Some e) -> W.Editable.from_gobject e.widget
+    | No_children | Single None | List _ -> assert false
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (entry_view "a") in
+  let writes = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Editable.on_changed (editable_of live) ~callback:(fun () -> incr writes)
+  in
+  let reached_bonsai = ref 0 in
+  let observe label live node =
+    let writes_before = !writes
+    and scheduled_before = !scheduled in
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"root" ~is_root:true live node)
+    in
+    reached_bonsai := !reached_bonsai + (!scheduled - scheduled_before);
+    printf
+      "%s: %s (the patch wrote: %b)\n"
+      label
+      (W.Editable.get_text (editable_of live))
+      (!writes > writes_before);
+    live
+  in
+  (* The user types, outside any patch: this is the state the model is behind. *)
+  W.Editable.set_text (editable_of live) "ab";
+  let live = observe "model wins" live (entry_view "a") in
+  W.Editable.set_text (editable_of live) "ab";
+  let live = observe "echo is a no-op" live (entry_view "ab") in
+  printf "changed events reaching Bonsai from patches: %d\n" !reached_bonsai;
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live
 ;;

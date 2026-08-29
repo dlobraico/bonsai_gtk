@@ -1,0 +1,110 @@
+open! Core
+open Bonsai_gtk_vtree
+open Gtk_import
+
+(* All three entry kinds implement [GtkEditable], and text, editability, width-chars,
+   max-width-chars and alignment all go through it — as does [changed], which is why one
+   spec serves every one of them. [from_gobject] is how the interface is reached. *)
+let editable (w : Widget.t) : W.Editable.t = W.Editable.from_gobject w
+
+(* Against the *widget's* text, never against the previous node's. The user has typed
+   since the last render, so the previous node's text is stale; comparing to it would
+   either write on every keystroke (moving the caret to the end of what the user is still
+   typing) or skip a write the model genuinely wanted. Comparing to the widget gets both
+   right: a model that echoes what was typed is a no-op, and a model that rewrites it
+   (uppercasing, clamping, rejecting) still wins. Spec §6.5.
+
+   The write itself moves the caret to the end, so the position is saved and put back. GTK
+   clamps it to the new text's length, which is the right answer when the model shortened
+   the text. *)
+let set_text_if_needed (e : W.Editable.t) text =
+  if not (String.equal (W.Editable.get_text e) text)
+  then (
+    let position = W.Editable.get_position e in
+    W.Editable.set_text e text;
+    W.Editable.set_position e position)
+;;
+
+let changed : Signals.spec =
+  { attr = Attr.Name.On_changed
+  ; connect = (fun w ~callback -> W.Editable.on_changed (editable w) ~callback)
+  ; fire =
+      (fun w (attr : Attr.t) ->
+        match attr with
+        | On_changed handler -> Some (handler (W.Editable.get_text (editable w)))
+        | _ -> None)
+  }
+;;
+
+(* [activate] is on each concrete class rather than on [GtkEditable], so the connector is
+   the one thing the three kinds cannot share. *)
+let activate ~connect : Signals.spec =
+  { attr = Attr.Name.On_activate
+  ; connect
+  ; fire =
+      (fun _w (attr : Attr.t) ->
+        match attr with
+        | On_activate handler -> Some (handler ())
+        | _ -> None)
+  }
+;;
+
+let impl : Widget_impl.t =
+  { name = "Entry"
+  ; create =
+      (fun (kind : Kind.t) ->
+        match kind with
+        | Entry p ->
+          let e = W.Entry.new_ () in
+          let w = (e :> Widget.t) in
+          Widget_impl.batch w (fun () ->
+            (* Only when there is one: writing [None] still builds GTK's placeholder
+               label, empty, which a dump then reports as a placeholder that is not there. *)
+            Option.iter p.placeholder ~f:(fun t ->
+              W.Entry.set_placeholder_text e (Some t));
+            if not p.visibility then W.Entry.set_visibility e false;
+            if p.activates_default then W.Entry.set_activates_default e true;
+            let ed = editable w in
+            if p.width_chars <> -1 then W.Editable.set_width_chars ed p.width_chars;
+            if p.max_width_chars <> -1
+            then W.Editable.set_max_width_chars ed p.max_width_chars;
+            if Float.( <> ) p.xalign 0. then W.Editable.set_alignment ed p.xalign;
+            set_text_if_needed ed p.text;
+            (* Last, and after the text: a read-only entry still has to be given its text. *)
+            if not p.editable then W.Editable.set_editable ed false);
+          w
+        | k -> Widget_impl.wrong_kind "Entry" k)
+  ; update =
+      (fun w ~(old : Kind.t) (new_ : Kind.t) ->
+        match old, new_ with
+        | Entry old, Entry new_ ->
+          let e : W.Entry.t = cast w in
+          let ed = editable w in
+          Widget_impl.batch w (fun () ->
+            if not (Option.equal String.equal old.placeholder new_.placeholder)
+            then W.Entry.set_placeholder_text e new_.placeholder;
+            if not (Bool.equal old.visibility new_.visibility)
+            then W.Entry.set_visibility e new_.visibility;
+            if not (Bool.equal old.activates_default new_.activates_default)
+            then W.Entry.set_activates_default e new_.activates_default;
+            if not (Bool.equal old.editable new_.editable)
+            then W.Editable.set_editable ed new_.editable;
+            if old.width_chars <> new_.width_chars
+            then W.Editable.set_width_chars ed new_.width_chars;
+            if old.max_width_chars <> new_.max_width_chars
+            then W.Editable.set_max_width_chars ed new_.max_width_chars;
+            if Float.( <> ) old.xalign new_.xalign
+            then W.Editable.set_alignment ed new_.xalign;
+            (* Last on purpose: a [width_chars] change re-lays-out the entry, and doing
+               that after the text write would re-run the caret placement the write just
+               decided. *)
+            set_text_if_needed ed new_.text)
+        | _, k -> Widget_impl.wrong_kind "Entry" k)
+  ; controlled = true
+  ; signals =
+      [ changed
+      ; activate ~connect:(fun w ~callback -> W.Entry.on_activate (cast w) ~callback)
+      ]
+  ; children = Widget_impl.No_children
+  }
+;;

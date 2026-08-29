@@ -14,7 +14,31 @@
      (children (GtkBuiltinIcon (halign center) (valign center))
       (GtkLabel (text agree) (xalign 0) hexpand)))
     (GtkSwitch
-     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))))))
+     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))
+    (GtkEntry (text typed) (placeholder name) (width-chars 8)
+     (children
+      (GtkText (cursor text)
+       (children
+        (GtkLabel (text name) (xalign 0) (ellipsize end) (max-width-chars 3))))))
+    (GtkEntry (text secret) (max-width-chars 20) (xalign 1) read-only masked
+     (children (GtkText (cursor text))))
+    (GtkPasswordEntry (text "") (placeholder passphrase) no-peek-icon
+     (css (password))
+     (children
+      (GtkText (cursor text)
+       (children
+        (GtkLabel (text passphrase) (xalign 0) (ellipsize end)
+         (max-width-chars 3))))
+      (GtkImage (css (caps-lock-indicator)) (tooltip "Caps Lock is on")
+       (cursor text))))
+    (GtkSearchEntry (text bach) (placeholder filter) (search-delay 200)
+     (css (search))
+     (children (GtkImage)
+      (GtkText hexpand (cursor text)
+       (children
+        (GtkLabel (text filter) (xalign 0) (ellipsize end)
+         (max-width-chars 3))))
+      (GtkImage (tooltip "Clear Entry"))))))))
 scheduled during patch: 0
 (GtkWindow (title (controls)) (css (background)) hidden
  (children
@@ -32,9 +56,35 @@ scheduled during patch: 0
      (children (GtkBuiltinIcon (halign center) (valign center))
       (GtkLabel (text agree) (xalign 0) hexpand)))
     (GtkSwitch active state
-     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))))))
+     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))
+    (GtkEntry (text typed) (placeholder name) (width-chars 8)
+     (children
+      (GtkText (cursor text)
+       (children
+        (GtkLabel (text name) (xalign 0) (ellipsize end) (max-width-chars 3))))))
+    (GtkEntry (text secret) (max-width-chars 20) (xalign 1) read-only masked
+     (children (GtkText (cursor text))))
+    (GtkPasswordEntry (text "") (placeholder passphrase) no-peek-icon
+     (css (password))
+     (children
+      (GtkText (cursor text)
+       (children
+        (GtkLabel (text passphrase) (xalign 0) (ellipsize end)
+         (max-width-chars 3))))
+      (GtkImage (css (caps-lock-indicator)) (tooltip "Caps Lock is on")
+       (cursor text))))
+    (GtkSearchEntry (text bach) (placeholder filter) (search-delay 200)
+     (css (search))
+     (children (GtkImage)
+      (GtkText hexpand (cursor text)
+       (children
+        (GtkLabel (text filter) (xalign 0) (ellipsize end)
+         (max-width-chars 3))))
+      (GtkImage (tooltip "Clear Entry"))))))))
 scheduled outside patch: 3
+entry signals reaching Bonsai: 8
 rejected: root/0: Label does not emit On_toggled
+rejected at patch: late/0: Label does not emit On_toggled
 (GtkWindow (title (slot)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))
@@ -53,3 +103,8 @@ rejected: root/0: Label does not emit On_toggled
    (children
     (GtkButton (label ()) (css (text-button))
      (children (GtkLabel (text "custom again"))))))))
+model wins: a (the patch wrote: true)
+echo is a no-op: ab (the patch wrote: false)
+changed events reaching Bonsai from patches: 0
+(GtkWindow (title (e)) (css (background)) hidden
+ (children (GtkEntry (text ab) (children (GtkText (cursor text))))))

@@ -48,6 +48,7 @@ let impl : Widget_impl.t =
           if not (Bool.equal (W.Switch.get_active s) active)
           then Widget_impl.batch w (fun () -> set_both s active)
         | _, k -> Widget_impl.wrong_kind "Switch" k)
+  ; controlled = true
   ; signals = [ toggled ]
   ; children = Widget_impl.No_children
   }

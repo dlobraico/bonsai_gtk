@@ -66,9 +66,36 @@ let%expect_test "the toggle family's constructors" =
     |}]
 ;;
 
-let%expect_test "an on_* attr the widget cannot emit is rejected at mount, not ignored" =
+let%expect_test "is_event classifies the handler-carrying attr names" =
   print_s [%sexp (Attr.Name.is_event Attr.Name.On_toggled : bool)];
   [%expect {| true |}];
   print_s [%sexp (Attr.Name.is_event Attr.Name.Tooltip : bool)];
   [%expect {| false |}]
+;;
+
+let%expect_test "the entry family's constructors" =
+  print_s
+    [%sexp
+      (Node.box
+         ~orientation:Vertical
+         [ Node.entry ~placeholder:"name" ~text:"" ()
+         ; Node.entry ~text:"x" ~width_chars:6 ~xalign:1. ~editable:false ()
+         ; Node.password_entry ~text:"" ~placeholder:"passphrase" ()
+         ; Node.search_entry ~text:"bach" ~search_delay:150 ()
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Box ((orientation Vertical)))) (attrs ())
+     (children
+      (List
+       (((kind (Entry ((text "") (placeholder (name))))) (attrs ())
+         (children No_children))
+        ((kind (Entry ((text x) (editable false) (width_chars 6) (xalign 1))))
+         (attrs ()) (children No_children))
+        ((kind (Password_entry ((text "") (placeholder (passphrase)))))
+         (attrs ()) (children No_children))
+        ((kind (Search_entry ((text bach) (search_delay (150))))) (attrs ())
+         (children No_children))))))
+    |}]
 ;;

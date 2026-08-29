@@ -36,7 +36,15 @@ let apply_button_props
     W.Button.set_label b (Option.value label ~default:"");
   (* Set when present, never cleared: [set_icon_name] takes a plain [string], so there is
      no "no icon" value to write. Going back to text is expressed by setting the label,
-     which replaces the icon child. *)
+     which replaces the icon child.
+
+     Which wins when a node carries both, on this update path: the icon, because it is
+     written second and [set_icon_name] replaces whatever child [set_label] just built.
+     But only while the icon itself changed — a node that keeps its icon and changes only
+     its label writes the label and stops, so the button flips to text. That asymmetry is
+     the "going back to text" rule above, not an accident, and it matches [create], where
+     [new_from_icon_name] is preferred over [new_with_label]. Carrying both is a GTK
+     warning either way; [Node.button]'s doc says so. *)
   if changed (fun (_, i, _) -> i) then Option.iter icon_name ~f:(W.Button.set_icon_name b);
   if changed (fun (_, _, f) -> f) then W.Button.set_has_frame b has_frame
 ;;
@@ -89,6 +97,7 @@ let impl : Widget_impl.t =
               ~icon_name:new_.icon_name
               ~has_frame:new_.has_frame)
         | _, k -> Widget_impl.wrong_kind "Button" k)
+  ; controlled = false
   ; signals = [ clicked ]
   ; children = Widget_impl.Single { set = set_child_slot }
   }

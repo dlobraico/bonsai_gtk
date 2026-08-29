@@ -23,6 +23,9 @@ module Name : sig
     | Test_id
     | On_clicked
     | On_toggled
+    | On_changed
+    | On_activate
+    | On_search_changed
   [@@deriving sexp_of, compare, equal]
 
   (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
@@ -55,6 +58,9 @@ type t =
   | Test_id of string
   | On_clicked of unit Handler.t
   | On_toggled of bool Handler.t
+  | On_changed of string Handler.t
+  | On_activate of unit Handler.t
+  | On_search_changed of string Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -126,6 +132,28 @@ val on_clicked : unit Ui_effect.t -> t
     Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
     node is mounted, rather than being silently inert. *)
 val on_toggled : (bool -> unit Ui_effect.t) -> t
+
+(** Fires on every edit of a text widget — each keystroke, a paste, an undo — carrying the
+    widget's full text afterwards, not the characters that were inserted.
+
+    This is [GtkEditable::changed], which GTK also emits for the library's own writes; the
+    patcher's reentrancy guard is what keeps a re-render from feeding itself. Pair it with
+    the widget's [~text] argument or the entry is uncontrolled: the model never learns
+    what was typed, and the next unrelated re-render puts the old text back.
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched, rather than being silently inert. *)
+val on_changed : (string -> unit Ui_effect.t) -> t
+
+(** Fires when the user presses Enter in a text entry. Carries nothing: read the text out
+    of the model that {!on_changed} has been feeding. *)
+val on_activate : unit Ui_effect.t -> t
+
+(** [search_entry] only: GTK's debounced [search-changed], emitted [search_delay] ms after
+    typing stops rather than on every keystroke. Use it for "filter as you type" against a
+    store; use {!on_changed} when the model owns the text. A search entry that carries
+    both fires both — immediately, then again once typing settles. *)
+val on_search_changed : (string -> unit Ui_effect.t) -> t
 
 val many : t list -> t
 val empty : t

@@ -119,6 +119,43 @@ let rec dump (w : Widget.t) : Sexp.t =
           [w_switch.ml]), and only printing one would not show that. *)
        flag_prop "active" (W.Switch.get_active s)
        @ flag_prop "state" (W.Switch.get_state s)
+     (* One arm for the three entry kinds: everything but the placeholder and each class's
+        own extra reads through [GtkEditable], which all three implement. GTK's internal
+        children (the [GtkText] the entry delegates to, the search and peek icons) print
+        like any other child — that is what GTK actually holds. *)
+     | "GtkEntry" | "GtkPasswordEntry" | "GtkSearchEntry" ->
+       let e = W.Editable.from_gobject w in
+       let placeholder =
+         match ty with
+         | "GtkEntry" -> W.Entry.get_placeholder_text (cast w)
+         | "GtkSearchEntry" -> W.Search_entry.get_placeholder_text (cast w)
+         | _ -> Some (W.Password_entry.get_placeholder_text (cast w))
+       in
+       (* [""] is "no placeholder": [GtkPasswordEntry]'s getter is not nullable, and
+          clearing either of the other two writes an empty string GTK reports back. *)
+       let placeholder =
+         match placeholder with
+         | Some "" -> None
+         | p -> p
+       in
+       [ [%sexp `text (W.Editable.get_text e : string)] ]
+       @ (match placeholder with
+          | None -> []
+          | Some p -> [ Sexp.List [ Atom "placeholder"; Atom p ] ])
+       @ int_prop "width-chars" (W.Editable.get_width_chars e) ~default:(-1)
+       @ int_prop "max-width-chars" (W.Editable.get_max_width_chars e) ~default:(-1)
+       @ float_prop "xalign" (W.Editable.get_alignment e) ~default:0.
+       @ (if W.Editable.get_editable e then [] else [ Sexp.Atom "read-only" ])
+       @
+         (match ty with
+         | "GtkEntry" ->
+           if W.Entry.get_visibility (cast w) then [] else [ Sexp.Atom "masked" ]
+         | "GtkPasswordEntry" ->
+           if W.Password_entry.get_show_peek_icon (cast w)
+           then []
+           else [ Sexp.Atom "no-peek-icon" ]
+         | _ ->
+           int_prop "search-delay" (W.Search_entry.get_search_delay (cast w)) ~default:150)
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

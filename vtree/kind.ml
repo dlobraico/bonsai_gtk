@@ -45,6 +45,35 @@ type check_button_props =
 
 type switch_props = { active : bool } [@@deriving sexp_of, equal]
 
+(* The entry family. [text] carries no [@sexp_drop_if]: it is a required labelled
+   argument, so it is always something the caller asked for. *)
+type entry_props =
+  { text : string
+  ; placeholder : string option [@sexp_drop_if Option.is_none]
+  ; editable : bool [@sexp_drop_if fun b -> b]
+  ; visibility : bool [@sexp_drop_if fun b -> b]
+  ; width_chars : int [@sexp_drop_if Int.equal (-1)]
+  ; max_width_chars : int [@sexp_drop_if Int.equal (-1)]
+  ; xalign : float [@sexp_drop_if Float.equal 0.]
+  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type password_entry_props =
+  { text : string
+  ; placeholder : string option [@sexp_drop_if Option.is_none]
+  ; show_peek_icon : bool [@sexp_drop_if fun b -> b]
+  ; activates_default : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type search_entry_props =
+  { text : string
+  ; placeholder : string option [@sexp_drop_if Option.is_none]
+  ; search_delay : int option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
 type box_props =
   { orientation : Orientation.t
   ; spacing : int [@sexp_drop_if Int.equal 0]
@@ -64,6 +93,9 @@ type t =
   | Toggle_button of toggle_button_props
   | Check_button of check_button_props
   | Switch of switch_props
+  | Entry of entry_props
+  | Password_entry of password_entry_props
+  | Search_entry of search_entry_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t
@@ -75,6 +107,9 @@ let name = function
   | Toggle_button _ -> "ToggleButton"
   | Check_button _ -> "CheckButton"
   | Switch _ -> "Switch"
+  | Entry _ -> "Entry"
+  | Password_entry _ -> "PasswordEntry"
+  | Search_entry _ -> "SearchEntry"
   | Box _ -> "Box"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
@@ -87,6 +122,9 @@ let same_kind a b =
   | Toggle_button _, Toggle_button _
   | Check_button _, Check_button _
   | Switch _, Switch _
+  | Entry _, Entry _
+  | Password_entry _, Password_entry _
+  | Search_entry _, Search_entry _
   | Box _, Box _
   | Window _, Window _ -> true
   | Native a, Native b -> String.equal a.name b.name
@@ -100,6 +138,9 @@ let equal_props a b =
   | Toggle_button a, Toggle_button b -> equal_toggle_button_props a b
   | Check_button a, Check_button b -> equal_check_button_props a b
   | Switch a, Switch b -> equal_switch_props a b
+  | Entry a, Entry b -> equal_entry_props a b
+  | Password_entry a, Password_entry b -> equal_password_entry_props a b
+  | Search_entry a, Search_entry b -> equal_search_entry_props a b
   | Box a, Box b -> equal_box_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload

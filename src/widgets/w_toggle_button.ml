@@ -53,6 +53,7 @@ let impl : Widget_impl.t =
             if not (Bool.equal (W.Toggle_button.get_active b) new_.active)
             then W.Toggle_button.set_active b new_.active)
         | _, k -> Widget_impl.wrong_kind "ToggleButton" k)
+  ; controlled = true
   ; signals =
       [ toggled ]
       (* Shared with [w_button.ml]: a [GtkToggleButton] is a [GtkButton], down to the one

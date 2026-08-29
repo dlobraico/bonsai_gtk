@@ -135,3 +135,122 @@ let%expect_test "Toggle needs a handler, and a node with toggle state to read" =
     Bonsai_gtk_test.Handle.do_actions handle [ Toggle "lbl" ]);
   [%expect {| (Failure "Bonsai_gtk_test: Label (test_id lbl) has no toggle state") |}]
 ;;
+
+(* The test that pins the controlled-text semantics headlessly: [Set_text] means "the user
+   made the text be this", the model rewrites it, and the rewrite comes back as the node's
+   [text] prop -- never the raw string the "user" typed. *)
+let shouty (graph @ local) =
+  let text, set_text = Bonsai.state "" graph in
+  let submitted, set_submitted = Bonsai.state "-" graph in
+  let%arr text and set_text and submitted and set_submitted in
+  Node.window
+    ~title:"Shouty"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.entry
+           ~attrs:
+             [ Attr.test_id "e"
+             ; Attr.on_changed (fun s -> set_text (String.uppercase s))
+             ; Attr.on_activate (set_submitted text)
+             ]
+           ~placeholder:"type"
+           ~text
+           ()
+       ; Node.label ~attrs:[ Attr.test_id "echo" ] text
+       ; Node.label ~attrs:[ Attr.test_id "submitted" ] submitted
+       ])
+;;
+
+let%expect_test "Set_text runs the model, and the model's rewrite comes back as the prop" =
+  let handle = Bonsai_gtk_test.create shouty in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Shouty))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Entry ((text "") (placeholder (type)))))
+             (attrs ((Test_id e) (On_changed <handler>) (On_activate <handler>)))
+             (children No_children))
+            ((kind (Label ((text "")))) (attrs ((Test_id echo)))
+             (children No_children))
+            ((kind (Label ((text -)))) (attrs ((Test_id submitted)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("e", "hello") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Shouty))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (Entry ((text "") (placeholder (type)))))
+    +|       (((kind (Entry ((text HELLO) (placeholder (type)))))
+               (attrs ((Test_id e) (On_changed <handler>) (On_activate <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text "")))) (attrs ((Test_id echo)))
+    +|        ((kind (Label ((text HELLO)))) (attrs ((Test_id echo)))
+               (children No_children))
+              ((kind (Label ((text -)))) (attrs ((Test_id submitted)))
+               (children No_children))))))))))
+    |}]
+;;
+
+let%expect_test "Activate fires on_activate, which sees the text the model settled on" =
+  let handle = Bonsai_gtk_test.create shouty in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("e", "hello") ];
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Shouty))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Entry ((text HELLO) (placeholder (type)))))
+             (attrs ((Test_id e) (On_changed <handler>) (On_activate <handler>)))
+             (children No_children))
+            ((kind (Label ((text HELLO)))) (attrs ((Test_id echo)))
+             (children No_children))
+            ((kind (Label ((text -)))) (attrs ((Test_id submitted)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Activate "e" ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Shouty))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Entry ((text HELLO) (placeholder (type)))))
+               (attrs ((Test_id e) (On_changed <handler>) (On_activate <handler>)))
+               (children No_children))
+              ((kind (Label ((text HELLO)))) (attrs ((Test_id echo)))
+               (children No_children))
+    -|        ((kind (Label ((text -)))) (attrs ((Test_id submitted)))
+    +|        ((kind (Label ((text HELLO)))) (attrs ((Test_id submitted)))
+               (children No_children))))))))))
+    |}]
+;;
+
+let%expect_test "Set_text and Activate need the matching handler" =
+  let handle = Bonsai_gtk_test.create shouty in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("echo", "x") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node echo has no on_changed handler") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Activate "echo" ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node echo has no on_activate handler") |}]
+;;

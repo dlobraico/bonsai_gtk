@@ -66,7 +66,8 @@ let notify ~prop w ~callback =
 
 (* An [on_*] attr on a widget whose impl declares no spec for it is a typo that would
    otherwise be silently inert: the slot is never created, so nothing is ever written to
-   it, no handler ever runs, and nothing says why (spec §5.1, §11). *)
+   it, no handler ever runs, and nothing says why (spec §5.1, §11). Run at mount and on
+   every attr-changing patch, because a conditionally-added attr misses the mount. *)
 let require_specs ~node_path ~impl_name specs attrs =
   List.iter (Attrs.to_list attrs) ~f:(fun attr ->
     match Attr.name attr with

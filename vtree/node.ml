@@ -58,6 +58,58 @@ let check_button ?key ?attrs ?label ?(inconsistent = false) ~active () =
 
 let switch ?key ?attrs ~active () = make ?key ?attrs (Switch { active }) No_children
 
+(* All three take [~text] as a required labelled argument: a text widget with no text prop
+   is uncontrolled, and an uncontrolled text widget in a declarative tree is a bug that
+   shows up as "my entry resets when something unrelated re-renders". *)
+let entry
+  ?key
+  ?attrs
+  ?placeholder
+  ?(editable = true)
+  ?(visibility = true)
+  ?(width_chars = -1)
+  ?(max_width_chars = -1)
+  ?(xalign = 0.)
+  ?(activates_default = false)
+  ~text
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Entry
+       { text
+       ; placeholder
+       ; editable
+       ; visibility
+       ; width_chars
+       ; max_width_chars
+       ; xalign
+       ; activates_default
+       })
+    No_children
+;;
+
+let password_entry
+  ?key
+  ?attrs
+  ?placeholder
+  ?(show_peek_icon = true)
+  ?(activates_default = false)
+  ~text
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Password_entry { text; placeholder; show_peek_icon; activates_default })
+    No_children
+;;
+
+let search_entry ?key ?attrs ?placeholder ?search_delay ~text () =
+  make ?key ?attrs (Search_entry { text; placeholder; search_delay }) No_children
+;;
+
 let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;

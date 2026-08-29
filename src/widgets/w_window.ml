@@ -33,6 +33,7 @@ let impl : Widget_impl.t =
               -> W.Window.set_default_size (cast w) width height
             | _ -> ())
         | _, k -> Widget_impl.wrong_kind "Window" k)
+  ; controlled = false
   ; signals = []
   ; children =
       Widget_impl.Single { set = (fun w child -> W.Window.set_child (cast w) child) }

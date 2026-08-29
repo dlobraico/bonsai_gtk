@@ -5,6 +5,8 @@ module Action = struct
   type t =
     | Click of string
     | Toggle of string
+    | Set_text of string * string
+    | Activate of string
   [@@deriving sexp_of]
 end
 
@@ -42,6 +44,19 @@ module Result_spec = struct
       (match Attrs.find n.attrs On_toggled with
        | Some (On_toggled h) -> h (not (current_active n id))
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_toggled handler" id ())
+    (* Deliberately does not consult the node's [text] prop: the action means "the user
+       made the text be this", which is what a real edit produces regardless of what the
+       widget was showing before. *)
+    | Set_text (id, text) ->
+      let n = node_exn node id in
+      (match Attrs.find n.attrs On_changed with
+       | Some (On_changed h) -> h text
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_changed handler" id ())
+    | Activate id ->
+      let n = node_exn node id in
+      (match Attrs.find n.attrs On_activate with
+       | Some (On_activate h) -> h ()
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_activate handler" id ())
   ;;
 end
 

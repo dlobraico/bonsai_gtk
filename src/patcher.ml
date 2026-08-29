@@ -88,7 +88,15 @@ and destroy ctx (live : live) =
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
   | Window _ -> W.Window.destroy (cast live.widget)
   | Native n -> Native_gtk.destroy_payload n live.widget
-  | Label _ | Button _ | Toggle_button _ | Check_button _ | Switch _ | Box _ -> ()
+  | Label _
+  | Button _
+  | Toggle_button _
+  | Check_button _
+  | Switch _
+  | Entry _
+  | Password_entry _
+  | Search_entry _
+  | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.
 
@@ -115,11 +123,25 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
     destroy ctx live;
     fresh)
   else (
-    if not (Kind.equal_props live.node.kind node.kind)
+    let attr_ops = Attrs.diff ~old:live.node.attrs ~new_:node.attrs in
+    (* Spec §11 says mount *and* patch time. A conditionally-added event attr
+       ([if editing then Attr.on_toggled ...]) lands on a widget that was mounted without
+       it, so only this call is in a position to reject it — [connect_all] ran once, at
+       mount, and no slot exists for a name no spec claims. Guarded on the attrs having
+       changed, since re-walking every attr of every unchanged node each frame is pure
+       cost, and done before anything is written so the raise leaves the widget alone. *)
+    if not (List.is_empty attr_ops)
+    then
+      Signals.require_specs
+        ~node_path:path
+        ~impl_name:live.impl.name
+        live.impl.signals
+        node.attrs;
+    (* A controlled impl re-asserts against the widget, so it has to run even when the
+       props are unchanged — see [Widget_impl.controlled]. *)
+    if live.impl.controlled || not (Kind.equal_props live.node.kind node.kind)
     then live.impl.update live.widget ~old:live.node.kind node.kind;
-    List.iter
-      (Attrs.diff ~old:live.node.attrs ~new_:node.attrs)
-      ~f:(Attr_apply.apply ~defaults:live.defaults live.widget);
+    List.iter attr_ops ~f:(Attr_apply.apply ~defaults:live.defaults live.widget);
     Signals.update_slots live.slots node.attrs;
     live.children <- patch_children ctx ~path live node;
     live.node <- node;

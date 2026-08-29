@@ -75,7 +75,10 @@ val notify
     is inert rather than wrong-looking: no slot is created for it, so the handler simply
     never runs. [node_path] and [impl_name] name the offending node in the message.
 
-    Called by the patcher at mount, once per widget. *)
+    Called by the patcher at mount, and again on any patch that changed the node's attrs —
+    an event attr a later render adds conditionally lands on a widget mounted without it,
+    and only the patch is in a position to see it (handlers are connected once, at mount,
+    so no slot exists for a name no spec claims). *)
 val require_specs : node_path:string -> impl_name:string -> spec list -> Attrs.t -> unit
 
 val disconnect : Widget.t -> Gobject.Signal.handler_id list -> unit
