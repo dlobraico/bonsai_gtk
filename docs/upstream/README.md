@@ -31,7 +31,7 @@ six branches (verified with `git diff <picked-sha> <amended-sha>` per branch).
 `bonsai-gtk` itself is unscrubbed and unchanged at `d98d9397` — it is what
 `ocgtk-pin.json` pins, and must stay byte-exact.
 
-No pull requests have been opened. Opening them is gated on user approval.
+All six pull requests are open as **drafts** (#173–#178, linked in the table above) pending the maintainer-side review by us; mark each ready with `gh pr ready <N> --repo chris-armstrong/ocgtk`.
 
 Each draft starts with two header lines — `Title:` and `Branch:` — that are
 **for us, not for the PR body**. `--body-file` sends the file verbatim, so
