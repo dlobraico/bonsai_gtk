@@ -2,6 +2,49 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
+(* What the library last wrote into each live search entry, and has not yet seen come back
+   as a [search-changed].
+
+   The reentrancy guard (spec §4.4) covers a programmatic write because GTK emits the
+   resulting signal synchronously, from inside the setter, while the patcher is still on
+   the stack. [search-changed] is the one signal in M1 that does not work that way: GTK
+   emits it from a [g_timeout] armed by [GtkEditable::changed], [search_delay] ms later
+   (150 by default), long after [Driver.frame] has returned and cleared the guard. So a
+   model that rewrites what the user typed — uppercasing it, trimming it, clearing the box
+   from elsewhere in the UI — had its own text handed back to it as a search the user
+   never performed: one spurious query per programmatic write, and an oscillation at the
+   debounce interval for any normalisation that is not a fixed point.
+
+   A synchronous flag cannot cover an asynchronous emission, so the text is recorded here
+   instead and an emission that still carries it is dropped. Weakly keyed on the widget,
+   so an entry that is destroyed takes its record with it rather than pinning the GObject
+   alive. *)
+module Echo = Stdlib.Ephemeron.K1.Make (struct
+    type t = Widget.t
+
+    let equal = Gobject.same
+    let hash = Stdlib.Hashtbl.hash
+  end)
+
+let echoes : string Echo.t = Echo.create 8
+
+(* Recorded only when the write actually happened, because only a write arms a timeout. *)
+let set_text w text =
+  if W_entry.set_text_if_needed (W_entry.editable w) text then Echo.replace echoes w text
+;;
+
+(* Consumed whether or not it matched: a write arms exactly one timeout (a second write
+   before it elapses resets the same source), so this emission is the only one that record
+   could ever have explained. Leaving it behind would suppress a genuine search later, on
+   the day the user typed the same string themselves. *)
+let was_our_own_write w text =
+  match Echo.find_opt echoes w with
+  | None -> false
+  | Some recorded ->
+    Echo.remove echoes w;
+    String.equal recorded text
+;;
+
 (* GTK's debounced signal, emitted [search_delay] ms after typing stops. It is the search
    entry's own; [changed] (immediate) reaches it through [GtkEditable] like the other two
    entries, and both are connected — see [Node.search_entry]'s doc for which to use. *)
@@ -14,7 +57,11 @@ let search_changed : Signals.spec =
       (fun w (attr : Attr.t) ->
         match attr with
         | On_search_changed handler ->
-          Some (handler (W.Editable.get_text (W_entry.editable w)))
+          let text = W.Editable.get_text (W_entry.editable w) in
+          (* The one case this cannot tell apart is a user who edits the box back to
+             exactly what the library last wrote, before the debounce elapses. That search
+             is dropped — and it would have reported the text the model already holds. *)
+          if was_our_own_write w text then None else Some (handler text)
         | _ -> None)
   }
 ;;
@@ -32,7 +79,11 @@ let impl : Widget_impl.t =
             Option.iter p.placeholder ~f:(fun t ->
               W.Search_entry.set_placeholder_text e (Some t));
             Option.iter p.search_delay ~f:(W.Search_entry.set_search_delay e);
-            W_entry.set_text_if_needed (W_entry.editable w) p.text);
+            (* Recorded like any other write: the slots are filled in immediately after
+               [create], so the debounce this arms outlives the mount and would otherwise
+               reach the application as a search performed before the widget was ever on
+               screen. *)
+            set_text w p.text);
           w
         | k -> Widget_impl.wrong_kind "SearchEntry" k)
   ; update =
@@ -53,9 +104,7 @@ let impl : Widget_impl.t =
       Some
         (fun w (kind : Kind.t) ->
           match kind with
-          | Search_entry p ->
-            Widget_impl.batch w (fun () ->
-              W_entry.set_text_if_needed (W_entry.editable w) p.text)
+          | Search_entry p -> Widget_impl.batch w (fun () -> set_text w p.text)
           | k -> Widget_impl.wrong_kind "SearchEntry" k)
   ; signals =
       [ W_entry.changed

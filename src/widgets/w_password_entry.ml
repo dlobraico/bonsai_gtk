@@ -17,7 +17,7 @@ let impl : Widget_impl.t =
             Option.iter p.placeholder ~f:(W.Password_entry.set_placeholder_text e);
             if not p.show_peek_icon then W.Password_entry.set_show_peek_icon e false;
             if p.activates_default then W.Password_entry.set_activates_default e true;
-            W_entry.set_text_if_needed (W_entry.editable w) p.text);
+            ignore (W_entry.set_text_if_needed (W_entry.editable w) p.text : bool));
           w
         | k -> Widget_impl.wrong_kind "PasswordEntry" k)
   ; update =
@@ -43,7 +43,7 @@ let impl : Widget_impl.t =
           match kind with
           | Password_entry p ->
             Widget_impl.batch w (fun () ->
-              W_entry.set_text_if_needed (W_entry.editable w) p.text)
+              ignore (W_entry.set_text_if_needed (W_entry.editable w) p.text : bool))
           | k -> Widget_impl.wrong_kind "PasswordEntry" k)
   ; signals =
       [ W_entry.changed

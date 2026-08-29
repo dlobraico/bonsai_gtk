@@ -170,6 +170,16 @@ val password_entry
     filter-as-you-type query against a store wants. [search_delay] left absent keeps GTK's
     own (150 ms).
 
+    {!Attr.on_search_changed} reports only searches the {i user} produced. GTK arms the
+    debounce from any text change, this library's own [text] writes included, and the
+    emission lands after the patch that made the write is long over — so the runtime
+    records what it last wrote and drops the emission that carries it back. Without that,
+    a model which rewrites what was typed (uppercasing it, trimming it) or which clears
+    the box from elsewhere in the UI would see a search it never performed, once per
+    write. The one edit this cannot distinguish is a user who types the box back to
+    exactly what the library last wrote, within [search_delay] of the write; that search
+    is dropped, and it would have reported the text the model already holds.
+
     [set_key_capture_widget] — which makes typing anywhere in a window focus the search
     box — is deliberately absent: it names another {i live widget}, which a virtual tree
     cannot. {!native} is the escape hatch until a later milestone designs cross-node

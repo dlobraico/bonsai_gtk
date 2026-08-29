@@ -1,5 +1,6 @@
 open! Core
 open Bonsai_gtk_vtree
+module Glib = Bonsai_gtk.Private.Gtk_import.Glib
 module Gobject = Bonsai_gtk.Private.Gtk_import.Gobject
 module Live_tree = Bonsai_gtk.Private.Live_tree
 module P = Bonsai_gtk.Private.Patcher
@@ -15,6 +16,26 @@ let nth_child (live : P.live) i : P.live =
      | List children -> List.nth_exn children i
      | No_children | Single _ | Slots _ -> assert false)
   | No_children | Single None | List _ | Slots _ -> assert false
+;;
+
+(* [search-changed] is the one M1 signal GTK does not emit synchronously: it comes off a
+   [g_timeout] armed by the text change. Seeing one arrive -- or seeing that none did --
+   therefore means handing the main loop back to GLib for longer than the debounce.
+   [Glib.Main.iteration true] blocks until some source is ready and the timeout below is
+   what eventually wakes it, so this neither sleeps nor spins. *)
+let pump_for ~ms =
+  let elapsed = ref false in
+  let (_ : Glib.Timeout.id) =
+    Glib.Timeout.add
+      ~ms
+      ~callback:(fun () ->
+        elapsed := true;
+        false)
+      ()
+  in
+  while not !elapsed do
+    ignore (Glib.Main.iteration true : bool)
+  done
 ;;
 
 let () =
@@ -315,5 +336,60 @@ let () =
       P.patch ctx ~path:"root" ~is_root:true live (scale_view 6.))
   in
   print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* A programmatic write to a [Node.search_entry] must not come back as a search.
+     [GtkSearchEntry] emits [search-changed] from a timeout, so the write the patcher
+     makes inside its reentrancy guard produces a signal that arrives well after the guard
+     is gone -- and [fire] would then read the library's own text back off the widget and
+     hand it to the application as a query the user never typed. A model that normalises
+     what is typed (uppercasing here) would see one spurious search per keystroke it
+     rewrote.
+
+     The delay is set small so the test is quick; nothing else about it depends on the
+     value. *)
+  let searches = ref [] in
+  let search_view text =
+    Node.window
+      ~title:"search"
+      (Node.search_entry
+         ~attrs:
+           [ Attr.on_search_changed (fun s ->
+               searches := s :: !searches;
+               Ui_effect.Ignore)
+           ]
+         ~search_delay:10
+         ~text
+         ())
+  in
+  let search_editable (live : P.live) =
+    match live.children with
+    | Single (Some e) -> W.Editable.from_gobject e.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  (* The mount writes the text, which arms the debounce before the widget has ever been on
+     screen. *)
+  let live = P.mount ctx ~path:"root" ~is_root:true (search_view "bach") in
+  pump_for ~ms:60;
+  printf "searches after the mount wrote the text: %d\n" (List.length !searches);
+  (* And so does a patch: this is the model rewriting what the user typed, which is the
+     shape that oscillates once the echo is fed back in. *)
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"root" ~is_root:true live (search_view "BACH"))
+  in
+  pump_for ~ms:60;
+  printf "searches after the model rewrote it: %d\n" (List.length !searches);
+  (* A real edit, made the way a user makes one: one character inserted straight through
+     GTK, outside any patch. It still reaches Bonsai -- without this the two lines above
+     would be satisfied by a spec that simply never fired.
+
+     [insert_text] rather than [set_text] because that is what typing is.
+     [gtk_editable_set_text] is a delete followed by an insert, and [GtkSearchEntry] emits
+     [search-changed] *immediately* (not on the debounce) whenever the text becomes empty,
+     so simulating the edit with [set_text] would produce a real, correct, and entirely
+     confusing extra search for [""]. *)
+  W.Editable.insert_text (search_editable live) "S" 1 4;
+  pump_for ~ms:60;
+  printf "searches after a real edit: %s\n" (String.concat ~sep:"," (List.rev !searches));
   P.destroy ctx live
 ;;

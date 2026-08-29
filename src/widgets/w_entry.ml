@@ -16,13 +16,19 @@ let editable (w : Widget.t) : W.Editable.t = W.Editable.from_gobject w
 
    The write itself moves the caret to the end, so the position is saved and put back. GTK
    clamps it to the new text's length, which is the right answer when the model shortened
-   the text. *)
+   the text.
+
+   Returns whether it wrote. Most callers do not care, but [w_search_entry.ml] does: a
+   write there arms a debounce whose emission arrives long after the patch is over, and it
+   has to know which writes armed one. *)
 let set_text_if_needed (e : W.Editable.t) text =
-  if not (String.equal (W.Editable.get_text e) text)
-  then (
+  if String.equal (W.Editable.get_text e) text
+  then false
+  else (
     let position = W.Editable.get_position e in
     W.Editable.set_text e text;
-    W.Editable.set_position e position)
+    W.Editable.set_position e position;
+    true)
 ;;
 
 let changed : Signals.spec =
@@ -81,7 +87,7 @@ let impl : Widget_impl.t =
                the entry, and doing that after the write would re-run the caret placement
                the write just decided. [set_editable] is not a barrier — it gates the
                user's edits, not the program's. *)
-            set_text_if_needed ed p.text);
+            ignore (set_text_if_needed ed p.text : bool));
           w
         | k -> Widget_impl.wrong_kind "Entry" k)
   ; update =
@@ -114,7 +120,8 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Entry p ->
-            Widget_impl.batch w (fun () -> set_text_if_needed (editable w) p.text)
+            Widget_impl.batch w (fun () ->
+              ignore (set_text_if_needed (editable w) p.text : bool))
           | k -> Widget_impl.wrong_kind "Entry" k)
   ; signals =
       [ changed
