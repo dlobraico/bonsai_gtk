@@ -36,6 +36,19 @@ module Handle = Bonsai_test.Handle
 (** Builds a headless test handle for [app]: no GTK, no display, just the [Node.t] sexp
     tree and [Action.t] actions dispatched against it by [test_id].
 
+    {b Structural validation happens at mount, not here.} This library depends on
+    [bonsai_gtk.vtree] alone -- that is what keeps it, and the view functions written
+    against it, free of ocgtk -- so it cannot see the widget implementations, and it does
+    not know which signals a kind can emit. The runtime does, and rejects the rest with
+    [Invalid_argument] on the first frame ([Signals.require_specs], spec §11): an
+    [Attr.on_clicked] on a [Node.label], an event attr on a [Node.native], a [Node.grid]
+    child with no [Attr.grid_cell], a [Node.stack] page with no [~key], two stacks under
+    one [~name], duplicate keys among siblings. None of those stops a handle here, and an
+    action that names such a node fires its handler and the expect test goes green -- so a
+    suite that is entirely headless can certify an application that raises the moment it
+    is shown. The escape from that is a live test, or running the app; the vtree-level
+    table that would let the handle check the event half of it is on the M2 backlog.
+
     [Handle.do_actions] looks up every action in the call against *one* view snapshot —
     the tree [Handle.show]/[Handle.recompute_view] last computed — not the tree as it
     would be after each prior action in the same call takes effect. So
