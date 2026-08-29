@@ -8,7 +8,6 @@ type t =
   ; scheduler : Scheduler.t
   ; ctx : Patcher.ctx
   ; mutable root : Patcher.live option
-  ; mutable last : Node.t option
   ; mutable stopped : bool
   }
 
@@ -51,27 +50,33 @@ let frame t =
       Bonsai.Time_source.Private.flush t.time_source);
     Bonsai_driver.flush t.bonsai;
     let node = Bonsai_driver.result t.bonsai in
-    (* Bonsai hands back the physically same node when nothing it depends on changed, so
-       this skips the whole diff on a frame that only advanced the clock. *)
-    let changed =
-      match t.last with
-      | None -> true
-      | Some previous -> not (phys_equal previous node)
-    in
-    if changed
-    then (
-      check_root node;
-      Scheduler.with_patch_guard t.scheduler (fun () ->
-        t.root
-        <- Some
-             (match t.root with
-              | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
-              | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node);
-        (* Inside the guard, and after the whole tree exists: this is where a
-           [stack_switcher] finds the stack it names and a stack selects its page, and
-           both write properties GTK notifies about. *)
-        Patcher.run_fixups t.ctx);
-      t.last <- Some node);
+    (* Every frame patches, including the frames on which Bonsai hands back the physically
+       same node.
+
+       Skipping those looks like a free optimisation and is not. A model that *declines* a
+       user's edit -- the digits-only field handed a letter, the switch the model refuses
+       to flip, the stack page it will not navigate to -- leaves its state exactly as it
+       was, so its view is the same value it was last frame. The patch that would put the
+       widget back is therefore precisely the patch a physical-equality guard throws away,
+       and the declined edit stands on screen. That is the bug spec §6.5 exists to
+       prevent, and both halves of the cure -- [Widget_impl.reassert] and the
+       stack-selection fixup -- live inside the patch being skipped.
+
+       The cost is bounded rather than free: a frame that changed nothing still walks the
+       shadow tree, but [Kind.equal_props] skips every impl [update] and [Attrs.diff]
+       writes nothing, so no GTK call is made. Frames only happen on an event or on the
+       tick. *)
+    check_root node;
+    Scheduler.with_patch_guard t.scheduler (fun () ->
+      t.root
+      <- Some
+           (match t.root with
+            | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
+            | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node);
+      (* Inside the guard, and after the whole tree exists: this is where a
+         [stack_switcher] finds the stack it names and a stack selects its page, and both
+         write properties GTK notifies about. *)
+      Patcher.run_fixups t.ctx);
     Bonsai_driver.trigger_lifecycles t.bonsai;
     (* [trigger_lifecycles] *schedules* the after-display effects rather than applying
        them, so another frame is needed before their results are on screen. Under a tick
@@ -130,7 +135,6 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
     ; scheduler
     ; ctx
     ; root = None
-    ; last = None
     ; stopped = false
     }
   in
@@ -149,7 +153,6 @@ let stop t =
     Scheduler.stop t.scheduler;
     Option.iter t.root ~f:(Patcher.destroy t.ctx);
     t.root <- None;
-    t.last <- None;
     (* Without this the incremental graph and every observer Bonsai built for it stay
        reachable from [t.bonsai] for as long as the driver value is, which for an embedder
        that creates a driver per dialog is a real leak. *)

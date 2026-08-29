@@ -37,7 +37,12 @@ val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> 
 
     Raises [Invalid_argument] if a [stack_switcher] or [stack_sidebar] names a stack no
     node in the tree registered, naming both the switcher's path and the name it wanted. A
-    fixup may not enqueue another; nothing needs to, and a queue that feeds itself is a
+    raise abandons the rest of the queue — the fixups queued behind the failing one do not
+    run, and are dropped with it — which matches the all-or-nothing a raising frame
+    already has: the driver stops for good rather than carrying a half-applied pass
+    forward.
+
+    A fixup may not enqueue another; nothing needs to, and a queue that feeds itself is a
     hang. *)
 val run_fixups : ctx -> unit
 

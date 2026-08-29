@@ -342,7 +342,12 @@ let rec dump (w : Widget.t) : Sexp.t =
         | idxs -> [ [%sexp `unmeasured (idxs : int list)] ])
      (* A grid child's cell is held by the *grid*, so a child's own dump cannot show it;
         print it from this side, in [widget_children] order so the list lines up with the
-        children printed underneath. *)
+        children printed underneath.
+
+        That order is GTK's, not the node list's: [gtk_grid_attach] appends, so a child
+        whose cell changed -- detached and re-attached by the grid's [updated] hook --
+        moves to the end of both this list and the children below it, however early it
+        sits in the node list. Nothing about a grid's layout depends on that order. *)
      | "GtkGrid" ->
        let g : W.Grid.t = cast w in
        int_prop "row-spacing" (W.Grid.get_row_spacing g) ~default:0

@@ -3,7 +3,9 @@ open Bonsai_gtk
 open Bonsai.Let_syntax
 module Gobject = Bonsai_gtk.Private.Gtk_import.Gobject
 module Glib = Bonsai_gtk.Private.Gtk_import.Glib
+module W = Bonsai_gtk.Private.Gtk_import.W
 
+let cast = Bonsai_gtk.Private.Gtk_import.cast
 let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children
 
 let app (graph @ local) =
@@ -68,6 +70,48 @@ let reentrant_app (graph @ local) =
            ~active:on
            ()
        ; Node.label (sprintf "on: %b toggled: %d" on toggled)
+       ])
+;;
+
+(* The consumer half of the controlled rule, at driver level.
+
+   [live_containers.ml] shows [Widget_impl.reassert] and the stack fixup putting a
+   declined edit back, but it does so by calling [Patcher.patch] itself. The frame is what
+   decides whether they run at all: a model that declines an edit leaves its state exactly
+   as it was, so Bonsai hands the driver the physically same node, and a driver that
+   skipped the patch on that would skip the only thing that undoes the edit.
+
+   Nothing here changes state -- [count] has no setter that is ever called, and both
+   handlers only bump a counter through an effect -- so every frame after the first
+   renders the identical node. The toggle's [~active] and the stack's [~visible_child] are
+   therefore pinned, and the user's changes must not survive a frame. *)
+let declined_toggles = ref 0
+let declined_pages = ref 0
+
+let declining_app (graph @ local) =
+  let count, (_ : (int -> unit Effect.t) Bonsai.t) = Bonsai.state 0 graph in
+  let%arr count in
+  Node.window
+    ~title:"declined"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.toggle_button
+           ~attrs:
+             [ Attr.on_toggled
+                 (Effect.of_sync_fun (fun (_ : bool) -> incr declined_toggles))
+             ]
+           ~label:"t"
+           ~active:(count > 0)
+           ()
+       ; Node.stack
+           ~name:"nav"
+           ~transition:None_
+           ~visible_child:"a"
+           ~attrs:
+             [ Attr.on_visible_child_changed
+                 (Effect.of_sync_fun (fun (_ : string) -> incr declined_pages))
+             ]
+           [ Node.label ~key:"a" "a"; Node.label ~key:"b" "b" ]
        ])
 ;;
 
@@ -158,5 +202,31 @@ let () =
   Gobject.Signal.emit_by_name (nth 1) ~name:"toggled";
   drain ();
   dump_reentrant ();
-  Expert.Driver.stop reentrant
+  Expert.Driver.stop reentrant;
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let declining =
+    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) declining_app
+  in
+  Expert.Driver.frame declining;
+  let child i =
+    let root = Option.value_exn (Expert.Driver.root_widget declining) in
+    List.nth_exn (widget_children (List.hd_exn (widget_children root))) i
+  in
+  (* The user flips the toggle. The model sees it and renders the same node anyway, so the
+     frame the click arms is the one that has to put the widget back. *)
+  W.Toggle_button.set_active (cast (child 0)) true;
+  drain ();
+  printf
+    "declined toggle: active %b, Bonsai saw %d\n"
+    (W.Toggle_button.get_active (cast (child 0)))
+    !declined_toggles;
+  (* The same claim for the stack, whose selection is put back by the fixup pass rather
+     than by [reassert] -- and so is the other half of what a skipped patch would lose. *)
+  W.Stack.set_visible_child_name (cast (child 1)) "b";
+  drain ();
+  printf
+    "declined page: visible %s, Bonsai saw %d\n"
+    (Option.value (W.Stack.get_visible_child_name (cast (child 1))) ~default:"?")
+    !declined_pages;
+  Expert.Driver.stop declining
 ;;

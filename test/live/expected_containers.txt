@@ -309,4 +309,6 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
 declined visible child: setlists; reached Bonsai: 0
 visible-child notify reaching Bonsai: 1
 rejected: stray/0: no Node.stack is named "nope" (a stack_switcher/stack_sidebar must name a stack that exists somewhere in the same tree)
+rejected: keyless/0/0: Stack child has no ~key (a stack page's key is its GTK page name)
 rejected: dup/0/1: two Node.stacks are named "nav" in one tree
+rejected: ren/0/1: two Node.stacks are named "first" in one tree

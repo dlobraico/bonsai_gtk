@@ -40,3 +40,5 @@ broken driver stopped
     (GtkToggleButton (label (t)) active (css (text-button toggle))
      (children (GtkLabel (text t))))
     (GtkLabel (text "on: true toggled: 1"))))))
+declined toggle: active false, Bonsai saw 1
+declined page: visible a, Bonsai saw 1

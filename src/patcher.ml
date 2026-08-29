@@ -139,14 +139,21 @@ let note_interest
   | Stack { name; visible_child; _ } ->
     (match pass with
      | `Mount -> register_stack ctx ~path ~name widget
-     | `Patch old_kind ->
+     | `Patch (Kind.Stack { name = old_name; _ }) when String.equal old_name name ->
+       (* The name did not move, so the entry already points here. [set] rather than
+          nothing so a registration lost to some earlier teardown heals itself. *)
+       Hashtbl.set ctx.stacks ~key:name ~data:widget
+     | `Patch (Kind.Stack { name = old_name; _ }) ->
        (* A renamed stack drops its old entry, so a switcher still naming it fails loudly
-          rather than driving a stack the tree no longer calls that. *)
-       (match old_kind with
-        | Kind.Stack { name = old_name; _ } when not (String.equal old_name name) ->
-          Hashtbl.remove ctx.stacks old_name
-        | _ -> ());
-       Hashtbl.set ctx.stacks ~key:name ~data:widget);
+          rather than driving a stack the tree no longer calls that -- and claims the new
+          name through [register_stack], so renaming *onto* a name another stack already
+          holds raises exactly as declaring the collision outright would. *)
+       Hashtbl.remove ctx.stacks old_name;
+       register_stack ctx ~path ~name widget
+     | `Patch _ ->
+       (* Unreachable: [patch] only gets here when the kinds match. Registering rather
+          than assuming is what keeps it harmless if that ever changes. *)
+       register_stack ctx ~path ~name widget);
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected. *)
     Queue.enqueue ctx.fixups (fun () -> W_stack.select widget ~visible_child)
@@ -272,7 +279,13 @@ and destroy ctx (live : live) =
   match live.node.kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
   | Window _ -> W.Window.destroy (cast live.widget)
-  | Stack { name; _ } -> Hashtbl.remove ctx.stacks name
+  | Stack { name; _ } ->
+    (* Only while the entry is still this widget's: a stack that renamed itself onto this
+       name during the same pass owns it now, and tearing down the stack it displaced must
+       not unregister the one that took over. *)
+    (match Hashtbl.find ctx.stacks name with
+     | Some w when Gobject.same w live.widget -> Hashtbl.remove ctx.stacks name
+     | Some _ | None -> ())
   | Native n -> Native_gtk.destroy_payload n live.widget
   | Label _
   | Button _

@@ -76,7 +76,14 @@ type t =
       in {!batch} for the same reason. Implementations are called with the {i new} kind
       and must raise {!wrong_kind} on any other. [None] for a kind with no controlled prop
       — which is most of them, and is why this is an option rather than a [unit -> unit]
-      every impl would have to write. *)
+      every impl would have to write.
+
+      [None] also covers the kind whose controlled prop cannot be written from here: a
+      [Stack]'s visible child names a page, and this hook runs {i before} the children are
+      patched, so on the frame that both adds a page and selects it there would be nothing
+      to select. That one is applied by [Patcher.run_fixups] instead, once the whole tree
+      exists — on the identical rule, compared against the widget rather than the previous
+      node, and on every frame. *)
   ; signals : Signals.spec list
   ; children : child_ops
   }

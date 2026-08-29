@@ -473,21 +473,59 @@ let () =
    | (_ : P.live) -> print_endline "BUG: unresolvable stack name accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   P.destroy ctx live;
+  (* A stack page's name is its key, so a page without one has nothing to be selected by
+     and nothing for the reconciler to match on. *)
+  (match
+     P.mount
+       ctx
+       ~path:"keyless"
+       ~is_root:true
+       (Node.window
+          ~title:"k"
+          (Node.stack ~name:"solo" ~visible_child:"a" [ Node.label "keyless" ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: stack page without a key accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   (* Two stacks under one name would make [~stack] ambiguous, so the second one to be
      mounted says so rather than quietly winning or losing the registration. *)
-  match
-    P.mount
-      ctx
-      ~path:"dup"
-      ~is_root:true
-      (Node.window
-         ~title:"d"
-         (Node.box
-            ~orientation:Vertical
-            [ Node.stack ~name:"nav" ~visible_child:"a" [ Node.label ~key:"a" "a" ]
-            ; Node.stack ~name:"nav" ~visible_child:"b" [ Node.label ~key:"b" "b" ]
-            ]))
-  with
-  | (_ : P.live) -> print_endline "BUG: two stacks with one name accepted"
+  (match
+     P.mount
+       ctx
+       ~path:"dup"
+       ~is_root:true
+       (Node.window
+          ~title:"d"
+          (Node.box
+             ~orientation:Vertical
+             [ Node.stack ~name:"nav" ~visible_child:"a" [ Node.label ~key:"a" "a" ]
+             ; Node.stack ~name:"nav" ~visible_child:"b" [ Node.label ~key:"b" "b" ]
+             ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: two stacks with one name accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* And renaming one stack *onto* another's name is the same collision arriving a frame
+     later, so it has to be the same rejection: a patch that quietly rebound the name
+     would silently re-point every switcher in the tree at the wrong stack. *)
+  let pair ~second_name =
+    Node.window
+      ~title:"r"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack
+             ~key:"one"
+             ~name:"first"
+             ~visible_child:"x"
+             [ Node.label ~key:"x" "x" ]
+         ; Node.stack
+             ~key:"two"
+             ~name:second_name
+             ~visible_child:"y"
+             [ Node.label ~key:"y" "y" ]
+         ])
+  in
+  let renamed = P.mount ctx ~path:"ren" ~is_root:true (pair ~second_name:"second") in
+  P.run_fixups ctx;
+  match P.patch ctx ~path:"ren" ~is_root:true renamed (pair ~second_name:"first") with
+  | (_ : P.live) -> print_endline "BUG: a stack renamed onto another's name accepted"
   | exception Invalid_argument msg -> printf "rejected: %s\n" msg
 ;;
