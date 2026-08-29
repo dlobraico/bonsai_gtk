@@ -1,0 +1,6 @@
+(library
+ (name bonsai_gtk_vtree)
+ (public_name bonsai_gtk.vtree)
+ (libraries core virtual_dom.ui_effect)
+ (preprocess
+  (pps ppx_jane)))

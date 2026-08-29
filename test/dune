@@ -1,0 +1,13 @@
+(library
+ (name bonsai_gtk_tests)
+ (libraries
+  core
+  bonsai_gtk.vtree
+  bonsai
+  bonsai_test
+  expect_test_helpers_core)
+ (inline_tests
+  (flags
+   (-source-tree-root .)))
+ (preprocess
+  (pps ppx_jane ppx_expect bonsai.ppx_bonsai)))
