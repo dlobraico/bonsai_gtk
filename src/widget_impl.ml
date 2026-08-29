@@ -15,7 +15,7 @@ type t =
   { name : string
   ; create : Kind.t -> Widget.t
   ; update : Widget.t -> old:Kind.t -> Kind.t -> unit
-  ; controlled : bool
+  ; reassert : (Widget.t -> Kind.t -> unit) option
   ; signals : Signals.spec list
   ; children : child_ops
   }

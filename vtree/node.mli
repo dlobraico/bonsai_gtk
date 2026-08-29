@@ -108,9 +108,14 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     from what the previous node said, which is stale the moment the user types. A model
     that echoes what was typed causes no write and so no caret jump; a model that rewrites
     it (uppercasing, clamping, rejecting) still wins, and the caret is put back where it
-    was. There is no uncontrolled mode: an entry whose text no [Attr.on_changed] feeds
-    back into the model resets to the model's value the next time anything re-renders,
-    which is the bug the required argument exists to make impossible to write by accident.
+    was. A write-back is not free when it does happen: GTK replaces the whole text, so the
+    caret lands at the end whenever the model shortened it past the old position, the
+    selection is dropped, and an input method's in-flight preedit (a half-composed CJK or
+    accented character) is disturbed. That is the price of a model that rewrites as you
+    type, and the reason the widget is left alone whenever it already agrees. There is no
+    uncontrolled mode: an entry whose text no [Attr.on_changed] feeds back into the model
+    resets to the model's value the next time anything re-renders, which is the bug the
+    required argument exists to make impossible to write by accident.
 
     [placeholder] is the grey prompt shown while the entry is empty. [visibility:false] is
     password-style masking — prefer {!password_entry}, which is the accessible widget for

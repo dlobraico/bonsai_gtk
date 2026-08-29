@@ -34,10 +34,17 @@ let impl : Widget_impl.t =
             if not (Bool.equal old.show_peek_icon new_.show_peek_icon)
             then W.Password_entry.set_show_peek_icon e new_.show_peek_icon;
             if not (Bool.equal old.activates_default new_.activates_default)
-            then W.Password_entry.set_activates_default e new_.activates_default;
-            W_entry.set_text_if_needed (W_entry.editable w) new_.text)
+            then W.Password_entry.set_activates_default e new_.activates_default)
+          (* [text] is controlled: see [reassert]. *)
         | _, k -> Widget_impl.wrong_kind "PasswordEntry" k)
-  ; controlled = true
+  ; reassert =
+      Some
+        (fun w (kind : Kind.t) ->
+          match kind with
+          | Password_entry p ->
+            Widget_impl.batch w (fun () ->
+              W_entry.set_text_if_needed (W_entry.editable w) p.text)
+          | k -> Widget_impl.wrong_kind "PasswordEntry" k)
   ; signals =
       [ W_entry.changed
       ; W_entry.activate ~connect:(fun w ~callback ->

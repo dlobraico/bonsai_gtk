@@ -97,7 +97,7 @@ let impl : Widget_impl.t =
               ~icon_name:new_.icon_name
               ~has_frame:new_.has_frame)
         | _, k -> Widget_impl.wrong_kind "Button" k)
-  ; controlled = false
+  ; reassert = None
   ; signals = [ clicked ]
   ; children = Widget_impl.Single { set = set_child_slot }
   }

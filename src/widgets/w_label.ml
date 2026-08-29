@@ -51,7 +51,7 @@ let impl : Widget_impl.t =
         | Label old, Label new_ ->
           Widget_impl.batch w (fun () -> apply_props (cast w) new_ ~old:(Some old))
         | _, k -> Widget_impl.wrong_kind "Label" k)
-  ; controlled = false
+  ; reassert = None
   ; signals = []
   ; children = Widget_impl.No_children
   }

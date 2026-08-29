@@ -43,6 +43,11 @@ val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
 
 (** Diffs [node] against [live.node] and mutates the live tree to match.
 
+    Props whose value changed are written by the impl's [update]; a {i controlled} prop
+    (spec §6.5) is written by its [reassert] hook instead, which runs on every patch —
+    because the patch where the model declined the user's change is exactly the patch
+    where nothing in the tree moved. See {!Widget_impl.reassert}.
+
     Returns [live] itself when the root kind is unchanged (the common case; [live] has
     been updated in place). When the kind changed, the whole subtree is remounted and
     the *new* live is returned, with the old one already destroyed — the caller is

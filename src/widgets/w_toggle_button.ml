@@ -13,6 +13,17 @@ let toggled : Signals.spec =
   }
 ;;
 
+(* Controlled (spec §6.5): compare against what the widget currently shows, not against
+   the previous node's [active]. The user may have flipped it since the last render, and a
+   model that chose not to follow must pin the widget back rather than skip the write --
+   which is why this is [reassert] rather than part of [update]. The patcher skips
+   [update] entirely on the patch where the model declined, that being precisely the patch
+   where the props did not move. *)
+let set_active_if_needed (b : W.Toggle_button.t) active =
+  if not (Bool.equal (W.Toggle_button.get_active b) active)
+  then W.Toggle_button.set_active b active
+;;
+
 let impl : Widget_impl.t =
   { name = "ToggleButton"
   ; create =
@@ -31,7 +42,7 @@ let impl : Widget_impl.t =
                 ~label:p.label
                 ~icon_name:p.icon_name
                 ~has_frame:p.has_frame;
-              if p.active then W.Toggle_button.set_active b true);
+              set_active_if_needed b p.active);
           (b :> Widget.t)
         | k -> Widget_impl.wrong_kind "ToggleButton" k)
   ; update =
@@ -44,16 +55,17 @@ let impl : Widget_impl.t =
               ~old:(Some (old.label, old.icon_name, old.has_frame))
               ~label:new_.label
               ~icon_name:new_.icon_name
-              ~has_frame:new_.has_frame;
-            (* Controlled (spec §6.5): compare against what the widget currently shows,
-               not against [old.active]. The user may have flipped it since the last
-               render, and a model that chose not to follow must pin the widget back
-               rather than skip the write. *)
-            let b : W.Toggle_button.t = cast w in
-            if not (Bool.equal (W.Toggle_button.get_active b) new_.active)
-            then W.Toggle_button.set_active b new_.active)
+              ~has_frame:new_.has_frame)
+          (* [active] is deliberately absent: it is controlled, so it belongs to
+             [reassert]. *)
         | _, k -> Widget_impl.wrong_kind "ToggleButton" k)
-  ; controlled = true
+  ; reassert =
+      Some
+        (fun w (kind : Kind.t) ->
+          match kind with
+          | Toggle_button p ->
+            Widget_impl.batch w (fun () -> set_active_if_needed (cast w) p.active)
+          | k -> Widget_impl.wrong_kind "ToggleButton" k)
   ; signals =
       [ toggled ]
       (* Shared with [w_button.ml]: a [GtkToggleButton] is a [GtkButton], down to the one

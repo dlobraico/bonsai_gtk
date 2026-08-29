@@ -69,9 +69,12 @@ let impl : Widget_impl.t =
             if p.max_width_chars <> -1
             then W.Editable.set_max_width_chars ed p.max_width_chars;
             if Float.( <> ) p.xalign 0. then W.Editable.set_alignment ed p.xalign;
-            set_text_if_needed ed p.text;
-            (* Last, and after the text: a read-only entry still has to be given its text. *)
-            if not p.editable then W.Editable.set_editable ed false);
+            if not p.editable then W.Editable.set_editable ed false;
+            (* Text last, here as in [reassert]: a width or alignment change re-lays-out
+               the entry, and doing that after the write would re-run the caret placement
+               the write just decided. [set_editable] is not a barrier — it gates the
+               user's edits, not the program's. *)
+            set_text_if_needed ed p.text);
           w
         | k -> Widget_impl.wrong_kind "Entry" k)
   ; update =
@@ -94,13 +97,18 @@ let impl : Widget_impl.t =
             if old.max_width_chars <> new_.max_width_chars
             then W.Editable.set_max_width_chars ed new_.max_width_chars;
             if Float.( <> ) old.xalign new_.xalign
-            then W.Editable.set_alignment ed new_.xalign;
-            (* Last on purpose: a [width_chars] change re-lays-out the entry, and doing
-               that after the text write would re-run the caret placement the write just
-               decided. *)
-            set_text_if_needed ed new_.text)
+            then W.Editable.set_alignment ed new_.xalign)
+          (* [text] is deliberately absent, so [create] and [update] agree on writing it
+             last: it is controlled, which makes it [reassert]'s, and the patcher runs
+             that immediately after this and on every other patch too. *)
         | _, k -> Widget_impl.wrong_kind "Entry" k)
-  ; controlled = true
+  ; reassert =
+      Some
+        (fun w (kind : Kind.t) ->
+          match kind with
+          | Entry p ->
+            Widget_impl.batch w (fun () -> set_text_if_needed (editable w) p.text)
+          | k -> Widget_impl.wrong_kind "Entry" k)
   ; signals =
       [ changed
       ; activate ~connect:(fun w ~callback -> W.Entry.on_activate (cast w) ~callback)

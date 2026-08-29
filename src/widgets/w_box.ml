@@ -32,7 +32,7 @@ let impl : Widget_impl.t =
             if not (Bool.equal old.homogeneous new_.homogeneous)
             then W.Box.set_homogeneous box new_.homogeneous)
         | _, k -> Widget_impl.wrong_kind "Box" k)
-  ; controlled = false
+  ; reassert = None
   ; signals = []
   ; children =
       Widget_impl.List

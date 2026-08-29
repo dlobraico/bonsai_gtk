@@ -83,6 +83,7 @@ scheduled during patch: 0
       (GtkImage (tooltip "Clear Entry"))))))))
 scheduled outside patch: 3
 entry signals reaching Bonsai: 8
+declined toggle true, check true, switch true (state true); reached Bonsai: 0
 rejected: root/0: Label does not emit On_toggled
 rejected at patch: late/0: Label does not emit On_toggled
 (GtkWindow (title (slot)) (css (background)) hidden

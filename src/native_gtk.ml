@@ -53,9 +53,9 @@ let widget_impl (type a) (impl : a impl) : Widget_impl.t =
   { name
   ; create = (fun kind -> M.create (input_of_kind kind))
   ; update = (fun w ~old new_ -> M.update w ~old:(input_of_kind old) (input_of_kind new_))
-  ; (* [Native_gtk.S] has no way to say "controlled", and a native [update] that wanted to
-       re-assert against its widget can do so from its own [create]-installed handlers. *)
-    controlled = false
+  ; (* [Native_gtk.S] has no controlled-prop member, and a native widget that wants to
+       re-assert against itself can do so from its own [create]-installed handlers. *)
+    reassert = None
   ; signals = []
   ; children = No_children
   }

@@ -44,10 +44,17 @@ let impl : Widget_impl.t =
             (* [None] means "leave GTK's own 150 ms alone", so going from [Some] back to
                [None] writes nothing rather than guessing a value to restore. *)
             if not (Option.equal Int.equal old.search_delay new_.search_delay)
-            then Option.iter new_.search_delay ~f:(W.Search_entry.set_search_delay e);
-            W_entry.set_text_if_needed (W_entry.editable w) new_.text)
+            then Option.iter new_.search_delay ~f:(W.Search_entry.set_search_delay e))
+          (* [text] is controlled: see [reassert]. *)
         | _, k -> Widget_impl.wrong_kind "SearchEntry" k)
-  ; controlled = true
+  ; reassert =
+      Some
+        (fun w (kind : Kind.t) ->
+          match kind with
+          | Search_entry p ->
+            Widget_impl.batch w (fun () ->
+              W_entry.set_text_if_needed (W_entry.editable w) p.text)
+          | k -> Widget_impl.wrong_kind "SearchEntry" k)
   ; signals =
       [ W_entry.changed
       ; search_changed

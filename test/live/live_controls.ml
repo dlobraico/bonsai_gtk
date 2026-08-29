@@ -6,6 +6,8 @@ module P = Bonsai_gtk.Private.Patcher
 module Scheduler = Bonsai_gtk.Private.Scheduler
 module W = Bonsai_gtk.Private.Gtk_import.W
 
+let cast = Bonsai_gtk.Private.Gtk_import.cast
+
 let nth_child (live : P.live) i : P.live =
   match live.children with
   | Single (Some box) ->
@@ -115,6 +117,27 @@ let () =
     Gobject.Signal.emit_by_name (nth_child live i).widget ~name:"activate");
   Gobject.Signal.emit_by_name (nth_child live 9).widget ~name:"search-changed";
   printf "entry signals reaching Bonsai: %d\n" (!scheduled - before);
+  (* The other half of the controlled rule, and the half a props diff cannot see. A model
+     that *declines* the user's change renders exactly the props it rendered last frame,
+     so [update] is skipped and only [Widget_impl.reassert] is left to put the widget
+     back. Flip all three toggles behind the model's back, then patch with the tree
+     unchanged at [active:true]: every one must come back on, and none of it may reach
+     Bonsai. *)
+  W.Toggle_button.set_active (cast (nth_child live 3).widget) false;
+  W.Check_button.set_active (cast (nth_child live 4).widget) false;
+  W.Switch.set_active (cast (nth_child live 5).widget) false;
+  let before = !scheduled in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"root" ~is_root:true live (view ~active:true))
+  in
+  printf
+    "declined toggle %b, check %b, switch %b (state %b); reached Bonsai: %d\n"
+    (W.Toggle_button.get_active (cast (nth_child live 3).widget))
+    (W.Check_button.get_active (cast (nth_child live 4).widget))
+    (W.Switch.get_active (cast (nth_child live 5).widget))
+    (W.Switch.get_state (cast (nth_child live 5).widget))
+    (!scheduled - before);
   (* An event attr the widget cannot emit is a typo, and a loud one. *)
   (match
      P.mount

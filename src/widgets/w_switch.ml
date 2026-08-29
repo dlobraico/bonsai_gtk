@@ -29,6 +29,11 @@ let set_both (s : W.Switch.t) active =
   W.Switch.set_state s active
 ;;
 
+(* Controlled, on the same rule (and for the same reason) as [w_toggle_button.ml]'s. *)
+let set_active_if_needed (s : W.Switch.t) active =
+  if not (Bool.equal (W.Switch.get_active s) active) then set_both s active
+;;
+
 let impl : Widget_impl.t =
   { name = "Switch"
   ; create =
@@ -40,15 +45,20 @@ let impl : Widget_impl.t =
           (s :> Widget.t)
         | k -> Widget_impl.wrong_kind "Switch" k)
   ; update =
-      (fun w ~(old : Kind.t) (new_ : Kind.t) ->
-        match old, new_ with
-        | Switch _, Switch { active } ->
-          let s : W.Switch.t = cast w in
-          (* Controlled, on the same rule as [w_toggle_button.ml]'s. *)
-          if not (Bool.equal (W.Switch.get_active s) active)
-          then Widget_impl.batch w (fun () -> set_both s active)
-        | _, k -> Widget_impl.wrong_kind "Switch" k)
-  ; controlled = true
+      (* [active] is the only prop a switch has, and it is controlled — so every write
+         this kind ever makes belongs to [reassert], and there is nothing left to diff
+         here. *)
+      (fun _w ~old:(_ : Kind.t) (new_ : Kind.t) ->
+        match new_ with
+        | Switch _ -> ()
+        | k -> Widget_impl.wrong_kind "Switch" k)
+  ; reassert =
+      Some
+        (fun w (kind : Kind.t) ->
+          match kind with
+          | Switch { active } ->
+            Widget_impl.batch w (fun () -> set_active_if_needed (cast w) active)
+          | k -> Widget_impl.wrong_kind "Switch" k)
   ; signals = [ toggled ]
   ; children = Widget_impl.No_children
   }

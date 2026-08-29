@@ -127,9 +127,13 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
     (* Spec §11 says mount *and* patch time. A conditionally-added event attr
        ([if editing then Attr.on_toggled ...]) lands on a widget that was mounted without
        it, so only this call is in a position to reject it — [connect_all] ran once, at
-       mount, and no slot exists for a name no spec claims. Guarded on the attrs having
-       changed, since re-walking every attr of every unchanged node each frame is pure
-       cost, and done before anything is written so the raise leaves the widget alone. *)
+       mount, and no slot exists for a name no spec claims.
+
+       Computing the diff first is about *ordering*: the check runs before anything is
+       written, so the raise leaves the widget untouched. The guard itself saves little —
+       handlers are rebuilt every frame and [Attr.equal] compares them physically, so any
+       node carrying an [on_*] attr at all has a non-empty diff on every frame, and it is
+       the attr-free subtrees rather than the interesting ones that get skipped. *)
     if not (List.is_empty attr_ops)
     then
       Signals.require_specs
@@ -137,10 +141,13 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
         ~impl_name:live.impl.name
         live.impl.signals
         node.attrs;
-    (* A controlled impl re-asserts against the widget, so it has to run even when the
-       props are unchanged — see [Widget_impl.controlled]. *)
-    if live.impl.controlled || not (Kind.equal_props live.node.kind node.kind)
+    if not (Kind.equal_props live.node.kind node.kind)
     then live.impl.update live.widget ~old:live.node.kind node.kind;
+    (* Unconditionally, and after [update]: a controlled prop is compared against the
+       widget, not against the previous node, so it has to be re-applied even on the patch
+       where nothing in the tree changed — which is exactly the patch a model that
+       declined the user's edit produces. See [Widget_impl.reassert]. *)
+    Option.iter live.impl.reassert ~f:(fun f -> f live.widget node.kind);
     List.iter attr_ops ~f:(Attr_apply.apply ~defaults:live.defaults live.widget);
     Signals.update_slots live.slots node.attrs;
     live.children <- patch_children ctx ~path live node;
