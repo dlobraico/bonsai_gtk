@@ -1,0 +1,19 @@
+(include_subdirs unqualified)
+
+(library
+ (name bonsai_gtk)
+ (public_name bonsai_gtk)
+ (libraries
+  core
+  bonsai
+  bonsai.driver
+  virtual_dom.ui_effect
+  bonsai_gtk.vtree
+  ocgtk.gtk
+  ocgtk.gio
+  ocgtk.gdk
+  ocgtk.common)
+ (flags
+  (:standard -w +a-4-40-41-42-44-45-66-70 -open Core))
+ (preprocess
+  (pps ppx_jane)))
