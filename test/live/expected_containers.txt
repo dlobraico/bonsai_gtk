@@ -333,6 +333,8 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
 declined visible child: setlists; reached Bonsai: 0
 visible-child notify reaching Bonsai: 1
 rejected: stray/0: no Node.stack is named "nope" (a stack_switcher/stack_sidebar must name a stack that exists somewhere in the same tree)
+stack wrapped in a frame; switcher drives the surviving stack: true
+rejected: twin/0/1/0: two Node.stacks are named "twin" in one tree
 rejected: keyless/0/0: Stack child has no ~key (a stack page's key is its GTK page name)
 rejected: dupkey/0: duplicate key a among one container's children (a key identifies a child among its siblings, so no two of them may share one)
 rejected: duppage/0: duplicate key detail among one container's children (a key identifies a child among its siblings, so no two of them may share one)

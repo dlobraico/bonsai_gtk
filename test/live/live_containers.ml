@@ -555,6 +555,76 @@ let () =
    | (_ : P.live) -> print_endline "BUG: unresolvable stack name accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   P.destroy ctx live;
+  (* Wrapping a named stack in another container is ordinary UI work, and it changes
+     the *parent's* kind -- so the patcher mounts the replacement subtree, which
+     re-declares the stack's name, while the subtree it replaces still holds it. The one
+     stack in this tree must not be reported as two, and the switcher above it has to come
+     out of the refactor driving the new widget. *)
+  let wrapped ~framed =
+    let stack =
+      Node.stack
+        ~name:"refactor"
+        ~transition:None_
+        ~visible_child:"a"
+        [ Node.label ~key:"a" "a"; Node.label ~key:"b" "b" ]
+    in
+    Node.window
+      ~title:"w"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack_switcher ~stack:"refactor" ()
+         ; (if framed then Node.frame ~label:"Nav" stack else stack)
+         ])
+  in
+  let wrapped_live = P.mount ctx ~path:"wrap" ~is_root:true (wrapped ~framed:false) in
+  P.run_fixups ctx;
+  let wrapped_live =
+    P.patch ctx ~path:"wrap" ~is_root:true wrapped_live (wrapped ~framed:true)
+  in
+  P.run_fixups ctx;
+  let framed_stack (live : P.live) =
+    match live.children with
+    | Single (Some box) ->
+      (match box.children with
+       | List [ _switcher; frame ] ->
+         (match frame.children with
+          | Single (Some stack) -> stack.P.widget
+          | No_children | Single None | List _ | Slots _ -> assert false)
+       | No_children | Single _ | List _ | Slots _ -> assert false)
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  printf
+    "stack wrapped in a frame; switcher drives the surviving stack: %b\n"
+    (match W.Stack_switcher.get_stack (cast (nth_child wrapped_live 0)) with
+     | None -> false
+     | Some s -> Gobject.same s (framed_stack wrapped_live));
+  P.destroy ctx wrapped_live;
+  (* The check itself is unchanged: a kind change that leaves *two* live stacks under one
+     name still raises, because the stack it collides with is not in the subtree being
+     replaced. *)
+  let twins ~both =
+    Node.window
+      ~title:"c"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack
+             ~key:"one"
+             ~name:"twin"
+             ~visible_child:"a"
+             [ Node.label ~key:"a" "a" ]
+         ; (if both
+            then
+              Node.frame
+                ~key:"two"
+                (Node.stack ~name:"twin" ~visible_child:"b" [ Node.label ~key:"b" "b" ])
+            else Node.label ~key:"two" "not yet")
+         ])
+  in
+  let twins_live = P.mount ctx ~path:"twin" ~is_root:true (twins ~both:false) in
+  P.run_fixups ctx;
+  (match P.patch ctx ~path:"twin" ~is_root:true twins_live (twins ~both:true) with
+   | (_ : P.live) -> print_endline "BUG: two live stacks under one name accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   (* A stack page's name is its key, so a page without one has nothing to be selected by
      and nothing for the reconciler to match on. *)
   (match

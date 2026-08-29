@@ -28,6 +28,14 @@ let register_stack ctx ~path ~name widget =
   | `Duplicate -> invalid_argf "%s: two Node.stacks are named %S in one tree" path name ()
 ;;
 
+(* Only while the entry is still this widget's: a stack that claimed the name during the
+   same pass owns it now, and dropping the one it displaced must not unregister it. *)
+let unregister_stack ctx ~name widget =
+  match Hashtbl.find ctx.stacks name with
+  | Some w when Gobject.same w widget -> Hashtbl.remove ctx.stacks name
+  | Some _ | None -> ()
+;;
+
 let resolve_stack ctx ~path ~name : Widget.t =
   match Hashtbl.find ctx.stacks name with
   | Some w -> w
@@ -291,13 +299,7 @@ and destroy ctx (live : live) =
   match live.node.kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
   | Window _ -> W.Window.destroy (cast live.widget)
-  | Stack { name; _ } ->
-    (* Only while the entry is still this widget's: a stack that renamed itself onto this
-       name during the same pass owns it now, and tearing down the stack it displaced must
-       not unregister the one that took over. *)
-    (match Hashtbl.find ctx.stacks name with
-     | Some w when Gobject.same w live.widget -> Hashtbl.remove ctx.stacks name
-     | Some _ | None -> ())
+  | Stack { name; _ } -> unregister_stack ctx ~name live.widget
   | Native n -> Native_gtk.destroy_payload n live.widget
   | Label _
   | Button _
@@ -338,12 +340,33 @@ and disarm (live : live) =
   Signals.clear_slots live.slots;
   Children.iter live.children ~f:disarm
 
+(* Every stack name a subtree holds, given up before the subtree is replaced.
+
+   The kind-change arm below mounts the replacement *before* destroying what it replaces,
+   so that the old widgets stay alive and parented until the new ones exist. That ordering
+   is right, and it is also why an ordinary refactor collided with itself: wrapping a
+   [Node.stack ~name:"nav"] in a [Node.frame] changes the parent's kind, so the replacement
+   subtree registers "nav" while the subtree being replaced still holds it, and
+   [register_stack] rejects the one stack in the tree as two.
+
+   Dropping the registrations first is enough, and it does not weaken the check: a genuine
+   collision is two stacks that are *both* still in the tree, and the other one is by
+   definition not in the subtree being thrown away. *)
+and drop_stack_names ctx (live : live) =
+  (match interest_of_kind live.node.kind with
+   | Stack { name; _ } -> unregister_stack ctx ~name live.widget
+   | Nothing | Window | Stack_ref _ -> ());
+  Children.iter live.children ~f:(drop_stack_names ctx)
+
 and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
   check_placement ~path ~is_root node;
   if not (Kind.same_kind live.node.kind node.kind)
   then (
     (* Mount before destroying: the caller re-parents the fresh widget, and mounting first
-       keeps the old subtree alive (and parented) until the replacement exists. *)
+       keeps the old subtree alive (and parented) until the replacement exists. The stack
+       names the old subtree holds are given up first, so that a stack the replacement
+       re-declares does not collide with the copy of itself that is on its way out. *)
+    drop_stack_names ctx live;
     let fresh = mount ctx ~path ~is_root node in
     destroy ctx live;
     fresh)
