@@ -7,12 +7,12 @@ Branch head: `d98d939711d315cfb595d472594407044ff4f147`.
 
 | # | Commit | Theme | Topic branch (fork) | Scrubbed head | Draft | Upstream PR |
 |---|--------|-------|---------------------|---------------|-------|-------------|
-| 1 | `60f34b07` | closure-marshal GC safety | `upstream/closure-gc` | `aecc35e6` | [pr-1](pr-1-closure-gc.md) | pending user approval |
-| 2 | `81917a4e` | GObject ownership in generated stubs | `upstream/gobject-ownership` | `4ae6698c` | [pr-2](pr-2-gobject-ownership.md) | pending user approval |
-| 3 | `3322e3b6` | gir_gen ownership fixes | `upstream/gir-gen-ownership` | `c63a3a42` | [pr-3](pr-3-gir-gen-ownership.md) | pending user approval |
-| 4 | `2ed607d2` | floating-GVariant UAF in SimpleAction | `upstream/simple-action-variant` | `c1d91606` | [pr-4](pr-4-simple-action-variant.md) | pending user approval |
-| 5 | `7d9d2ef7` | Glib_bytes.of_bigstring + GBytes memory accounting | `upstream/glib-bytes` | `79aa24e1` | [pr-5](pr-5-glib-bytes.md) | pending user approval |
-| 6 | `d98d9397` | Style_display.add_provider_for_default_display | `upstream/style-display` | `a80c3dda` | [pr-6](pr-6-style-display.md) | pending user approval |
+| 1 | `60f34b07` | closure-marshal GC safety | `upstream/closure-gc` | `aecc35e6` | [pr-1](pr-1-closure-gc.md) | [#173](https://github.com/chris-armstrong/ocgtk/pull/173) |
+| 2 | `81917a4e` | GObject ownership in generated stubs | `upstream/gobject-ownership` | `4ae6698c` | [pr-2](pr-2-gobject-ownership.md) | [#174](https://github.com/chris-armstrong/ocgtk/pull/174) |
+| 3 | `3322e3b6` | gir_gen ownership fixes | `upstream/gir-gen-ownership` | `c63a3a42` | [pr-3](pr-3-gir-gen-ownership.md) | [#175](https://github.com/chris-armstrong/ocgtk/pull/175) |
+| 4 | `2ed607d2` | floating-GVariant UAF in SimpleAction | `upstream/simple-action-variant` | `c1d91606` | [pr-4](pr-4-simple-action-variant.md) | [#176](https://github.com/chris-armstrong/ocgtk/pull/176) |
+| 5 | `7d9d2ef7` | Glib_bytes.of_bigstring + GBytes memory accounting | `upstream/glib-bytes` | `79aa24e1` | [pr-5](pr-5-glib-bytes.md) | [#177](https://github.com/chris-armstrong/ocgtk/pull/177) |
+| 6 | `d98d9397` | Style_display.add_provider_for_default_display | `upstream/style-display` | `a80c3dda` | [pr-6](pr-6-style-display.md) | [#178](https://github.com/chris-armstrong/ocgtk/pull/178) |
 
 ## Topic branches
 
