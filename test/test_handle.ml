@@ -22,19 +22,14 @@ let%expect_test "clicking the button re-renders the label" =
   Bonsai_gtk_test.Handle.show handle;
   [%expect
     {|
-    ((kind (Window ((title (Counter)) (default_size ())))) (attrs ())
+    ((kind (Window ((title (Counter))))) (attrs ())
      (children
       (Single
-       (((kind (Box ((orientation Vertical) (spacing 0) (homogeneous false))))
-         (attrs ())
+       (((kind (Box ((orientation Vertical)))) (attrs ())
          (children
           (List
-           (((kind
-              (Label
-               ((text "Count: 0") (wrap false) (xalign 0.5) (ellipsize ())
-                (max_width_chars -1) (width_chars -1) (selectable false)
-                (use_markup false))))
-             (attrs ((Test_id count))) (children No_children))
+           (((kind (Label ((text "Count: 0")))) (attrs ((Test_id count)))
+             (children No_children))
             ((kind (Button ((label (+)))))
              (attrs ((Test_id inc) (On_clicked <handler>)))
              (children No_children))))))))))
@@ -45,20 +40,15 @@ let%expect_test "clicking the button re-renders the label" =
   Bonsai_gtk_test.Handle.show_diff handle;
   [%expect
     {|
-      ((kind (Window ((title (Counter)) (default_size ())))) (attrs ())
+      ((kind (Window ((title (Counter))))) (attrs ())
        (children
         (Single
-         (((kind (Box ((orientation Vertical) (spacing 0) (homogeneous false))))
-           (attrs ())
+         (((kind (Box ((orientation Vertical)))) (attrs ())
            (children
             (List
-             (((kind
-                (Label
-    -|           ((text "Count: 0") (wrap false) (xalign 0.5) (ellipsize ())
-    +|           ((text "Count: 2") (wrap false) (xalign 0.5) (ellipsize ())
-                  (max_width_chars -1) (width_chars -1) (selectable false)
-                  (use_markup false))))
-               (attrs ((Test_id count))) (children No_children))
+    -|       (((kind (Label ((text "Count: 0")))) (attrs ((Test_id count)))
+    +|       (((kind (Label ((text "Count: 2")))) (attrs ((Test_id count)))
+               (children No_children))
               ((kind (Button ((label (+)))))
                (attrs ((Test_id inc) (On_clicked <handler>)))
                (children No_children))))))))))

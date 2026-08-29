@@ -2,11 +2,21 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-(** Every attribute value [unset] can restore, read off a widget before anything has been
-    applied to it. Take one per widget at creation and keep it for the widget's lifetime;
-    it is what makes "drop this attribute" mean "put back whatever GTK had", which differs
-    per widget class ([focusable] on a button vs a label, [visible] on a window vs
-    anything else) and which no constant could get right for all of them. *)
+(** Every attribute value [unset] can restore, read off a widget before any {i attribute}
+    has been applied to it. Take one per widget at creation and keep it for the widget's
+    lifetime; it is what makes "drop this attribute" mean "put back whatever this widget
+    had", which no constant could get right for all of them — [focusable] differs on a
+    button and a label, [visible] on a window and anything else.
+
+    These are the widget's creation-time values, not its class defaults: the kind's props
+    are applied by [Widget_impl.create], so a [Node.label ~selectable:true] has already
+    had GTK install a text cursor by the time the snapshot is taken. Unsetting
+    [cursor_name] on that label therefore restores the text cursor rather than no cursor,
+    which is right — it is what the widget had — but is worth knowing when reading a dump.
+
+    One field is not exact: ocgtk's [Widget.set_name] takes a [string] rather than a
+    [string option], so [Unset Widget_name] cannot restore "unnamed" and instead writes
+    back the class name [get_name] reported (see {!Bonsai_gtk_vtree.Attr.widget_name}). *)
 type defaults
 
 (** Call once, on a freshly created widget, before any attribute has been applied. *)

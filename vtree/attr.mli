@@ -77,8 +77,9 @@ val tooltip : string -> t
 val width_request : int -> t
 val height_request : int -> t
 
-(** [0.] is fully transparent, [1.] fully opaque. GTK still lays the widget out and still
-    routes input to it — use [visible false] to take it out of the layout. *)
+(** [0.] is fully transparent, [1.] fully opaque; GTK clamps anything outside that range.
+    GTK still lays the widget out and still routes input to it — use [visible false] to
+    take it out of the layout. *)
 val opacity : float -> t
 
 (** Whether the widget takes keyboard focus itself. GTK's defaults differ per widget class
@@ -91,7 +92,15 @@ val focusable : bool -> t
 val can_focus : bool -> t
 
 (** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]
-    because {!name} already means "which attribute is this". *)
+    because {!name} already means "which attribute is this".
+
+    Dropping this attribute is the one [Unset] that is not exact: ocgtk's [set_name] takes
+    a [string], not a [string option], so there is no way to pass NULL and restore "this
+    widget has no name". Unset therefore writes back what [get_name] reported at creation,
+    which for an unnamed widget is its class name (["GtkLabel"]) — so the widget ends up
+    with an explicit CSS id it did not have before, and a [#GtkLabel] selector would match
+    it. Harmless unless a stylesheet uses class names as ids; a NULL-accepting [set_name]
+    in the ocgtk fork would remove the caveat. *)
 val widget_name : string -> t
 
 (** A CSS cursor name — ["pointer"], ["text"], ["not-allowed"], ["default"]. An unknown

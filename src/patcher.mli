@@ -19,8 +19,9 @@ type live =
   ; widget : Widget.t
   ; impl : Widget_impl.t
   ; defaults : Attr_apply.defaults
-  (** Read off the widget the instant it was created, before any attribute was applied,
-      and kept for its lifetime: it is what an [Unset] op restores to. *)
+  (** Read off the widget the instant it was created — after [create] applied the kind's
+      props, before any attribute was — and kept for its lifetime: it is what an [Unset]
+      op restores to. *)
   ; slots : Signals.slots
   ; handler_ids : Gobject.Signal.handler_id list
   ; mutable children : live Children.t

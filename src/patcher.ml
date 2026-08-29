@@ -36,8 +36,9 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   check_placement ~path ~is_root node;
   let impl = Registry.for_kind node.kind in
   let widget = impl.create node.kind in
-  (* Before any attr touches it: this is the widget class's own defaults, which is what a
-     later [Unset] restores. *)
+  (* After [create] has applied the kind's props but before any attribute touches it:
+     these are the widget's own creation-time values, which is what a later [Unset]
+     restores. *)
   let defaults = Attr_apply.snapshot widget in
   Attr_apply.apply_all widget node.attrs;
   let slots, handler_ids =

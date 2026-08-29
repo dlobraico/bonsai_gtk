@@ -11,10 +11,19 @@ let align : Align.t -> Gtk_enums.align = function
 ;;
 
 (* Everything [unset] has to be able to put back. Read once off a freshly created widget,
-   before any attr has been applied to it, so it is that widget class's own default rather
-   than a constant this module would otherwise have to guess per kind ([focusable] is
-   false on a label and true on a button; [visible] is true on most widgets and false on a
-   GtkWindow, which is the case the M0 review caught). *)
+   before any *attribute* has been applied to it, so it is that widget's own creation-time
+   value rather than a constant this module would otherwise have to guess per kind
+   ([focusable] is false on a label and true on a button; [visible] is true on most
+   widgets and false on a GtkWindow, which is the case the M0 review caught).
+
+   Creation-time, not class default: the kind's props are already applied by [create], so
+   a [Node.label ~selectable:true] arrives here with GTK's text cursor installed and that
+   is what [Unset Cursor_name] will restore. That is the intended reading of "put back
+   what this widget had".
+
+   [widget_name] is the one field that cannot be restored exactly: ocgtk's [set_name]
+   takes a [string], so there is no NULL to write back and an unnamed widget is restored
+   to the class name [get_name] reported for it. *)
 type defaults =
   { margin_start : int
   ; margin_end : int

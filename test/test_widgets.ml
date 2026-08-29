@@ -3,15 +3,7 @@ open Bonsai_gtk_vtree
 
 let%expect_test "label defaults match GTK's, and every text property reaches the kind" =
   print_s [%sexp (Node.label "plain" : Node.t)];
-  [%expect
-    {|
-    ((kind
-      (Label
-       ((text plain) (wrap false) (xalign 0.5) (ellipsize ())
-        (max_width_chars -1) (width_chars -1) (selectable false)
-        (use_markup false))))
-     (attrs ()) (children No_children))
-    |}];
+  [%expect {| ((kind (Label ((text plain)))) (attrs ()) (children No_children)) |}];
   print_s
     [%sexp
       (Node.label

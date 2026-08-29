@@ -22,16 +22,11 @@ let%expect_test "constructors and sexp" =
     ((kind (Window ((title (Counter)) (default_size ((200 100)))))) (attrs ())
      (children
       (Single
-       (((kind (Box ((orientation Vertical) (spacing 6) (homogeneous false))))
-         (attrs ())
+       (((kind (Box ((orientation Vertical) (spacing 6)))) (attrs ())
          (children
           (List
-           (((kind
-              (Label
-               ((text "Count: 0") (wrap false) (xalign 0.5) (ellipsize ())
-                (max_width_chars -1) (width_chars -1) (selectable false)
-                (use_markup false))))
-             (key count) (attrs ()) (children No_children))
+           (((kind (Label ((text "Count: 0")))) (key count) (attrs ())
+             (children No_children))
             ((kind (Button ((label (+)))))
              (attrs ((Test_id inc) (On_clicked <handler>)))
              (children No_children))))))))))
