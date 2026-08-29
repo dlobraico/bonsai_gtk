@@ -98,9 +98,9 @@ let set (w : Widget.t) (attr : Attr.t) =
   | Can_focus b -> Widget.set_can_focus w b
   | Widget_name s -> Widget.set_name w s
   | Cursor_name s -> Widget.set_cursor_from_name w (Some s)
-  (* [Test_id] is inert at runtime; [On_clicked] is handled by [Signals]. [Many] is
+  (* [Test_id] is inert at runtime; the [On_*] attrs are handled by [Signals]. [Many] is
      flattened away by [Attrs.of_list] and never reaches here. *)
-  | Test_id _ | On_clicked _ | Many _ -> ()
+  | Test_id _ | On_clicked _ | On_toggled _ | Many _ -> ()
 ;;
 
 (* Put back the value this widget was created with, not a constant. *)
@@ -124,7 +124,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Can_focus -> Widget.set_can_focus w d.can_focus
   | Widget_name -> Widget.set_name w d.widget_name
   | Cursor_name -> Widget.set_cursor w d.cursor
-  | Test_id | On_clicked -> ()
+  | Test_id | On_clicked | On_toggled -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

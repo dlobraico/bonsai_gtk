@@ -23,7 +23,34 @@ module Name = struct
       | Cursor_name
       | Test_id
       | On_clicked
+      | On_toggled
     [@@deriving sexp_of, compare, equal]
+
+    (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
+       the compiler is what forces each new one to be classified here. A name that says
+       [true] is one [Signals.require_specs] insists some widget impl claims. *)
+    let is_event = function
+      | On_clicked | On_toggled -> true
+      | Margin_start
+      | Margin_end
+      | Margin_top
+      | Margin_bottom
+      | Halign
+      | Valign
+      | Hexpand
+      | Vexpand
+      | Sensitive
+      | Visible
+      | Tooltip
+      | Width_request
+      | Height_request
+      | Opacity
+      | Focusable
+      | Can_focus
+      | Widget_name
+      | Cursor_name
+      | Test_id -> false
+    ;;
   end
 
   include T
@@ -52,6 +79,7 @@ type t =
   | Cursor_name of string
   | Test_id of string
   | On_clicked of unit Handler.t
+  | On_toggled of bool Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -77,6 +105,7 @@ let name = function
   | Cursor_name _ -> Some Cursor_name
   | Test_id _ -> Some Test_id
   | On_clicked _ -> Some On_clicked
+  | On_toggled _ -> Some On_toggled
 ;;
 
 let rec equal a b =
@@ -101,6 +130,7 @@ let rec equal a b =
   | Can_focus a, Can_focus b -> Bool.equal a b
   | Opacity a, Opacity b -> Float.equal a b
   | On_clicked a, On_clicked b -> Handler.equal a b
+  | On_toggled a, On_toggled b -> Handler.equal a b
   | Many a, Many b -> List.equal equal a b
   | _ -> false
 ;;
@@ -127,5 +157,6 @@ let widget_name s = Widget_name s
 let cursor_name s = Cursor_name s
 let test_id s = Test_id s
 let on_clicked eff = On_clicked (fun () -> eff)
+let on_toggled f = On_toggled f
 let many l = Many l
 let empty = Many []

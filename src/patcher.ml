@@ -41,6 +41,9 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
      restores. *)
   let defaults = Attr_apply.snapshot widget in
   Attr_apply.apply_all widget node.attrs;
+  (* Before anything is connected: an event attr no spec claims would create no slot, so
+     the handler would never run and nothing would say why (spec §11). *)
+  Signals.require_specs ~node_path:path ~impl_name:impl.name impl.signals node.attrs;
   let slots, handler_ids =
     Signals.connect_all ctx.signals ~node_path:path widget impl.signals
   in
@@ -85,7 +88,7 @@ and destroy ctx (live : live) =
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
   | Window _ -> W.Window.destroy (cast live.widget)
   | Native n -> Native_gtk.destroy_payload n live.widget
-  | Label _ | Button _ | Box _ -> ()
+  | Label _ | Button _ | Toggle_button _ | Check_button _ | Switch _ | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.
 

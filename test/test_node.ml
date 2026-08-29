@@ -29,7 +29,7 @@ let%expect_test "constructors and sexp" =
              (children No_children))
             ((kind (Button ((label (+)))))
              (attrs ((Test_id inc) (On_clicked <handler>)))
-             (children No_children))))))))))
+             (children (Single ())))))))))))
     |}]
 ;;
 
@@ -52,7 +52,10 @@ let%expect_test "same_kind ignores props; native compares by name" =
   let label text = (Node.label text).Node.kind in
   print_s [%sexp (same_kind (label "a") (label "b") : bool)];
   [%expect {| true |}];
-  print_s [%sexp (same_kind (label "a") (Button { label = None }) : bool)];
+  print_s
+    [%sexp
+      (same_kind (label "a") (Button { label = None; icon_name = None; has_frame = true })
+       : bool)];
   [%expect {| false |}];
   let n name = Native { Native.name; payload = Native.Unit } in
   print_s

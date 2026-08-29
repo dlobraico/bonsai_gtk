@@ -19,8 +19,29 @@ type label_props =
   }
 [@@deriving sexp_of, equal]
 
-type button_props = { label : string option [@sexp_drop_if Option.is_none] }
+type button_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; icon_name : string option [@sexp_drop_if Option.is_none]
+  ; has_frame : bool [@sexp_drop_if fun b -> b]
+  }
 [@@deriving sexp_of, equal]
+
+type toggle_button_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; icon_name : string option [@sexp_drop_if Option.is_none]
+  ; has_frame : bool [@sexp_drop_if fun b -> b]
+  ; active : bool
+  }
+[@@deriving sexp_of, equal]
+
+type check_button_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; active : bool
+  ; inconsistent : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+type switch_props = { active : bool } [@@deriving sexp_of, equal]
 
 type box_props =
   { orientation : Orientation.t
@@ -38,6 +59,9 @@ type window_props =
 type t =
   | Label of label_props
   | Button of button_props
+  | Toggle_button of toggle_button_props
+  | Check_button of check_button_props
+  | Switch of switch_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t

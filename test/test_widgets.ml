@@ -32,3 +32,43 @@ let%expect_test "label props take part in equal_props" =
   print_s [%sexp ((Kind.same_kind a b, Kind.equal_props a b) : bool * bool)];
   [%expect {| (true false) |}]
 ;;
+
+let%expect_test "the toggle family's constructors" =
+  print_s
+    [%sexp
+      (Node.box
+         ~orientation:Vertical
+         [ Node.button ~label:"go" ()
+         ; Node.button ~icon_name:"list-add-symbolic" ~has_frame:false ()
+         ; Node.button ~child:(Node.label "boxed") ()
+         ; Node.toggle_button ~label:"bold" ~active:true ()
+         ; Node.check_button ~label:"agree" ~active:false ()
+         ; Node.switch ~active:true ()
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Box ((orientation Vertical)))) (attrs ())
+     (children
+      (List
+       (((kind (Button ((label (go))))) (attrs ()) (children (Single ())))
+        ((kind (Button ((icon_name (list-add-symbolic)) (has_frame false))))
+         (attrs ()) (children (Single ())))
+        ((kind (Button ())) (attrs ())
+         (children
+          (Single
+           (((kind (Label ((text boxed)))) (attrs ()) (children No_children))))))
+        ((kind (Toggle_button ((label (bold)) (active true)))) (attrs ())
+         (children (Single ())))
+        ((kind (Check_button ((label (agree)) (active false)))) (attrs ())
+         (children No_children))
+        ((kind (Switch ((active true)))) (attrs ()) (children No_children))))))
+    |}]
+;;
+
+let%expect_test "an on_* attr the widget cannot emit is rejected at mount, not ignored" =
+  print_s [%sexp (Attr.Name.is_event Attr.Name.On_toggled : bool)];
+  [%expect {| true |}];
+  print_s [%sexp (Attr.Name.is_event Attr.Name.Tooltip : bool)];
+  [%expect {| false |}]
+;;

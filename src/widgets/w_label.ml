@@ -42,13 +42,14 @@ let impl : Widget_impl.t =
         match kind with
         | Label p ->
           let l = W.Label.new_ None in
-          apply_props l p ~old:None;
+          Widget_impl.batch (l :> Widget.t) (fun () -> apply_props l p ~old:None);
           (l :> Widget.t)
         | k -> Widget_impl.wrong_kind "Label" k)
   ; update =
       (fun w ~(old : Kind.t) (new_ : Kind.t) ->
         match old, new_ with
-        | Label old, Label new_ -> apply_props (cast w) new_ ~old:(Some old)
+        | Label old, Label new_ ->
+          Widget_impl.batch w (fun () -> apply_props (cast w) new_ ~old:(Some old))
         | _, k -> Widget_impl.wrong_kind "Label" k)
   ; signals = []
   ; children = Widget_impl.No_children

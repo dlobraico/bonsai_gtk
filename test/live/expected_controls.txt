@@ -1,0 +1,55 @@
+(GtkWindow (title (controls)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (plain)) (css (text-button))
+     (children (GtkLabel (text plain))))
+    (GtkButton (label ()) (icon list-add-symbolic) frameless
+     (css (flat image-button)) (children (GtkImage (valign center))))
+    (GtkButton (label ()) (css (text-button))
+     (children (GtkLabel (text boxed))))
+    (GtkToggleButton (label (bold)) (css (text-button toggle))
+     (children (GtkLabel (text bold))))
+    (GtkCheckButton (label (agree)) (css (text-button))
+     (children (GtkBuiltinIcon (halign center) (valign center))
+      (GtkLabel (text agree) (xalign 0) hexpand)))
+    (GtkSwitch
+     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))))))
+scheduled during patch: 0
+(GtkWindow (title (controls)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (plain)) (css (text-button))
+     (children (GtkLabel (text plain))))
+    (GtkButton (label ()) (icon list-add-symbolic) frameless
+     (css (flat image-button)) (children (GtkImage (valign center))))
+    (GtkButton (label ()) (css (text-button))
+     (children (GtkLabel (text boxed))))
+    (GtkToggleButton (label (bold)) active (css (text-button toggle))
+     (children (GtkLabel (text bold))))
+    (GtkCheckButton (label (agree)) active (css (text-button))
+     (children (GtkBuiltinIcon (halign center) (valign center))
+      (GtkLabel (text agree) (xalign 0) hexpand)))
+    (GtkSwitch active state
+     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))))))
+scheduled outside patch: 3
+rejected: root/0: Label does not emit On_toggled
+(GtkWindow (title (slot)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label ()) (css (text-button))
+     (children (GtkLabel (text custom))))))))
+(GtkWindow (title (slot)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (text)) (css (text-button))
+     (children (GtkLabel (text text))))))))
+(GtkWindow (title (slot)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label ()) (css (text-button))
+     (children (GtkLabel (text "custom again"))))))))

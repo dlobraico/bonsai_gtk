@@ -22,14 +22,15 @@ let impl : Widget_impl.t =
         match old, new_ with
         | Box old, Box new_ ->
           let box = cast w in
-          if not (Orientation.equal old.orientation new_.orientation)
-          then
-            W.Orientable.set_orientation
-              (W.Orientable.from_gobject w)
-              (orientation new_.orientation);
-          if old.spacing <> new_.spacing then W.Box.set_spacing box new_.spacing;
-          if not (Bool.equal old.homogeneous new_.homogeneous)
-          then W.Box.set_homogeneous box new_.homogeneous
+          Widget_impl.batch w (fun () ->
+            if not (Orientation.equal old.orientation new_.orientation)
+            then
+              W.Orientable.set_orientation
+                (W.Orientable.from_gobject w)
+                (orientation new_.orientation);
+            if old.spacing <> new_.spacing then W.Box.set_spacing box new_.spacing;
+            if not (Bool.equal old.homogeneous new_.homogeneous)
+            then W.Box.set_homogeneous box new_.homogeneous)
         | _, k -> Widget_impl.wrong_kind "Box" k)
   ; signals = []
   ; children =

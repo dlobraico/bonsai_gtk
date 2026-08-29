@@ -2,8 +2,27 @@ open! Core
 open Bonsai_gtk_vtree
 
 module Action = struct
-  type t = Click of string [@@deriving sexp_of]
+  type t =
+    | Click of string
+    | Toggle of string
+  [@@deriving sexp_of]
 end
+
+let node_exn (node : Node.t) id =
+  match Node.find_by_test_id node id with
+  | Some n -> n
+  | None -> failwithf "Bonsai_gtk_test: no node with test_id %s" id ()
+;;
+
+(* The value a real toggle would take: whatever the node is *not* showing now. Reading it
+   off the node rather than taking it as an argument is what makes the action mean "the
+   user clicked this", which is the only thing a test can honestly claim. *)
+let current_active (node : Node.t) id =
+  match node.kind with
+  | Toggle_button { active; _ } | Check_button { active; _ } | Switch { active } -> active
+  | k ->
+    failwithf "Bonsai_gtk_test: %s (test_id %s) has no toggle state" (Kind.name k) id ()
+;;
 
 module Result_spec = struct
   type t = Node.t
@@ -11,13 +30,18 @@ module Result_spec = struct
 
   let view node = Sexp.to_string_hum (Node.sexp_of_t node)
 
-  let incoming node (Action.Click id) =
-    match Node.find_by_test_id node id with
-    | None -> failwithf "Bonsai_gtk_test: no node with test_id %s" id ()
-    | Some n ->
+  let incoming node (action : Action.t) =
+    match action with
+    | Click id ->
+      let n = node_exn node id in
       (match Attrs.find n.attrs On_clicked with
        | Some (On_clicked h) -> h ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_clicked handler" id ())
+    | Toggle id ->
+      let n = node_exn node id in
+      (match Attrs.find n.attrs On_toggled with
+       | Some (On_toggled h) -> h (not (current_active n id))
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_toggled handler" id ())
   ;;
 end
 

@@ -22,3 +22,21 @@ frame on broken driver returned, still broken: true
     (GtkButton (label (+)) (css (text-button))
      (children (GtkLabel (text +))))))))
 broken driver stopped
+(GtkWindow (title (reentry)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (flip)) (css (text-button))
+     (children (GtkLabel (text flip))))
+    (GtkToggleButton (label (t)) active (css (text-button toggle))
+     (children (GtkLabel (text t))))
+    (GtkLabel (text "on: true toggled: 0"))))))
+(GtkWindow (title (reentry)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (flip)) (css (text-button))
+     (children (GtkLabel (text flip))))
+    (GtkToggleButton (label (t)) active (css (text-button toggle))
+     (children (GtkLabel (text t))))
+    (GtkLabel (text "on: true toggled: 1"))))))

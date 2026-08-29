@@ -42,7 +42,21 @@ let label
     No_children
 ;;
 
-let button ?key ?attrs ?label () = make ?key ?attrs (Button { label }) No_children
+let button ?key ?attrs ?label ?icon_name ?(has_frame = true) ?child () =
+  make ?key ?attrs (Button { label; icon_name; has_frame }) (Single child)
+;;
+
+let toggle_button ?key ?attrs ?label ?icon_name ?(has_frame = true) ?child ~active () =
+  make ?key ?attrs (Toggle_button { label; icon_name; has_frame; active }) (Single child)
+;;
+
+let check_button ?key ?attrs ?label ?(inconsistent = false) ~active () =
+  (* [No_children], not [Single None]: a check button has no child slot in this library
+     (see the mli), and the patcher rejects a children shape its impl does not hold. *)
+  make ?key ?attrs (Check_button { label; active; inconsistent }) No_children
+;;
+
+let switch ?key ?attrs ~active () = make ?key ?attrs (Switch { active }) No_children
 
 let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)

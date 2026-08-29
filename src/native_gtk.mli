@@ -44,6 +44,13 @@ end
 type 'a impl
 
 val impl : (module S with type input = 'a) -> 'a impl
+
+(** [attrs] may carry any of the widget-wide attributes, but no event attr
+    ([Attr.on_clicked], [Attr.on_toggled], ...): a native impl declares no signal specs,
+    so there would be nothing to connect the handler to. The patcher rejects one with
+    [Invalid_argument] at mount rather than leaving it silently inert. A native widget
+    that needs to reach Bonsai connects its own GTK handler in [create] and closes over
+    whatever it needs. *)
 val node : ?key:Key.t -> ?attrs:Attr.t list -> 'a impl -> 'a -> Node.t
 
 (** The payload {!node} stores in a {!Bonsai_gtk_vtree.Native.t}. Exposed so that

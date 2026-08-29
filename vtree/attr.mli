@@ -22,7 +22,12 @@ module Name : sig
     | Cursor_name
     | Test_id
     | On_clicked
+    | On_toggled
   [@@deriving sexp_of, compare, equal]
+
+  (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
+      spec for, and which the patcher rejects at mount on a widget that declares none. *)
+  val is_event : t -> bool
 
   include Comparable.S_plain with type t := t
 end
@@ -49,6 +54,7 @@ type t =
   | Cursor_name of string
   | Test_id of string
   | On_clicked of unit Handler.t
+  | On_toggled of bool Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -109,5 +115,17 @@ val cursor_name : string -> t
 
 val test_id : string -> t
 val on_clicked : unit Ui_effect.t -> t
+
+(** Fires when the user flips a [toggle_button], [check_button] or [switch], carrying the
+    value the widget now has.
+
+    Programmatic changes — the ones a re-render makes — do not fire it: the patcher's
+    reentrancy guard drops every signal GTK emits while a patch is running, because the
+    model is already the source of that value.
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted, rather than being silently inert. *)
+val on_toggled : (bool -> unit Ui_effect.t) -> t
+
 val many : t list -> t
 val empty : t

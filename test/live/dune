@@ -1,5 +1,5 @@
 (executables
- (names live_patcher live_driver live_signals)
+ (names live_patcher live_driver live_signals live_controls)
  (libraries
   core
   bonsai
@@ -50,3 +50,15 @@
     output_signals.txt
     (run %{exe:live_signals.exe}))
    (diff expected_signals.txt output_signals.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_controls.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_controls.txt
+    (run %{exe:live_controls.exe}))
+   (diff expected_controls.txt output_controls.txt))))

@@ -75,6 +75,16 @@ let layout_props (w : Widget.t) =
     ]
 ;;
 
+(* Shared by [GtkButton] and [GtkToggleButton], which sets the same three properties
+   through the same [GtkButton] setters. *)
+let button_props (b : W.Button.t) =
+  [ [%sexp `label (W.Button.get_label b : string option)] ]
+  @ (match W.Button.get_icon_name b with
+     | None -> []
+     | Some i -> [ Sexp.List [ Atom "icon"; Atom i ] ])
+  @ if W.Button.get_has_frame b then [] else [ Sexp.Atom "frameless" ]
+;;
+
 (* [focusable] and [can_focus] are deliberately absent: their defaults are per widget
    class, so there is no constant to compare against and an unconditional print would
    churn every expected file. The live attr test covers them instead, by asserting that a
@@ -95,7 +105,20 @@ let rec dump (w : Widget.t) : Sexp.t =
        @ int_prop "width-chars" (W.Label.get_width_chars l) ~default:(-1)
        @ flag_prop "selectable" (W.Label.get_selectable l)
        @ flag_prop "markup" (W.Label.get_use_markup l)
-     | "GtkButton" -> [ [%sexp `label (W.Button.get_label (cast w) : string option)] ]
+     | "GtkButton" -> button_props (cast w)
+     | "GtkToggleButton" ->
+       button_props (cast w) @ flag_prop "active" (W.Toggle_button.get_active (cast w))
+     | "GtkCheckButton" ->
+       let c = cast w in
+       [ [%sexp `label (W.Check_button.get_label c : string option)] ]
+       @ flag_prop "active" (W.Check_button.get_active c)
+       @ flag_prop "inconsistent" (W.Check_button.get_inconsistent c)
+     | "GtkSwitch" ->
+       let s = cast w in
+       (* [state] as well as [active]: the two are kept equal deliberately (see
+          [w_switch.ml]), and only printing one would not show that. *)
+       flag_prop "active" (W.Switch.get_active s)
+       @ flag_prop "state" (W.Switch.get_state s)
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

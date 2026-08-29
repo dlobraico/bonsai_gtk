@@ -41,6 +41,36 @@ let breaking_app (graph @ local) =
         :: (if count = 0 then [] else [ Node.window ~title:"nested" (Node.label "x") ])))
 ;;
 
+(* The producer half of the reentrancy guard, end to end.
+
+   [live_signals.ml] proves that [Signals.dispatch] returns early when the [in_patch] it
+   is handed says so, and [live_controls.ml] proves it with a [Scheduler] the test
+   brackets by hand. Neither shows that a *real* frame is bracketed, which is what
+   [driver.ml]'s [with_patch_guard] is for -- so this app makes a frame provoke the signal
+   itself.
+
+   Clicking [flip] changes [on], and the frame that renders it writes [active] on the
+   toggle button; GTK emits [toggled] synchronously from inside that write, while the
+   patcher is still walking the tree. Unguarded, that would bump [toggled] -- and in
+   general re-enter Bonsai from the middle of a patch, which spec §4.4 forbids. *)
+let reentrant_app (graph @ local) =
+  let on, set_on = Bonsai.state false graph in
+  let toggled, set_toggled = Bonsai.state 0 graph in
+  let%arr on and set_on and toggled and set_toggled in
+  Node.window
+    ~title:"reentry"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.button ~attrs:[ Attr.on_clicked (set_on (not on)) ] ~label:"flip" ()
+       ; Node.toggle_button
+           ~attrs:[ Attr.on_toggled (fun (_ : bool) -> set_toggled (toggled + 1)) ]
+           ~label:"t"
+           ~active:on
+           ()
+       ; Node.label (sprintf "on: %b toggled: %d" on toggled)
+       ])
+;;
+
 let () =
   ignore (Ocgtk_gtk.GMain.init () : string array);
   (* A caller-owned time source: with none, every frame would advance the clock to
@@ -103,5 +133,30 @@ let () =
     (Expert.Driver.broken broken);
   print_s (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget broken)));
   Expert.Driver.stop broken;
-  print_endline "broken driver stopped"
+  print_endline "broken driver stopped";
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let reentrant =
+    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) reentrant_app
+  in
+  Expert.Driver.frame reentrant;
+  let nth i =
+    let root = Option.value_exn (Expert.Driver.root_widget reentrant) in
+    List.nth_exn (widget_children (List.hd_exn (widget_children root))) i
+  in
+  let dump_reentrant () =
+    print_s
+      (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget reentrant)))
+  in
+  (* [on] flips, so the next frame writes [active] on the toggle button and GTK emits
+     [toggled] from inside the patch. [toggled: 0] is the whole claim: the guard swallowed
+     it. *)
+  Gobject.Signal.emit_by_name (nth 0) ~name:"clicked";
+  drain ();
+  dump_reentrant ();
+  (* The very same signal, emitted while no frame is running, does reach Bonsai -- so
+     [toggled: 0] above is the guard at work and not a handler that was never armed. *)
+  Gobject.Signal.emit_by_name (nth 1) ~name:"toggled";
+  drain ();
+  dump_reentrant ();
+  Expert.Driver.stop reentrant
 ;;

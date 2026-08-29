@@ -2,7 +2,13 @@ open! Core
 open Bonsai_gtk_vtree
 
 module Action : sig
-  type t = Click of string (** test_id of a node carrying [Attr.on_clicked] *)
+  type t =
+    | Click of string (** test_id of a node carrying [Attr.on_clicked] *)
+    | Toggle of string
+    (** test_id of a [toggle_button], [check_button] or [switch] carrying
+        [Attr.on_toggled]. Fires that handler with the negation of the [active] prop the
+        node currently renders — what clicking the real widget would produce. Fails if the
+        node is not one of those three, or carries no handler. *)
   [@@deriving sexp_of]
 end
 

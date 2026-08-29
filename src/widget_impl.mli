@@ -32,5 +32,13 @@ type t =
   ; children : child_ops
   }
 
+(** Runs [f] with [w]'s property notifications frozen, thawing them even if [f] raises.
+
+    Every [update] that writes more than one property should be wrapped in this: GTK
+    otherwise emits a [notify::] per setter, and each one is a callback the reentrancy
+    guard has to swallow. Thawing emits one round of notifications for whatever actually
+    changed. *)
+val batch : Widget.t -> (unit -> unit) -> unit
+
 (** Raises [Invalid_argument]: impl [name] was handed a kind it does not own. *)
 val wrong_kind : string -> Kind.t -> 'a
