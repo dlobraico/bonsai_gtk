@@ -54,6 +54,15 @@ and the per-finding ledger in `fix-wave-report.md` beside them.
 - **`Live_tree.dump` no longer segfaults on a password entry with no placeholder** — it
   reads the placeholder through a GValue rather than through ocgtk's non-nullable getter.
   Found by the coverage sweep.
+- **Round 2** (`fix-wave-review.md`): `live_containers.ml`'s `wrapped` test now keys the
+  stack and the frame that wraps it, so the reconciler emits an `Update` with a differing
+  kind and the test actually enters `patch`'s kind-change arm — it was passing with
+  `drop_stack_names` disabled (review Important 1). With it, four comments the wave itself
+  got wrong were corrected in place rather than deferred: `w_search_entry.ml`'s
+  one-write-one-timeout claim (review Minor 1), `live_controls.ml`'s "eight in all" against
+  an accepted `7` (Minor 2), spec §6.4's run-together paragraph (Minor 5) and §6.5's
+  "returns `None` while" (Minor 6), plus the raise `Bonsai_gtk_test`'s actions inherited
+  from `find_by_test_id` (Minor 7).
 - Neighbouring one-liners: `Scheduler.with_patch_guard` saves and restores `in_patch`;
   `Driver.schedule_event` guards `stopped`; `Driver.stop` drops the fixup queue;
   `Node.find_by_test_id` raises on a duplicate id naming both paths; `ci.sh`'s example
@@ -76,6 +85,14 @@ and the per-finding ledger in `fix-wave-report.md` beside them.
 - **A headless `Search_changed` action** for `Attr.on_search_changed`, and an
   "opened an expander" action for `on_expanded_changed`
   (`test_lib/bonsai_gtk_test.mli`) — Task 4 and Task 7 both wanted one.
+- **A same-frame stack name *swap* still raises** (`src/patcher.ml`, `note_interest`'s
+  rename arm): two stacks exchanging names in one frame gives `two Node.stacks are named
+  "b" in one tree`, because the arm does `Hashtbl.remove old; register_stack new` per child
+  left to right and the second stack still holds the new name. This replaces the
+  "same-frame reuse or swap" item the fix wave deleted: the *reuse* half of that item
+  (remove the stack named `"nav"`, insert a different one with that name) was never broken
+  — the reconciler emits removes first — and the *swap* half still is. Loud, not
+  corrupting. `fix-wave-review.md` Minor 3.
 - **A vtree-level `Kind.t -> Attr.Name.t list` event table**, so `Bonsai_gtk_test` can
   reject the event attrs `Signals.require_specs` rejects at mount instead of certifying an
   app the runtime will refuse. The table is pure data; the constraint that `test_lib`
@@ -123,13 +140,25 @@ Diagnostics and contracts:
   currently holds", which a reader takes to mean what is on screen. controls Minor 8.
 
 Behaviour:
+- **A search-entry write that empties the box leaves its echo record unconsumed**
+  (`src/widgets/w_search_entry.ml`). GTK emits `search-changed` synchronously, cancelling
+  the timeout, when the text becomes empty; inside a patch `Signals.dispatch` drops that on
+  `in_patch` before `fire` can consume the record, so a `""` record survives to be matched
+  against a later emission. Benign in M1 — the model also holds `""` then, so what is lost
+  is a duplicate rather than a search, and the first non-empty emission flushes it — but
+  the one-record-one-emission invariant does not hold, and M2's headless `Search_changed`
+  action or anything that iterates the main loop mid-patch changes that. The impl comments
+  now describe the real behaviour. `fix-wave-review.md` Minor 1.
 - **One failing fixup drops the rest of the pass's fixups** (`src/patcher.ml`,
   `run_fixups`): the `Exn.protect ~finally` clears the queue behind the raise, so a second
   stack's selection silently never runs. Bounded, because the frame is the last one.
   containers M2.
 - **`ctx.stacks` keeps registrations from a subtree whose mount raised** — extends the
   "mount is not exception-safe" item below, which only mentions the undestroyed widget.
-  containers M3.
+  containers M3. The mirror image is now reachable too: `drop_stack_names` runs *before*
+  the mount in `patch`'s kind-change arm, so a mount that raises there leaves the old
+  subtree alive with its names already given up. Bounded either way, since the frame is
+  broken. `fix-wave-review.md` Minor 4.
 - **An overlay child whose *kind* changes jumps to the top of the z-order**
   (`src/patcher.ml`'s kind-change arm is remove-then-insert, and `add_overlay` appends) —
   distinct from the known "`Overlay` `move` is a no-op", which is about a reorder in the
@@ -163,6 +192,12 @@ Consistency:
   property each, so consistency rather than cost). containers M6.
 
 Tests:
+- **`examples/gallery.ml` writes its sample PNG to a fixed path in `$TMPDIR`**, so
+  `Out_channel.write_all` follows whatever is already there, where `Filename.temp_file`
+  created with `O_EXCL`. Example-only, and the fixed name is what stops the per-run litter
+  (nothing can remove the file: GTK holds the path and the process ends on a window close
+  or a signal), but the previous code was safer in that one respect.
+  `fix-wave-review.md` Minor 8.
 - **`Attr.Name.is_event` is tested on 2 of 32 names**, and 7 of the 10 event attrs have no
   negative `require_specs` test. The mechanism is covered; the *classification* is not, and
   adding an `On_foo` to the `false` branch compiles. A table over `Attr.Name.all` would pin

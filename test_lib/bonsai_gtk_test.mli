@@ -29,6 +29,10 @@ module Action : sig
   [@@deriving sexp_of]
 end
 
+(** Every action names its node by [Attr.test_id]. Two nodes carrying one id — what
+    rendering the same sub-view twice produces — raises [Invalid_argument] naming both
+    paths rather than acting on whichever the walk reaches first
+    ({!Bonsai_gtk_vtree.Node.find_by_test_id}); an id no node carries raises [Failure]. *)
 val result_spec : (Node.t, Action.t) Bonsai_test.Result_spec.t
 
 module Handle = Bonsai_test.Handle

@@ -767,14 +767,23 @@ let () =
   in
   print_s (Live_tree.dump ordered_live.widget);
   P.destroy ctx ordered_live;
-  (* Wrapping a named stack in another container is ordinary UI work, and it changes
-     the *parent's* kind -- so the patcher mounts the replacement subtree, which
-     re-declares the stack's name, while the subtree it replaces still holds it. The one
-     stack in this tree must not be reported as two, and the switcher above it has to come
-     out of the refactor driving the new widget. *)
+  (* Wrapping a named stack in another container is ordinary UI work, and it changes the
+     kind of the node at that position -- so the patcher mounts the replacement subtree,
+     which re-declares the stack's name, while the subtree it replaces still holds it. The
+     one stack in this tree must not be reported as two, and the switcher above it has to
+     come out of the refactor driving the new widget.
+
+     Both the stack and the frame that wraps it carry [~key:"nav"], and that is what makes
+     this test the test it claims to be. Without a key the reconciler cannot match a
+     [Stack] against a [Frame] -- [same_kind] fails, so the unkeyed positional matcher
+     leaves both unmatched -- and it emits [Remove] then [Insert] instead of an [Update].
+     Removes come first, so [destroy] would give the name up before [mount] re-took it and
+     [patch]'s kind-change arm, the only caller of [drop_stack_names], would never run.
+     The shared key makes the pair an [Update] with a differing kind, which is the arm. *)
   let wrapped ~framed =
-    let stack =
+    let stack ?key () =
       Node.stack
+        ?key
         ~name:"refactor"
         ~transition:None_
         ~visible_child:"a"
@@ -785,7 +794,9 @@ let () =
       (Node.box
          ~orientation:Vertical
          [ Node.stack_switcher ~stack:"refactor" ()
-         ; (if framed then Node.frame ~label:"Nav" stack else stack)
+         ; (if framed
+            then Node.frame ~key:"nav" ~label:"Nav" (stack ())
+            else stack ~key:"nav" ())
          ])
   in
   let wrapped_live = P.mount ctx ~path:"wrap" ~is_root:true (wrapped ~framed:false) in

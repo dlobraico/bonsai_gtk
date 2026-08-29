@@ -456,6 +456,7 @@ result with `Signals.connected obj id`.
 attr in the slot is not the one this spec handles, and this particular emission
 is not one the application should hear about. The second is what
 `GtkSearchEntry` needs — see §6.5.
+
 Signals ocgtk does not generate as `on_*` but which GLib can deliver through
 the generic marshaller — the `notify::<prop>` family (`Switch` `active`,
 `DropDown` `selected`, `Revealer` `child-revealed`) — are connected with
@@ -500,9 +501,10 @@ The rule reaches beyond text: `ToggleButton`, `CheckButton` and `Switch`
   the application as a search the user never performed, once per write, and
   oscillate for any model whose normalisation is not a fixed point. The widget
   impl records what the library last wrote (weakly, keyed on the widget) and the
-  spec's `fire` returns `None` while the widget's text still equals it. Any later
-  deferred signal needs the same treatment; the synchronous guard cannot cover
-  one.
+  spec's `fire` declines the next emission if the widget's text still equals it.
+  The record is consumed on that first emission either way, so it can never
+  suppress more than the one signal the write armed. Any later deferred signal
+  needs the same treatment; the synchronous guard cannot cover one.
 - **`Paned`'s position is deliberately uncontrolled** (`reassert = None`):
   writing it every frame would fight the user's drag handle.
   `Attr.on_position_changed` reports where it was left, and an app that wants it

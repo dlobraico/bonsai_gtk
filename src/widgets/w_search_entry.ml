@@ -28,15 +28,24 @@ module Echo = Stdlib.Ephemeron.K1.Make (struct
 
 let echoes : string Echo.t = Echo.create 8
 
-(* Recorded only when the write actually happened, because only a write arms a timeout. *)
+(* Recorded only when the write actually happened: a write that changed nothing provokes
+   no signal to decline. *)
 let set_text w text =
   if W_entry.set_text_if_needed (W_entry.editable w) text then Echo.replace echoes w text
 ;;
 
-(* Consumed whether or not it matched: a write arms exactly one timeout (a second write
-   before it elapses resets the same source), so this emission is the only one that record
-   could ever have explained. Leaving it behind would suppress a genuine search later, on
-   the day the user typed the same string themselves. *)
+(* Consumed whether or not it matched, so that a record outlives at most one emission.
+
+   For a write to a non-empty string that is exact: [gtk_search_entry_changed] arms one
+   timeout and a second write before it elapses resets the same source, so the next
+   emission is the only one that record could ever have explained. A write that *empties*
+   the box is the exception — GTK emits [search-changed] synchronously there and cancels
+   any pending timeout — and since that emission happens inside the patch,
+   [Signals.dispatch] drops it on [in_patch] before [fire] is reached and the record
+   survives. It is a [""] record, matched against a later [""] emission at a moment when
+   the model already holds [""], so what it can cost is a duplicate rather than a search;
+   the first non-empty emission flushes it. Worth knowing before anything makes a patch
+   iterate the main loop. See docs/m1-backlog.md. *)
 let was_our_own_write w text =
   match Echo.find_opt echoes w with
   | None -> false

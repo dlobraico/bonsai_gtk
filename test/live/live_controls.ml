@@ -128,9 +128,15 @@ let () =
   printf "scheduled outside patch: %d\n" (!scheduled - before);
   (* Every spec the three entry impls declare, fired from its own widget: [changed] comes
      through [GtkEditable] on all four entries, [activate] off each concrete class, and
-     [search-changed] off the search entry alone. Eight in all -- the read-only entry
-     carries no [on_activate] -- and each spec that failed to connect would drop this
-     count. *)
+     [search-changed] off the search entry alone. Eight emissions -- the read-only entry
+     carries no [on_activate] -- and seven of them reach Bonsai, so a [changed] or
+     [activate] spec that failed to connect would drop this count.
+
+     The eighth is the search entry's, and it is *declined* rather than dropped: the mount
+     wrote [~text:"bach"] and recorded it, so an emission still carrying that text is the
+     library's own echo (see [w_search_entry.ml]). This block therefore says nothing about
+     whether [search_changed] is connected; the block at the end of this file, which pumps
+     a real debounce and a real edit, is what does. *)
   let before = !scheduled in
   List.iter [ 6; 7; 8; 9 ] ~f:(fun i ->
     Gobject.Signal.emit_by_name (nth_child live i).widget ~name:"changed");
