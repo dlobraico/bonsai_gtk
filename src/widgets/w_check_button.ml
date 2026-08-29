@@ -4,7 +4,9 @@ open Gtk_import
 
 let toggled : Signals.spec =
   { attr = Attr.Name.On_toggled
-  ; connect = (fun w ~callback -> W.Check_button.on_toggled (cast w) ~callback)
+  ; connect =
+      (fun w ~callback ->
+        Signals.connected w (W.Check_button.on_toggled (cast w) ~callback))
   ; fire =
       (fun w (attr : Attr.t) ->
         match attr with

@@ -6,7 +6,9 @@ open Gtk_import
    setters — so nothing here can be shared with [w_scale.ml] beyond the shape. *)
 let value_changed : Signals.spec =
   { attr = Attr.Name.On_value_changed
-  ; connect = (fun w ~callback -> W.Spin_button.on_value_changed (cast w) ~callback)
+  ; connect =
+      (fun w ~callback ->
+        Signals.connected w (W.Spin_button.on_value_changed (cast w) ~callback))
   ; fire =
       (fun w (attr : Attr.t) ->
         match attr with

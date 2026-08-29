@@ -48,7 +48,7 @@ let impl : Widget_impl.t =
   ; signals =
       [ W_entry.changed
       ; W_entry.activate ~connect:(fun w ~callback ->
-          W.Password_entry.on_activate (cast w) ~callback)
+          Signals.connected w (W.Password_entry.on_activate (cast w) ~callback))
       ]
   ; children = Widget_impl.No_children
   }

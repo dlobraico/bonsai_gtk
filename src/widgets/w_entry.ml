@@ -27,7 +27,13 @@ let set_text_if_needed (e : W.Editable.t) text =
 
 let changed : Signals.spec =
   { attr = Attr.Name.On_changed
-  ; connect = (fun w ~callback -> W.Editable.on_changed (editable w) ~callback)
+  ; connect =
+      (fun w ~callback ->
+        (* The [GtkEditable] is where [changed] is emitted, so it is also what the
+           connection has to name -- even though [from_gobject] is a checked cast to the
+           same instance for all three entry kinds. *)
+        let e = editable w in
+        Signals.connected e (W.Editable.on_changed e ~callback))
   ; fire =
       (fun w (attr : Attr.t) ->
         match attr with
@@ -37,7 +43,8 @@ let changed : Signals.spec =
 ;;
 
 (* [activate] is on each concrete class rather than on [GtkEditable], so the connector is
-   the one thing the three kinds cannot share. *)
+   the one thing the three kinds cannot share. Each one passes a [connect] that names the
+   object it connected to, the same as any other spec. *)
 let activate ~connect : Signals.spec =
   { attr = Attr.Name.On_activate
   ; connect
@@ -111,7 +118,8 @@ let impl : Widget_impl.t =
           | k -> Widget_impl.wrong_kind "Entry" k)
   ; signals =
       [ changed
-      ; activate ~connect:(fun w ~callback -> W.Entry.on_activate (cast w) ~callback)
+      ; activate ~connect:(fun w ~callback ->
+          Signals.connected w (W.Entry.on_activate (cast w) ~callback))
       ]
   ; children = Widget_impl.No_children
   }

@@ -4,7 +4,8 @@ open Gtk_import
 
 let clicked : Signals.spec =
   { attr = Attr.Name.On_clicked
-  ; connect = (fun w ~callback -> W.Button.on_clicked (cast w) ~callback)
+  ; connect =
+      (fun w ~callback -> Signals.connected w (W.Button.on_clicked (cast w) ~callback))
   ; fire =
       (fun _w (attr : Attr.t) ->
         match attr with

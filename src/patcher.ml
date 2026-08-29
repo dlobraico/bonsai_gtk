@@ -74,7 +74,7 @@ type live =
   ; impl : Widget_impl.t
   ; defaults : Attr_apply.defaults
   ; slots : Signals.slots
-  ; handler_ids : Gobject.Signal.handler_id list
+  ; connections : Signals.connection list
   ; mutable children : live Children.t
   }
 
@@ -207,7 +207,7 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   (* Before anything is connected: an event attr no spec claims would create no slot, so
      the handler would never run and nothing would say why (spec §11). *)
   Signals.require_specs ~node_path:path ~impl_name:impl.name impl.signals node.attrs;
-  let slots, handler_ids =
+  let slots, connections =
     Signals.connect_all ctx.signals ~node_path:path widget impl.signals
   in
   Signals.update_slots slots node.attrs;
@@ -215,7 +215,7 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
     mount_children ctx ~path ~impl_name:impl.name widget node.children impl.children
   in
   note_interest ctx ~path ~widget ~interest:(interest_of_kind node.kind) ~pass:`Mount;
-  { node; widget; impl; defaults; slots; handler_ids; children }
+  { node; widget; impl; defaults; slots; connections; children }
 
 (* One shape, mounted. The three helpers below are what a top-level shape and a slot of
    that shape share: a slot is not a special case, it is the same code under a longer
@@ -294,7 +294,7 @@ and destroy ctx (live : live) =
      [remove]/[set_child], and a handler firing here would run against a node that is
      already gone. *)
   Signals.clear_slots live.slots;
-  Signals.disconnect live.widget live.handler_ids;
+  Signals.disconnect live.connections;
   Children.iter live.children ~f:(destroy ctx);
   match live.node.kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
@@ -345,9 +345,9 @@ and disarm (live : live) =
    The kind-change arm below mounts the replacement *before* destroying what it replaces,
    so that the old widgets stay alive and parented until the new ones exist. That ordering
    is right, and it is also why an ordinary refactor collided with itself: wrapping a
-   [Node.stack ~name:"nav"] in a [Node.frame] changes the parent's kind, so the replacement
-   subtree registers "nav" while the subtree being replaced still holds it, and
-   [register_stack] rejects the one stack in the tree as two.
+   [Node.stack ~name:"nav"] in a [Node.frame] changes the parent's kind, so the
+   replacement subtree registers "nav" while the subtree being replaced still holds it,
+   and [register_stack] rejects the one stack in the tree as two.
 
    Dropping the registrations first is enough, and it does not weaken the check: a genuine
    collision is two stacks that are *both* still in the tree, and the other one is by

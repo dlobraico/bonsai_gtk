@@ -8,9 +8,20 @@ type ctx =
   ; on_exn : node_path:string -> exn -> unit
   }
 
+type connection =
+  { source : unit Gobject.obj
+  ; handler_id : Gobject.Signal.handler_id
+  }
+
+(* A handler id means nothing on its own: [g_signal_handler_disconnect] takes the object
+   the id was issued for, and ids are only unique per object. Carrying the object with the
+   id is what lets a spec connect to something other than the widget -- a text view's
+   buffer, a drop-down's model, an event controller -- and still be torn down correctly. *)
+let connected obj handler_id = { source = Gobject.coerce obj; handler_id }
+
 type spec =
   { attr : Attr.Name.t
-  ; connect : Widget.t -> callback:(unit -> unit) -> Gobject.Signal.handler_id
+  ; connect : Widget.t -> callback:(unit -> unit) -> connection
   ; fire : Widget.t -> Attr.t -> unit Ui_effect.t option
   }
 
@@ -28,11 +39,9 @@ let dispatch ctx w slot spec =
        | Some effect -> ctx.schedule effect))
 ;;
 
-let connect_all ctx ~node_path (w : Widget.t) specs
-  : slots * Gobject.Signal.handler_id list
-  =
+let connect_all ctx ~node_path (w : Widget.t) specs : slots * connection list =
   let slots = ref [] in
-  let ids =
+  let connections =
     List.map specs ~f:(fun spec ->
       let slot = ref None in
       slots := (spec.attr, slot) :: !slots;
@@ -44,7 +53,7 @@ let connect_all ctx ~node_path (w : Widget.t) specs
           (try ctx.on_exn ~node_path exn with
            | _ -> ())))
   in
-  slots, ids
+  slots, connections
 ;;
 
 let update_slots (slots : slots) attrs =
@@ -61,7 +70,9 @@ let clear_slots (slots : slots) = List.iter !slots ~f:(fun (_, slot) -> slot := 
    [~after:false] matches every generated [on_*], each of which defaults [?after] to
    false. *)
 let notify ~prop w ~callback =
-  Gobject.Signal.connect_simple w ~name:("notify::" ^ prop) ~callback ~after:false
+  connected
+    w
+    (Gobject.Signal.connect_simple w ~name:("notify::" ^ prop) ~callback ~after:false)
 ;;
 
 (* An [on_*] attr on a widget whose impl declares no spec for it is a typo that would
@@ -83,6 +94,6 @@ let require_specs ~node_path ~impl_name specs attrs =
     | Some _ | None -> ())
 ;;
 
-let disconnect (w : Widget.t) ids =
-  List.iter ids ~f:(fun id -> Gobject.Signal.disconnect w id)
+let disconnect connections =
+  List.iter connections ~f:(fun c -> Gobject.Signal.disconnect c.source c.handler_id)
 ;;
