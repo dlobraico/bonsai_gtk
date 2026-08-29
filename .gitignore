@@ -1,4 +1,8 @@
 _build/
+# the per-package build dirs scripts/ci.sh uses, kept separate so that
+# release-mode flags do not invalidate the main one
+_build.pkg/
+_build.pkgtest/
 _opam/
 .ocgtk-src/
 result

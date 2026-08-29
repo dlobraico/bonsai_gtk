@@ -29,9 +29,12 @@
   ; express "this exact commit", so the pin record is the real constraint.
   (ocgtk
    (>= "0.1~preview2"))
-  ; test/dune's requirements, so `opam install bonsai_gtk --with-test`
-  ; resolves on a clean switch.
-  (bonsai_test :with-test)
+  ; test/'s requirements, so `opam install bonsai_gtk --with-test` -- which
+  ; runs `dune build -p bonsai_gtk @runtest` -- resolves on a clean switch.
+  ; `--only-packages` hides every library owned by another package in this
+  ; workspace, so nothing under this package's `@runtest` may depend on
+  ; `bonsai_gtk_test`; the tests that do live in test/handle/, which
+  ; bonsai_gtk_test owns. scripts/ci.sh runs both -p builds.
   (expect_test_helpers_core :with-test)
   (ppx_expect :with-test)))
 
@@ -42,4 +45,8 @@
   (bonsai_gtk
    (= :version))
   bonsai_test
-  ppx_expect))
+  ppx_expect
+  ; test/handle/'s requirements. That directory is this package's because its
+  ; tests need both libraries, and only the package that depends on the other
+  ; one can have it.
+  (expect_test_helpers_core :with-test)))

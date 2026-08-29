@@ -1,12 +1,11 @@
+; Only `bonsai_gtk.vtree`, so that `dune build -p bonsai_gtk @runtest` -- what
+; `opam install bonsai_gtk --with-test` runs -- resolves. Anything needing
+; `Bonsai_gtk_test` belongs in `test/handle/`, which the other package owns.
+
 (library
  (name bonsai_gtk_tests)
- (libraries
-  core
-  bonsai_gtk.vtree
-  bonsai_gtk_test
-  bonsai
-  bonsai_test
-  expect_test_helpers_core)
+ (package bonsai_gtk)
+ (libraries core bonsai_gtk.vtree expect_test_helpers_core)
  (inline_tests
   (flags
    ;; dune 3.22+ox passes `-source-tree-root ..` but this ppx_expect runtime

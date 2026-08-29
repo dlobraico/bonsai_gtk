@@ -11,6 +11,7 @@ depends: [
   "bonsai_gtk" {= version}
   "bonsai_test"
   "ppx_expect"
+  "expect_test_helpers_core" {with-test}
   "odoc" {with-doc}
 ]
 build: [

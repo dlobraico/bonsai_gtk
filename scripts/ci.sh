@@ -36,6 +36,24 @@ git diff --exit-code -- '*.opam'
 echo "== pure + headless tests"
 dune build @test/runtest
 
+# `opam install <pkg> --with-test` runs `dune build -p <pkg> ... @runtest`, which
+# is not what the line above does: `--only-packages` hides every library owned by
+# another package in this workspace, so a test directory needing one from each
+# package builds here and fails there. Both packages are checked, in build
+# directories of their own so that the release-mode flags do not invalidate the
+# main `_build`.
+echo "== per-package builds, the way opam --with-test runs them"
+dune build --build-dir=_build.pkg -p bonsai_gtk @runtest
+# bonsai_gtk_test depends on bonsai_gtk, and `-p` hides it -- so it has to come
+# from an installed copy, which is what opam does for real.
+dune build --build-dir=_build.pkg -p bonsai_gtk @install
+prefix=$(mktemp -d)
+trap 'rm -rf "$prefix"' EXIT
+dune install --build-dir=_build.pkg --prefix "$prefix" --libdir "$prefix/lib" \
+  bonsai_gtk >/dev/null
+OCAMLPATH="$prefix/lib${OCAMLPATH:+:$OCAMLPATH}" \
+  dune build --build-dir=_build.pkgtest -p bonsai_gtk_test @runtest
+
 echo "== live tests (xvfb)"
 BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 

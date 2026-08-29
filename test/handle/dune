@@ -1,0 +1,24 @@
+; The tests that exercise `Bonsai_gtk_test` itself live here rather than beside
+; the pure `bonsai_gtk.vtree` tests, so that neither directory straddles the two
+; packages. `dune build -p <pkg> @runtest` -- the command both generated .opam
+; files run under `--with-test` -- masks every library belonging to another
+; local package, so a directory needing one from each cannot build under either.
+
+(library
+ (name bonsai_gtk_handle_tests)
+ (package bonsai_gtk_test)
+ (libraries
+  core
+  bonsai_gtk.vtree
+  bonsai_gtk_test
+  bonsai
+  bonsai_test
+  expect_test_helpers_core)
+ (inline_tests
+  (flags
+   ;; dune 3.22+ox passes `-source-tree-root ..` but this ppx_expect runtime
+   ;; concatenates only the basename, so tests in a subdir fail to find their
+   ;; source; `.` compensates.
+   (-source-tree-root .)))
+ (preprocess
+  (pps ppx_jane ppx_expect bonsai.ppx_bonsai)))
