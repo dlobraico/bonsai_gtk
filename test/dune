@@ -3,11 +3,15 @@
  (libraries
   core
   bonsai_gtk.vtree
+  bonsai_gtk_test
   bonsai
   bonsai_test
   expect_test_helpers_core)
  (inline_tests
   (flags
+   ;; dune 3.22+ox passes `-source-tree-root ..` but this ppx_expect runtime
+   ;; concatenates only the basename, so tests in a subdir fail to find their
+   ;; source; `.` compensates.
    (-source-tree-root .)))
  (preprocess
   (pps ppx_jane ppx_expect bonsai.ppx_bonsai)))
