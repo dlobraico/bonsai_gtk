@@ -40,9 +40,13 @@ echo "== live tests (xvfb)"
 BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 
 echo "== example smoke"
-set +e
-xvfb-run -a timeout -k 2 3 dune exec examples/counter.exe
-code=$?
-set -e
-[ "$code" = 124 ] || { echo "counter example exited with $code"; exit 1; }
+for ex in counter gallery; do
+  set +e
+  xvfb-run -a timeout -k 2 3 dune exec "examples/$ex.exe"
+  code=$?
+  set -e
+  # 124 is timeout's "still running when time ran out", which is what a GUI that
+  # came up and stayed up looks like. Anything else means it fell over.
+  [ "$code" = 124 ] || { echo "$ex example exited with $code"; exit 1; }
+done
 echo "all green"

@@ -1,5 +1,5 @@
-(executable
- (name counter)
+(executables
+ (names counter gallery)
  (libraries core bonsai bonsai_gtk)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))
