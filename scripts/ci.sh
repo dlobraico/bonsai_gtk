@@ -27,7 +27,7 @@ BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 
 echo "== example smoke"
 set +e
-xvfb-run -a timeout 3 dune exec examples/counter.exe
+xvfb-run -a timeout -k 2 3 dune exec examples/counter.exe
 code=$?
 set -e
 [ "$code" = 124 ] || { echo "counter example exited with $code"; exit 1; }

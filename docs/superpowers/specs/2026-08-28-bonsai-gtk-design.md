@@ -157,9 +157,13 @@ val start
 - `start` creates a `GtkApplication`; on `activate` it creates the `Driver`,
   computes the first frame, mounts the window(s) onto the application, and
   blocks in `app#run`. Returns the status when the application quits.
-- `Expert.start_with_driver` runs the same setup but hands the caller the
-  `Driver.t` (used by the live tests and for embedding into an existing
-  `GtkApplication`).
+- `Expert.Driver` is the same machinery without the `GtkApplication` around it:
+  `Driver.create ?time_source ?optimize ~on_window_created app` builds a driver that
+  renders nothing until the first `Driver.frame` call, which mounts the tree; `frame` can
+  then be called by hand, or `Driver.start_tick ~fps` hands it a repeating timeout the way
+  `start` does internally; `Driver.stop` tears the widget tree down. This is what `start`
+  itself is built on (plus a `GtkApplication` to own the main loop and present the
+  window), and what the live tests and embedders with their own main loop use directly.
 
 ### 4.2 Frame
 

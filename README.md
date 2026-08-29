@@ -6,8 +6,8 @@ spirit of `bonsai_web` and `bonsai_term`. An app is a pure function
 signals into Bonsai events, and keeps a live GTK widget tree in sync with the declarative
 `Node.t` the app computes.
 
-Status: pre-alpha (M0) — a small widget set (`Label`, `Box`, `Window`, plus the `Native`
-escape hatch), the runtime loop, and headless testing. See [Limitations](#limitations)
+Status: pre-alpha (M0) — four widgets (`Label`, `Button`, `Box`, `Window`), the `Native`
+escape hatch, the runtime loop, and headless testing. See [Limitations](#limitations)
 below.
 
 ## Example
@@ -140,9 +140,10 @@ status.
 
 ## Limitations
 
-M0 covers four widgets (`Label`, `Box`, `Window`, plus the `Native` escape hatch for
-anything else), a single window per app, no custom Cairo drawing (`DrawingArea.set_draw_func`
-is unbound in ocgtk), and no `ListView`/`ColumnView`/`GridView` (ocgtk generates no
-`SignalListItemFactory` signals, so they can't be populated without new C stubs — out of
-scope until a follow-up design). See §7 of the design doc for the full widget catalogue and
-milestone plan (M1 core & layout, M2 lists & text, M3 chrome & popups).
+M0 covers four widgets (`Label`, `Button`, `Box`, `Window`) plus the `Native` escape hatch
+for anything else, a single window per app, no custom Cairo drawing
+(`DrawingArea.set_draw_func` is unbound in ocgtk), and no `ListView`/`ColumnView`/`GridView`
+(ocgtk generates no `SignalListItemFactory` signals, so they can't be populated without new
+C stubs — out of scope until a follow-up design). See §7 of the design doc for the full
+widget catalogue and milestone plan (M1 core & layout, M2 lists & text, M3 chrome &
+popups).
