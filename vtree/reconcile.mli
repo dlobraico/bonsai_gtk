@@ -41,7 +41,8 @@ type 'a op =
     doesn't invalidate later indices), followed by the [Move]/[Insert]/[Update] ops for
     [new_]'s items left to right.
 
-    Raises [Invalid_argument] if [old] or [new_] contains a duplicate [Some] key. *)
+    Raises [Invalid_argument] if [old] or [new_] contains a duplicate [Some] key
+    ({!check_unique_keys}). *)
 val diff
   :  key:('a -> Key.t option)
   -> same_kind:('a -> 'a -> bool)
@@ -55,3 +56,10 @@ val diff
     unconditionally overwrites by position, so a caller that needs the identity guarantee
     (that the element at [index] really is [old]) must check that itself. *)
 val apply : 'a op list -> 'a list -> 'a list
+
+(** Raises [Invalid_argument] if two items share a [Some] key. {!diff} calls it on both of
+    its lists; it is public so that a caller which builds a child list without diffing it
+    against anything — mounting one for the first time — rejects the same tree at the same
+    point rather than a frame later. The message names the key and nothing else: the
+    caller is expected to prefix the container's node path (spec §11). *)
+val check_unique_keys : key:('a -> Key.t option) -> 'a list -> unit

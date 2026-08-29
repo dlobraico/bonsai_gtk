@@ -568,6 +568,52 @@ let () =
    with
    | (_ : P.live) -> print_endline "BUG: stack page without a key accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* Two siblings under one key is structural misuse (spec §11), and it has to be rejected
+     on the frame that builds the tree rather than the frame after it: the reconciler only
+     runs on a patch, so a mount that let this through would leave the app to die on its
+     second frame. For a stack it is worse than late -- a page's key is its GTK page name,
+     so the first mount would hand [gtk_stack_add_named] the same name twice, leaving
+     [get_child_by_name] ambiguous and the second page unreachable behind a switcher
+     button that does nothing. *)
+  (match
+     P.mount
+       ctx
+       ~path:"dupkey"
+       ~is_root:true
+       (Node.window
+          ~title:"k"
+          (Node.box
+             ~orientation:Vertical
+             [ Node.label ~key:"a" "one"; Node.label ~key:"a" "two" ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: duplicate sibling keys accepted at mount"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (match
+     P.mount
+       ctx
+       ~path:"duppage"
+       ~is_root:true
+       (Node.window
+          ~title:"k"
+          (Node.stack
+             ~name:"dup-pages"
+             ~visible_child:"detail"
+             [ Node.label ~key:"detail" "a"; Node.label ~key:"detail" "b" ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: duplicate stack page names accepted at mount"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* A patch that introduces one is the same mistake a frame later, and carries the same
+     message and the same path -- which is the half that used to name neither. *)
+  let keyed keys =
+    Node.window
+      ~title:"k"
+      (Node.box ~orientation:Vertical (List.map keys ~f:(fun k -> Node.label ~key:k k)))
+  in
+  let keyed_live = P.mount ctx ~path:"patchdup" ~is_root:true (keyed [ "a"; "b" ]) in
+  (match P.patch ctx ~path:"patchdup" ~is_root:true keyed_live (keyed [ "a"; "a" ]) with
+   | (_ : P.live) -> print_endline "BUG: duplicate sibling keys accepted at patch"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  P.destroy ctx keyed_live;
   (* Two stacks under one name would make [~stack] ambiguous, so the second one to be
      mounted says so rather than quietly winning or losing the registration. *)
   (match

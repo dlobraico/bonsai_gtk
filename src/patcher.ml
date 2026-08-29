@@ -222,6 +222,12 @@ and mount_single ctx ~path parent ~set (c : Node.t option) : live option =
 and mount_list ctx ~path parent ~(ops : Widget_impl.list_ops) (cs : Node.t list)
   : live list
   =
+  (* Spec §11 says mount *and* patch time. [Reconcile.diff] checks this on the patch path,
+     but a first frame never reaches it -- so without this a duplicate key is accepted
+     once and rejected on the second frame, which for a [Node.stack] means GTK has already
+     been handed two pages with one name and [get_child_by_name] is already ambiguous. *)
+  child_op ~path (fun () ->
+    Reconcile.check_unique_keys ~key:(fun (n : Node.t) -> n.key) cs);
   let lives =
     List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
   in
@@ -411,12 +417,16 @@ and patch_list
   (news : Node.t list)
   : live list
   =
+  (* Wrapped like every other child-list op: the reconciler knows nothing about where in
+     the tree it is, and its duplicate-key rejection is the one structural message that
+     used to reach the caller with no path on it at all. *)
   let edits =
-    Reconcile.diff
-      ~key:(fun (n : Node.t) -> n.key)
-      ~same_kind:(fun a b -> Kind.same_kind a.Node.kind b.Node.kind)
-      ~old:(List.map olds ~f:(fun l -> l.node))
-      ~new_:news
+    child_op ~path (fun () ->
+      Reconcile.diff
+        ~key:(fun (n : Node.t) -> n.key)
+        ~same_kind:(fun a b -> Kind.same_kind a.Node.kind b.Node.kind)
+        ~old:(List.map olds ~f:(fun l -> l.node))
+        ~new_:news)
   in
   (* [cur] mirrors, over lives, exactly what [Reconcile.apply] would do over nodes, so the
      indices the reconciler computed stay valid — and so [cur] is also what every op reads

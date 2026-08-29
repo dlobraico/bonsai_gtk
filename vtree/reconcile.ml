@@ -17,13 +17,22 @@ type 'a op =
       }
 [@@deriving sexp_of]
 
+(* The message carries no path: every caller is a container's child list, and the patcher
+   prefixes the container's own path onto it the same way it does for a grid child with no
+   cell (spec §11). *)
 let check_unique_keys ~key items =
   ignore
     (List.fold items ~init:Key.Set.empty ~f:(fun seen item ->
        match key item with
        | None -> seen
        | Some k ->
-         if Set.mem seen k then invalid_argf "Reconcile.diff: duplicate key %s" k ();
+         if Set.mem seen k
+         then
+           invalid_argf
+             "duplicate key %s among one container's children (a key identifies a child \
+              among its siblings, so no two of them may share one)"
+             k
+             ();
          Set.add seen k)
      : Key.Set.t)
 ;;

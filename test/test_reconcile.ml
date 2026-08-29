@@ -53,7 +53,11 @@ let%expect_test "unkeyed items match positionally only when kinds agree" =
 let%expect_test "duplicate keys raise" =
   Expect_test_helpers_core.require_does_raise (fun () ->
     diff ~old:[] ~new_:[ k "a" "L"; k "a" "L" ]);
-  [%expect {| (Invalid_argument "Reconcile.diff: duplicate key a") |}]
+  [%expect
+    {|
+    (Invalid_argument
+     "duplicate key a among one container's children (a key identifies a child among its siblings, so no two of them may share one)")
+    |}]
 ;;
 
 (* A stricter interpreter than [Reconcile.apply]: it never blindly overwrites by index. At
