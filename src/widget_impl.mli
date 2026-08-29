@@ -7,12 +7,17 @@ type child_ops =
   | No_children
   | Single of { set : Widget.t -> Widget.t option -> unit }
   | List of
-      { insert : Widget.t -> index:int -> Widget.t -> unit
-      (** Insert so the child ends up at [index] in the parent's child list. The child is
-          not yet a child of the parent. *)
-      ; move : Widget.t -> child:Widget.t -> to_:int -> unit
-      (** Move an existing child so it ends up at [to_], where [to_] indexes the child
-          list as it will be *after* the move. *)
+      { insert : Widget.t -> after:Widget.t option -> Widget.t -> unit
+      (** Add a child that is not yet in the container, placing it directly after [after]
+          — or first when [after] is [None]. [after] is the live widget the patcher's own
+          bookkeeping says precedes this position, never a widget read back out of GTK: a
+          container that interposes children of its own (list-box rows, stack pages) has a
+          live child list that does not match the reconciler's indices, and only the
+          patcher's list is authoritative. *)
+      ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
+      (** Move a child already in the container to sit directly after [after] ([None] =
+          first). [after] is computed over the sibling list with [child] already taken out
+          of it, which is the order GTK's [reorder_child_after] expects. *)
       ; remove : Widget.t -> Widget.t -> unit
       }
 
@@ -26,24 +31,6 @@ type t =
   ; signals : Signals.spec list
   ; children : child_ops
   }
-
-(** The sibling a child must be placed *after* so that it lands at [index] among
-    [parent]'s children, ignoring [except] (the child being moved, which is still in the
-    list at its old position). [None] means "at the beginning", which is what GTK's
-    [*_child_after] calls take for a null sibling.
-
-    This reads GTK's live child list, so an impl whose [children] ops are used with this
-    must keep [widget_children] equal to exactly the list of children the patcher manages,
-    in the patcher's order. A container that creates internal children of its own (or
-    reorders them behind GTK's back) breaks the correspondence between the reconciler's
-    indices and GTK's, and the placement below is computed against the wrong list.
-
-    Raises [Invalid_argument] if [index] exceeds the length of the considered child list:
-    such an [index] has no sibling to name, and answering [None] would silently place the
-    child at the *beginning* rather than the end. Reaching that case means GTK's live
-    child order has drifted from the list the reconciler computed indices against, so it
-    is a bug worth failing on rather than mis-ordering the tree. *)
-val sibling_before : Widget.t -> index:int -> except:Widget.t option -> Widget.t option
 
 (** Raises [Invalid_argument]: impl [name] was handed a kind it does not own. *)
 val wrong_kind : string -> Kind.t -> 'a

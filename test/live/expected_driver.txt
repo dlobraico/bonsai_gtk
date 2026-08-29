@@ -14,6 +14,7 @@ window created
 stopped
 broken before: false
 broken after: true
+frame on broken driver returned, still broken: true
 (GtkWindow (title (break)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))

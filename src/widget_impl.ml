@@ -6,8 +6,8 @@ type child_ops =
   | No_children
   | Single of { set : Widget.t -> Widget.t option -> unit }
   | List of
-      { insert : Widget.t -> index:int -> Widget.t -> unit
-      ; move : Widget.t -> child:Widget.t -> to_:int -> unit
+      { insert : Widget.t -> after:Widget.t option -> Widget.t -> unit
+      ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
       ; remove : Widget.t -> Widget.t -> unit
       }
 
@@ -18,22 +18,5 @@ type t =
   ; signals : Signals.spec list
   ; children : child_ops
   }
-
-let sibling_before parent ~index ~except : Widget.t option =
-  if index = 0
-  then None
-  else (
-    let kids =
-      widget_children parent
-      |> List.filter ~f:(fun c ->
-        match except with
-        | None -> true
-        | Some e -> not (Gobject.same c e))
-    in
-    match List.nth kids (index - 1) with
-    | Some _ as sibling -> sibling
-    | None ->
-      invalid_argf "sibling_before: index %d > %d children" index (List.length kids) ())
-;;
 
 let wrong_kind name kind = invalid_argf "%s impl received %s" name (Kind.name kind) ()

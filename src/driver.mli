@@ -35,10 +35,15 @@ val create
     scheduler, which logs the exception and stops the driver instead of raising; see
     {!broken}.
 
-    Raises [Invalid_argument] if called after {!stop}. *)
+    Raises [Invalid_argument] if called after {!stop}.
+
+    Once a frame has raised ({!broken} is [true]) this is a no-op: the promise that
+    nothing updates the tree again holds for hand-driven frames as well as for the
+    scheduler's. *)
 val frame : t -> unit
 
-(** Queues [effect] and asks for a frame. This is the path every signal handler takes. *)
+(** Queues [effect] and asks for a frame. This is the path every signal handler takes. A
+    no-op once the driver is broken. *)
 val schedule_event : t -> unit Ui_effect.t -> unit
 
 (** The root widget, or [None] before the first {!frame} (and after {!stop}). *)

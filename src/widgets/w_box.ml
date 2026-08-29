@@ -35,20 +35,11 @@ let impl : Widget_impl.t =
   ; children =
       Widget_impl.List
         { insert =
-            (fun parent ~index child ->
-              W.Box.insert_child_after
-                (cast parent)
-                child
-                (Widget_impl.sibling_before parent ~index ~except:None))
+            (fun parent ~after child ->
+              W.Box.insert_child_after (cast parent) child after)
         ; move =
-            (fun parent ~child ~to_ ->
-              (* [to_] is the index the child must occupy *after* the move, and the child
-                 is still in the list at its old position, so the sibling is computed over
-                 the other children only. *)
-              W.Box.reorder_child_after
-                (cast parent)
-                child
-                (Widget_impl.sibling_before parent ~index:to_ ~except:(Some child)))
+            (fun parent ~child ~after ->
+              W.Box.reorder_child_after (cast parent) child after)
         ; remove = (fun parent child -> W.Box.remove (cast parent) child)
         }
   }

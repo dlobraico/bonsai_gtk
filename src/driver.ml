@@ -13,8 +13,12 @@ type t =
   }
 
 let schedule_event t effect =
-  Bonsai_driver.schedule_event t.bonsai effect;
-  Scheduler.request_frame t.scheduler
+  (* A broken driver renders nothing again (see [frame]), so queueing effects into it only
+     grows a queue nobody drains — a frozen window whose memory keeps climbing. *)
+  if not (Scheduler.broken t.scheduler)
+  then (
+    Bonsai_driver.schedule_event t.bonsai effect;
+    Scheduler.request_frame t.scheduler)
 ;;
 
 let check_root (node : Node.t) =
@@ -33,39 +37,48 @@ let frame t =
     invalid_arg
       "Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph \
        and tears the widget tree down; build a new driver instead)";
-  if t.advance_wall_clock
-  then (
-    Bonsai.Time_source.advance_clock t.time_source ~to_:(Time_ns.now ());
-    Bonsai.Time_source.Private.flush t.time_source);
-  Bonsai_driver.flush t.bonsai;
-  let node = Bonsai_driver.result t.bonsai in
-  (* Bonsai hands back the physically same node when nothing it depends on changed, so
-     this skips the whole diff on a frame that only advanced the clock. *)
-  let changed =
-    match t.last with
-    | None -> true
-    | Some previous -> not (phys_equal previous node)
-  in
-  if changed
-  then (
-    check_root node;
-    Scheduler.with_patch_guard t.scheduler (fun () ->
-      t.root
-      <- Some
-           (match t.root with
-            | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
-            | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node));
-    t.last <- Some node);
-  Bonsai_driver.trigger_lifecycles t.bonsai;
-  (* [trigger_lifecycles] *schedules* the after-display effects rather than applying them,
-     so another frame is needed before their results are on screen. Under a tick that
-     frame is already coming. Without one we ask for it — but on the rate-limited path,
-     never the idle: [has_after_display_events] is true whenever the computation contains
-     an after-display handler at all (one [Clock.every] is enough), so every frame would
-     request its successor and an idle would run them back to back at full CPU. *)
-  if Bonsai_driver.has_after_display_events t.bonsai
-     && not (Scheduler.ticking t.scheduler)
-  then Scheduler.request_frame_soon t.scheduler
+  if Scheduler.broken t.scheduler
+  then
+    (* A frame already raised. The shadow tree describes a GTK tree that no longer exists,
+       so diffing against it again is worse than doing nothing. Unlike [stopped] this is
+       not caller error — the scheduler's own guarded path reaches here too — so it
+       returns rather than raising. *)
+    ()
+  else (
+    if t.advance_wall_clock
+    then (
+      Bonsai.Time_source.advance_clock t.time_source ~to_:(Time_ns.now ());
+      Bonsai.Time_source.Private.flush t.time_source);
+    Bonsai_driver.flush t.bonsai;
+    let node = Bonsai_driver.result t.bonsai in
+    (* Bonsai hands back the physically same node when nothing it depends on changed, so
+       this skips the whole diff on a frame that only advanced the clock. *)
+    let changed =
+      match t.last with
+      | None -> true
+      | Some previous -> not (phys_equal previous node)
+    in
+    if changed
+    then (
+      check_root node;
+      Scheduler.with_patch_guard t.scheduler (fun () ->
+        t.root
+        <- Some
+             (match t.root with
+              | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
+              | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node));
+      t.last <- Some node);
+    Bonsai_driver.trigger_lifecycles t.bonsai;
+    (* [trigger_lifecycles] *schedules* the after-display effects rather than applying
+       them, so another frame is needed before their results are on screen. Under a tick
+       that frame is already coming. Without one we ask for it — but on the rate-limited
+       path, never the idle: [has_after_display_events] is true whenever the computation
+       contains an after-display handler at all (one [Clock.every] is enough), so every
+       frame would request its successor and an idle would run them back to back at full
+       CPU. *)
+    if Bonsai_driver.has_after_display_events t.bonsai
+       && not (Scheduler.ticking t.scheduler)
+    then Scheduler.request_frame_soon t.scheduler)
 ;;
 
 let create ?time_source ?(optimize = true) ~on_window_created app =

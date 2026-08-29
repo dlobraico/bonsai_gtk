@@ -53,7 +53,10 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
       let lives =
         List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
       in
-      List.iteri lives ~f:(fun i l -> insert widget ~index:i l.widget);
+      List.fold lives ~init:None ~f:(fun after l ->
+        insert widget ~after l.widget;
+        Some l.widget)
+      |> (ignore : Widget.t option -> unit);
       List lives
     | (Single _ | List _), _ ->
       invalid_argf "%s: node has children but %s takes none" path impl.name ()
@@ -144,8 +147,14 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
         ~new_:news
     in
     (* [cur] mirrors, over lives, exactly what [Reconcile.apply] would do over nodes, so
-       the indices the reconciler computed stay valid — and so does GTK's own child order,
-       which the [insert]/[move] ops read back to find their sibling. *)
+       the indices the reconciler computed stay valid — and so [cur] is also what every op
+       reads its placement out of. *)
+    (* The widget a child at [index] must be placed after, read off the patcher's own list
+       rather than GTK's: a container that interposes children of its own (list-box rows,
+       stack pages) has a live child list that does not match these indices. *)
+    let after_of cur index =
+      if index = 0 then None else Some (List.nth_exn cur (index - 1)).widget
+    in
     let cur = ref olds in
     List.iter ops ~f:(fun (op : Node.t Reconcile.op) ->
       match op with
@@ -157,26 +166,31 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
         cur := List.filteri !cur ~f:(fun i _ -> i <> index)
       | Insert { index; item } ->
         let l = mount ctx ~path:(child_path path index) ~is_root:false item in
-        insert live.widget ~index l.widget;
+        insert live.widget ~after:(after_of !cur index) l.widget;
         cur := List.take !cur index @ (l :: List.drop !cur index)
       | Move { from; to_ } ->
         let l = List.nth_exn !cur from in
-        move live.widget ~child:l.widget ~to_;
+        (* [to_] indexes the list as it will be *after* the move, so the predecessor is
+           computed with [l] already removed. *)
         let without = List.filteri !cur ~f:(fun i _ -> i <> from) in
+        move live.widget ~child:l.widget ~after:(after_of without to_);
         cur := List.take without to_ @ (l :: List.drop without to_)
       | Update { index; item; old = _ } ->
         let l = List.nth_exn !cur index in
         let l' = patch ctx ~path:(child_path path index) ~is_root:false l item in
         if not (phys_equal l l')
         then (
-          (* The kind changed, so [patch] mounted a replacement and destroyed [l]. [l]'s
-             widget was still parented while it was destroyed, which is what we want for
-             the widgets M0 can hold here: destroying a non-window live only disconnects
-             it. A [Window] live in a list would be destroyed for real before this
-             [remove], which is fine (its own [destroy] unparents it) but is worth
-             re-checking if windows ever become list children. *)
+          (* The kind changed, so [patch] mounted a replacement and destroyed [l]; [l]'s
+             widget is still parented here. Remove it, then place the replacement where it
+             was — [after] over the list with [l] taken out. ([l]'s widget was still
+             parented while it was destroyed, which is what we want for the widgets M0 can
+             hold here: destroying a non-window live only disconnects it. A [Window] live
+             in a list would be destroyed for real before this [remove], which is fine —
+             its own [destroy] unparents it — but is worth re-checking if windows ever
+             become list children.) *)
+          let without = List.filteri !cur ~f:(fun i _ -> i <> index) in
           remove live.widget l.widget;
-          insert live.widget ~index l'.widget);
+          insert live.widget ~after:(after_of without index) l'.widget);
         cur := List.mapi !cur ~f:(fun i x -> if i = index then l' else x));
     List !cur
   | (No_children | Single _ | List _), _, _ ->

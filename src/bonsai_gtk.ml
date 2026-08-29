@@ -34,5 +34,6 @@ module Private = struct
   module Registry = Registry
   module Scheduler = Scheduler
   module Signals = Signals
+  module W_button = W_button
   module Widget_impl = Widget_impl
 end

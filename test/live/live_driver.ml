@@ -93,6 +93,14 @@ let () =
      close, not a vanished one. A second click arms nothing, so nothing re-raises. *)
   Gobject.Signal.emit_by_name (plus ()) ~name:"clicked";
   drain ();
+  (* A hand-driven frame is refused the same way: [driver.mli] promises that nothing
+     updates the tree again once a frame has raised, and the shadow tree no longer
+     describes GTK, so diffing against it would be worse than doing nothing. It returns
+     rather than raising — unlike [stopped], being broken is not caller error. *)
+  Expert.Driver.frame broken;
+  printf
+    "frame on broken driver returned, still broken: %b\n"
+    (Expert.Driver.broken broken);
   print_s (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget broken)));
   Expert.Driver.stop broken;
   print_endline "broken driver stopped"

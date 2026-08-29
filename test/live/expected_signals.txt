@@ -1,0 +1,6 @@
+empty slot: 0
+armed slot: 1
+during patch: 1
+after patch: 2
+after raising handler: 3
+after clear: 3
