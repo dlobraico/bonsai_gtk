@@ -381,6 +381,66 @@ let () =
      There is nothing here that can provoke it: every [Slots] node comes from a
      constructor whose slot list is written beside the impl's. *)
   P.destroy ctx live;
+  (* The layout skeleton, patched. [Window], [Box], [Grid], [Paned], [Center_box] and
+     [Spinner] were all mounted and unmounted by these tests and never once patched with a
+     property that changed, so their [update] functions had never executed a write:
+     [W.Window.set_title], [W.Box.set_spacing], [W.Grid.set_row_spacing] and
+     [W.Paned.set_position] could all have been broken with nothing to say so. Every prop
+     each of them has moves across this one patch. *)
+  let layout ~alt =
+    Node.window
+      ~title:(if alt then "after" else "before")
+      ~default_size:(if alt then 400, 300 else 320, 240)
+      (Node.box
+         ~orientation:(if alt then Horizontal else Vertical)
+         ~spacing:(if alt then 12 else 4)
+         ~homogeneous:alt
+         [ Node.grid
+             ~row_spacing:(if alt then 2 else 6)
+             ~column_spacing:(if alt then 3 else 12)
+             ~row_homogeneous:alt
+             ~column_homogeneous:(not alt)
+             [ Node.label ~key:"g" ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "g" ]
+         ; Node.paned
+             ~orientation:Horizontal
+             ~position:(if alt then 200 else 120)
+             ~wide_handle:alt
+             ~resize_start:(not alt)
+             ~resize_end:alt
+             ~shrink_start:alt
+             ~shrink_end:(not alt)
+             ~start:(Node.label "s")
+             ~end_:(Node.label "e")
+             ()
+         ; Node.center_box ~shrink_center_last:alt ~start:(Node.label "c") ()
+         ; Node.spinner ~spinning:alt ()
+         ])
+  in
+  let layout_live = P.mount ctx ~path:"root" ~is_root:true (layout ~alt:false) in
+  (* A box's orientation is visible in its css classes and a window's title in its own
+     line, but a box's homogeneity and a window's default size are printed by nothing, so
+     they are read straight back off the widgets. *)
+  let layout_off_dump (live : P.live) =
+    let width, height = W.Window.get_default_size (cast live.P.widget) in
+    let box =
+      match live.P.children with
+      | Single (Some box) -> box.P.widget
+      | No_children | Single None | List _ | Slots _ -> assert false
+    in
+    printf
+      "default size %dx%d, box homogeneous %b\n"
+      width
+      height
+      (W.Box.get_homogeneous (cast box))
+  in
+  print_s (Live_tree.dump layout_live.widget);
+  layout_off_dump layout_live;
+  let layout_live =
+    P.patch ctx ~path:"root" ~is_root:true layout_live (layout ~alt:true)
+  in
+  print_s (Live_tree.dump layout_live.widget);
+  layout_off_dump layout_live;
+  P.destroy ctx layout_live;
   (* Grid: the third child moves cell without changing key, so it must be detached and
      re-attached at the new coordinates -- and be the same GObject afterwards. *)
   let grid_view ~span =
@@ -534,6 +594,28 @@ let () =
   in
   P.run_fixups ctx;
   print_s (Live_tree.dump live.widget);
+  (* A page added and selected in the *same* pass, which is the one case the fixup queue
+     exists for: [W_stack.select] is a no-op while [get_child_by_name] has nothing, and
+     the enqueue is what guarantees the pages are attached by the time it runs. The
+     renders above only ever selected a page that already existed, so a regression in that
+     ordering would have left a wizard's "next" step silently on the previous one. *)
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (stack_view
+         ~visible:"encores"
+         ~pages:
+           [ "library", "Library!"
+           ; "practice", "Practice"
+           ; "setlists", "Setlists"
+           ; "encores", "Encores"
+           ])
+  in
+  P.run_fixups ctx;
+  print_s (Live_tree.dump live.widget);
   (* A page dropped from the list leaves the stack, and the selection moves with the model
      rather than with whatever GTK fell back to. *)
   let live =
@@ -598,6 +680,93 @@ let () =
    | (_ : P.live) -> print_endline "BUG: unresolvable stack name accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   P.destroy ctx live;
+  (* A switcher and a sidebar follow the stack they name across a patch that re-points
+     them. [note_interest] re-enqueues that fixup on every patch precisely so this works,
+     and nothing exercised it: every [~stack] in these tests was a constant, so a switcher
+     whose resolution had been moved back inline would have gone on driving the old stack
+     with no exception and no diagnostic. *)
+  let two_stacks ~target =
+    Node.window
+      ~title:"t"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack_switcher ~stack:target ()
+         ; Node.stack_sidebar ~stack:target ()
+         ; Node.stack
+             ~key:"a"
+             ~name:"a"
+             ~transition:None_
+             ~visible_child:"pa"
+             [ Node.label ~key:"pa" ~attrs:[ Attr.page_title "A" ] "pa" ]
+         ; Node.stack
+             ~key:"b"
+             ~name:"b"
+             ~transition:None_
+             ~visible_child:"pb"
+             [ Node.label ~key:"pb" ~attrs:[ Attr.page_title "B" ] "pb" ]
+         ])
+  in
+  let retargeted = P.mount ctx ~path:"re" ~is_root:true (two_stacks ~target:"a") in
+  P.run_fixups ctx;
+  let both_point_at live ~index =
+    let target = nth_child live index in
+    let same = Option.value_map ~default:false ~f:(fun s -> Gobject.same s target) in
+    ( same (W.Stack_switcher.get_stack (cast (nth_child live 0)))
+    , same (W.Stack_sidebar.get_stack (cast (nth_child live 1))) )
+  in
+  let switcher, sidebar = both_point_at retargeted ~index:2 in
+  printf "wired to stack a -- switcher %b, sidebar %b\n" switcher sidebar;
+  let retargeted =
+    P.patch ctx ~path:"re" ~is_root:true retargeted (two_stacks ~target:"b")
+  in
+  P.run_fixups ctx;
+  let switcher, sidebar = both_point_at retargeted ~index:3 in
+  printf "re-pointed at stack b -- switcher %b, sidebar %b\n" switcher sidebar;
+  P.destroy ctx retargeted;
+  (* Renaming a stack drops the registration it held, so a switcher still naming the old
+     name fails loudly rather than driving a stack the tree no longer calls that. Only the
+     rename *onto a name another stack holds* was tested; this is the same rename onto a
+     free one. *)
+  let renamed_view ~name =
+    Node.window
+      ~title:"r"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack_switcher ~stack:"old" ()
+         ; Node.stack ~key:"s" ~name ~visible_child:"p" [ Node.label ~key:"p" "p" ]
+         ])
+  in
+  let renamed_live = P.mount ctx ~path:"rn" ~is_root:true (renamed_view ~name:"old") in
+  P.run_fixups ctx;
+  (match
+     let live =
+       P.patch ctx ~path:"rn" ~is_root:true renamed_live (renamed_view ~name:"new")
+     in
+     P.run_fixups ctx;
+     live
+   with
+   | (_ : P.live) -> print_endline "BUG: a switcher naming a renamed-away stack accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  (* Placement at the *head* of a keyed list: an insert in front of siblings that are
+     already there, and a [Move] to index 0. Both are [~after:None], and both are what a
+     newest-first feed or a newly pinned row does on its first frame; every list patch in
+     these tests so far has inserted and moved into the middle or the tail. *)
+  let ordered keys =
+    Node.window
+      ~title:"o"
+      (Node.box ~orientation:Vertical (List.map keys ~f:(fun k -> Node.label ~key:k k)))
+  in
+  let ordered_live = P.mount ctx ~path:"ord" ~is_root:true (ordered [ "b"; "c" ]) in
+  print_s (Live_tree.dump ordered_live.widget);
+  let ordered_live =
+    P.patch ctx ~path:"ord" ~is_root:true ordered_live (ordered [ "a"; "b"; "c" ])
+  in
+  print_s (Live_tree.dump ordered_live.widget);
+  let ordered_live =
+    P.patch ctx ~path:"ord" ~is_root:true ordered_live (ordered [ "c"; "a"; "b" ])
+  in
+  print_s (Live_tree.dump ordered_live.widget);
+  P.destroy ctx ordered_live;
   (* Wrapping a named stack in another container is ordinary UI work, and it changes
      the *parent's* kind -- so the patcher mounts the replacement subtree, which
      re-declares the stack's name, while the subtree it replaces still holds it. The one

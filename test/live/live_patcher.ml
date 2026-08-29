@@ -203,6 +203,30 @@ let () =
   in
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
+  (* A css class added by one render and dropped by the next.
+     [Attr.css_class (if selected then "selected" else "row")] is how an app expresses
+     selection state, and while [Attrs.diff]'s [Add_css_class]/[Remove_css_class] ops were
+     covered purely, [W.Widget.remove_css_class] had never run against a real widget: the
+     only live use set the same class in both renders.
+
+     [Attr.margin] rides along. It is the one attr that expands to four writes, and until
+     now only the unasserted example smoke had ever built one. *)
+  let styled_view attrs = Node.window ~title:"css" (Node.label ~attrs "s") in
+  let live =
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (styled_view [ Attr.css_class "selected"; Attr.margin 7 ])
+  in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch ctx ~path:"root" ~is_root:true live (styled_view [ Attr.css_class "row" ])
+  in
+  print_s (Live_tree.dump live.widget);
+  let live = P.patch ctx ~path:"root" ~is_root:true live (styled_view []) in
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
   (* Every [Node.label] text property, set and then dropped back to GTK's defaults. *)
   let label_view label = Node.window ~title:"label" (label "text") in
   let live =

@@ -202,6 +202,31 @@ back: width 80..300, height 100..500
        (height-request 60))
       (GtkLabel (text 9))))))))
 paned notify reaching Bonsai: 1
+(GtkWindow (title (before)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 4) (css (vertical))
+   (children
+    (GtkGrid (row-spacing 6) (column-spacing 12) column-homogeneous
+     (cells (0 0 1 1)) (css (horizontal)) (children (GtkLabel (text g))))
+    (GtkPaned (position 120) position-set no-resize-end shrink-end
+     (css (horizontal))
+     (children (GtkLabel (text s)) (GtkPanedHandle (cursor col-resize))
+      (GtkLabel (text e))))
+    (GtkCenterBox no-shrink-center-last (children (GtkLabel (text c))))
+    (GtkSpinner)))))
+default size 320x240, box homogeneous false
+(GtkWindow (title (after)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 12) (css (horizontal))
+   (children
+    (GtkGrid (row-spacing 2) (column-spacing 3) row-homogeneous
+     (cells (0 0 1 1)) (css (horizontal)) (children (GtkLabel (text g))))
+    (GtkPaned (position 200) position-set wide-handle no-resize-start
+     shrink-start (css (horizontal))
+     (children (GtkLabel (text s))
+      (GtkPanedHandle (css (wide)) (cursor col-resize)) (GtkLabel (text e))))
+    (GtkCenterBox (children (GtkLabel (text c)))) (GtkSpinner spinning)))))
+default size 400x300, box homogeneous true
 (GtkWindow (title (grid)) (css (background)) hidden
  (children
   (GtkGrid (row-spacing 6) (column-spacing 12)
@@ -305,6 +330,51 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
     (GtkStackSwitcher has-stack (css (linked))
      (children
       (GtkToggleButton (label ()) (css (text-button toggle)) hexpand vexpand
+       (children (GtkLabel (text Library!) (halign center))))
+      (GtkToggleButton (label ()) (css (text-button toggle)) hexpand vexpand
+       (children (GtkLabel (text Practice) (halign center))))
+      (GtkToggleButton (label ()) (css (text-button toggle)) hexpand vexpand
+       (children (GtkLabel (text Setlists) (halign center))))
+      (GtkToggleButton (label ()) active (css (text-button toggle)) hexpand
+       vexpand (children (GtkLabel (text Encores) (halign center))))))
+    (GtkStackSidebar has-stack (css (sidebar))
+     (children
+      (GtkScrolledWindow (hpolicy never)
+       (children
+        (GtkViewport
+         (children
+          (GtkListBox (css (navigation-sidebar))
+           (children
+            (GtkListBoxRow (css (activatable))
+             (children
+              (GtkLabel (text Library!) (halign start) (valign center))))
+            (GtkListBoxRow (css (activatable))
+             (children
+              (GtkLabel (text Practice) (halign start) (valign center))))
+            (GtkListBoxRow (css (activatable))
+             (children
+              (GtkLabel (text Setlists) (halign start) (valign center))))
+            (GtkListBoxRow (css (activatable))
+             (children
+              (GtkLabel (text Encores) (halign start) (valign center))))))))
+        (GtkScrollbar (css (bottom horizontal))
+         (children
+          (GtkRange (css (horizontal)) hexpand vexpand
+           (children (GtkGizmo (children (GtkGizmo)))))))
+        (GtkScrollbar (css (vertical right))
+         (children
+          (GtkRange (css (vertical)) hexpand vexpand
+           (children (GtkGizmo (children (GtkGizmo)))))))))))
+    (GtkStack (visible (encores))
+     (children (GtkLabel (text library)) (GtkLabel (text practice))
+      (GtkLabel (text setlists)) (GtkLabel (text encores))))))))
+(GtkWindow (title (stack)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkStackSwitcher has-stack (css (linked))
+     (children
+      (GtkToggleButton (label ()) (css (text-button toggle)) hexpand vexpand
        (children (GtkLabel (text Practice) (halign center))))
       (GtkToggleButton (label ()) active (css (text-button toggle)) hexpand
        vexpand (children (GtkLabel (text Setlists) (halign center))))))
@@ -335,6 +405,21 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
 declined visible child: setlists; reached Bonsai: 0
 visible-child notify reaching Bonsai: 1
 rejected: stray/0: no Node.stack is named "nope" (a stack_switcher/stack_sidebar must name a stack that exists somewhere in the same tree)
+wired to stack a -- switcher true, sidebar true
+re-pointed at stack b -- switcher true, sidebar true
+rejected: rn/0/0: no Node.stack is named "old" (a stack_switcher/stack_sidebar must name a stack that exists somewhere in the same tree)
+(GtkWindow (title (o)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text b)) (GtkLabel (text c))))))
+(GtkWindow (title (o)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text a)) (GtkLabel (text b)) (GtkLabel (text c))))))
+(GtkWindow (title (o)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text c)) (GtkLabel (text a)) (GtkLabel (text b))))))
 stack wrapped in a frame; switcher drives the surviving stack: true
 rejected: twin/0/1/0: two Node.stacks are named "twin" in one tree
 rejected: keyless/0/0: Stack child has no ~key (a stack page's key is its GTK page name)

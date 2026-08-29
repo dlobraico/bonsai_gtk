@@ -26,6 +26,7 @@ hand-driven frame raised: root/0/1: a Node.window may only be the root node, not
 broken after a hand-driven raise: true
 the frame after that was a no-op
 rejected: Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph and tears the widget tree down; build a new driver instead)
+rejected: Bonsai_gtk: the root node must be a Node.window, got Label
 (GtkWindow (title (reentry)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))

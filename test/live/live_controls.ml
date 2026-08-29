@@ -248,11 +248,37 @@ let () =
      one or two is GTK's business -- [gtk_editable_set_text] is a delete followed by an
      insert -- hence the boolean.) The guard is what the third line measures, and the two
      are different claims: a write Bonsai never hears about is still a caret jump the user
-     feels. *)
-  let entry_view text =
-    Node.window
-      ~title:"e"
-      (Node.entry ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ] ~text ())
+     feels.
+
+     Run over all three entry kinds, not just [Node.entry]. They are not redundant: each
+     reaches [GtkEditable] through a delegate of its own, and a password field the model
+     rejects for being too short is exactly the case where a missing reassert leaves the
+     user's rejected text sitting in the widget. The last render of each round also
+     changes a prop that is the kind's own, so that every impl's [update] runs a write --
+     neither the password entry's nor the search entry's ever had. *)
+  let entry_kinds =
+    [ ( "entry"
+      , fun ~text ~alt ->
+          Node.entry
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~placeholder:(if alt then "after" else "before")
+            ~text
+            () )
+    ; ( "password_entry"
+      , fun ~text ~alt ->
+          Node.password_entry
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~show_peek_icon:alt
+            ~text
+            () )
+    ; ( "search_entry"
+      , fun ~text ~alt ->
+          Node.search_entry
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~search_delay:(if alt then 400 else 200)
+            ~text
+            () )
+    ]
   in
   (* Re-read through the current [live]: [patch] returns a fresh record whenever the kind
      changes, and the widget is only ever reachable through the record we hold now. *)
@@ -261,35 +287,43 @@ let () =
     | Single (Some e) -> W.Editable.from_gobject e.widget
     | No_children | Single None | List _ | Slots _ -> assert false
   in
-  let live = P.mount ctx ~path:"root" ~is_root:true (entry_view "a") in
-  let writes = ref 0 in
-  let (_ : Gobject.Signal.handler_id) =
-    W.Editable.on_changed (editable_of live) ~callback:(fun () -> incr writes)
-  in
-  let reached_bonsai = ref 0 in
-  let observe label live node =
-    let writes_before = !writes
-    and scheduled_before = !scheduled in
-    let live =
-      Scheduler.with_patch_guard scheduler (fun () ->
-        P.patch ctx ~path:"root" ~is_root:true live node)
+  List.iter entry_kinds ~f:(fun (name, entry) ->
+    let entry_view ~text ~alt = Node.window ~title:"e" (entry ~text ~alt) in
+    let live = P.mount ctx ~path:"root" ~is_root:true (entry_view ~text:"a" ~alt:false) in
+    let writes = ref 0 in
+    let (_ : Gobject.Signal.handler_id) =
+      W.Editable.on_changed (editable_of live) ~callback:(fun () -> incr writes)
     in
-    reached_bonsai := !reached_bonsai + (!scheduled - scheduled_before);
-    printf
-      "%s: %s (the patch wrote: %b)\n"
-      label
-      (W.Editable.get_text (editable_of live))
-      (!writes > writes_before);
-    live
-  in
-  (* The user types, outside any patch: this is the state the model is behind. *)
-  W.Editable.set_text (editable_of live) "ab";
-  let live = observe "model wins" live (entry_view "a") in
-  W.Editable.set_text (editable_of live) "ab";
-  let live = observe "echo is a no-op" live (entry_view "ab") in
-  printf "changed events reaching Bonsai from patches: %d\n" !reached_bonsai;
-  print_s (Live_tree.dump live.widget);
-  P.destroy ctx live;
+    let reached_bonsai = ref 0 in
+    let observe label live node =
+      let writes_before = !writes
+      and scheduled_before = !scheduled in
+      let live =
+        Scheduler.with_patch_guard scheduler (fun () ->
+          P.patch ctx ~path:"root" ~is_root:true live node)
+      in
+      reached_bonsai := !reached_bonsai + (!scheduled - scheduled_before);
+      printf
+        "%s %s: %s (the patch wrote: %b)\n"
+        name
+        label
+        (W.Editable.get_text (editable_of live))
+        (!writes > writes_before);
+      live
+    in
+    (* The user types, outside any patch: this is the state the model is behind. *)
+    W.Editable.set_text (editable_of live) "ab";
+    let live = observe "model wins" live (entry_view ~text:"a" ~alt:false) in
+    W.Editable.set_text (editable_of live) "ab";
+    let live = observe "echo is a no-op" live (entry_view ~text:"ab" ~alt:false) in
+    printf "%s: changed events reaching Bonsai from patches: %d\n" name !reached_bonsai;
+    print_s (Live_tree.dump live.widget);
+    (* A prop of the kind's own, moved: the one thing that makes [update] write. *)
+    let live =
+      P.patch ctx ~path:"root" ~is_root:true live (entry_view ~text:"ab" ~alt:true)
+    in
+    print_s (Live_tree.dump live.widget);
+    P.destroy ctx live);
   (* The controlled-value rule, the numeric twin of the entry case above: drag the scale
      and spin the spin button behind the model's back, re-render the old value, and the
      model wins. Both classes carry their own [value-changed] -- the scale's through

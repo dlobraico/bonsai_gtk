@@ -110,11 +110,54 @@ rejected: root/0: Label does not emit On_revealed
    (children
     (GtkButton (label ()) (css (text-button))
      (children (GtkLabel (text "custom again"))))))))
-model wins: a (the patch wrote: true)
-echo is a no-op: ab (the patch wrote: false)
-changed events reaching Bonsai from patches: 0
+entry model wins: a (the patch wrote: true)
+entry echo is a no-op: ab (the patch wrote: false)
+entry: changed events reaching Bonsai from patches: 0
 (GtkWindow (title (e)) (css (background)) hidden
- (children (GtkEntry (text ab) (children (GtkText (cursor text))))))
+ (children
+  (GtkEntry (text ab) (placeholder before)
+   (children
+    (GtkText (cursor text)
+     (children
+      (GtkLabel (text before) (xalign 0) (ellipsize end) (max-width-chars 3))))))))
+(GtkWindow (title (e)) (css (background)) hidden
+ (children
+  (GtkEntry (text ab) (placeholder after)
+   (children
+    (GtkText (cursor text)
+     (children
+      (GtkLabel (text after) (xalign 0) (ellipsize end) (max-width-chars 3))))))))
+password_entry model wins: a (the patch wrote: true)
+password_entry echo is a no-op: ab (the patch wrote: false)
+password_entry: changed events reaching Bonsai from patches: 0
+(GtkWindow (title (e)) (css (background)) hidden
+ (children
+  (GtkPasswordEntry (text ab) no-peek-icon (css (password))
+   (children (GtkText (cursor text))
+    (GtkImage (icon caps-lock-symbolic) (css (caps-lock-indicator))
+     (tooltip "Caps Lock is on") (cursor text))))))
+(GtkWindow (title (e)) (css (background)) hidden
+ (children
+  (GtkPasswordEntry (text ab) (css (password))
+   (children (GtkText (cursor text))
+    (GtkImage (icon caps-lock-symbolic) (css (caps-lock-indicator))
+     (tooltip "Caps Lock is on") (cursor text))
+    (GtkImage (icon view-reveal-symbolic) (tooltip "Show Text"))))))
+search_entry model wins: a (the patch wrote: true)
+search_entry echo is a no-op: ab (the patch wrote: false)
+search_entry: changed events reaching Bonsai from patches: 0
+(GtkWindow (title (e)) (css (background)) hidden
+ (children
+  (GtkSearchEntry (text ab) (search-delay 200) (css (search))
+   (children (GtkImage (icon system-search-symbolic))
+    (GtkText hexpand (cursor text))
+    (GtkImage (icon edit-clear-symbolic) (tooltip "Clear Entry"))))))
+(GtkWindow (title (e)) (css (background)) hidden
+ (children
+  (GtkSearchEntry (text ab) (search-delay 400) (css (search))
+   (children (GtkImage (icon system-search-symbolic))
+    (GtkText hexpand (cursor text))
+    (GtkImage (icon edit-clear-symbolic) (tooltip "Clear Entry"))))))
 (GtkWindow (title (n)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))

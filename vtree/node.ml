@@ -430,9 +430,9 @@ let native ?key ?attrs n = make ?key ?attrs (Native n) No_children
 
 (* The whole tree is walked even once a match is found, because two nodes carrying one
    [Attr.test_id] is a mistake worth reporting rather than resolving by walk order: it is
-   what rendering the same sub-view twice produces (two rows, both with a "delete" button),
-   and a test that acted on whichever the search reached first would pass while asserting
-   nothing about which. *)
+   what rendering the same sub-view twice produces (two rows, both with a "delete"
+   button), and a test that acted on whichever the search reached first would pass while
+   asserting nothing about which. *)
 let find_by_test_id t id =
   let found = ref [] in
   let rec go path t =
@@ -446,8 +446,8 @@ let find_by_test_id t id =
   | [ (_, t) ] -> Some t
   | duplicates ->
     invalid_argf
-      "Node.find_by_test_id: %d nodes carry the test_id %s (%s); a test_id has to identify \
-       one node"
+      "Node.find_by_test_id: %d nodes carry the test_id %s (%s); a test_id has to \
+       identify one node"
       (List.length duplicates)
       id
       (String.concat ~sep:", " (List.map duplicates ~f:fst))

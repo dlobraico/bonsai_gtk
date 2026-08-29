@@ -52,6 +52,18 @@ let string_prop name value ~default =
 
 let flag_prop name value = if value then [ Sexp.Atom name ] else []
 
+(* A string property read through a GValue rather than through its class getter, for the
+   getters ocgtk binds as [string] where the C function may return NULL --
+   [gtk_password_entry_get_placeholder_text] is the one M1 hits, and calling it on a
+   password entry that never had a placeholder is a segfault rather than an exception.
+   [ml_g_value_get_string] maps NULL to [""], which is what the callers below already
+   treat as "no placeholder". *)
+let string_property (w : Widget.t) ~name =
+  let v = Gobject.Value.create Gobject.Type.string in
+  Gobject.Property.get_value w ~name v;
+  Gobject.Value.get_string v
+;;
+
 let policy_prop name (p : Gtk_enums.policytype) =
   match p with
   | `AUTOMATIC -> []
@@ -158,7 +170,7 @@ let rec dump (w : Widget.t) : Sexp.t =
          match ty with
          | "GtkEntry" -> W.Entry.get_placeholder_text (cast w)
          | "GtkSearchEntry" -> W.Search_entry.get_placeholder_text (cast w)
-         | _ -> Some (W.Password_entry.get_placeholder_text (cast w))
+         | _ -> Some (string_property w ~name:"placeholder-text")
        in
        (* [""] is "no placeholder": [GtkPasswordEntry]'s getter is not nullable, and
           clearing either of the other two writes an empty string GTK reports back. *)

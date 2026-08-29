@@ -55,6 +55,15 @@ window created
 (GtkWindow (title (vis)) (css (background)) hidden
  (children (GtkLabel (text l))))
 window created
+(GtkWindow (title (css)) (css (background)) hidden
+ (children
+  (GtkLabel (text s) (css (selected)) (margin-start 7) (margin-end 7)
+   (margin-top 7) (margin-bottom 7))))
+(GtkWindow (title (css)) (css (background)) hidden
+ (children (GtkLabel (text s) (css (row)))))
+(GtkWindow (title (css)) (css (background)) hidden
+ (children (GtkLabel (text s))))
+window created
 (GtkWindow (title (label)) (css (background)) hidden
  (children
   (GtkLabel (text text) wrap (xalign 0) (ellipsize middle)

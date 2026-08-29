@@ -43,6 +43,11 @@ let breaking_app (graph @ local) =
         :: (if count = 0 then [] else [ Node.window ~title:"nested" (Node.label "x") ])))
 ;;
 
+(* Spec §11 names a non-window root first in its list of structural misuse, and nothing
+   tested it -- only the nested-window half of the same sentence. A [GtkWindow] is the
+   only thing GTK can show on its own, so anything else at the root has nowhere to go. *)
+let rootless_app (_graph @ local) = Bonsai.return (Node.label "not a window")
+
 (* The producer half of the reentrancy guard, end to end.
 
    [live_signals.ml] proves that [Signals.dispatch] returns early when the [in_patch] it
@@ -208,6 +213,14 @@ let () =
   (match Expert.Driver.frame by_hand with
    | () -> print_endline "BUG: frame on a stopped driver accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let rootless =
+    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) rootless_app
+  in
+  (match Expert.Driver.frame rootless with
+   | () -> print_endline "BUG: a non-window root accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  Expert.Driver.stop rootless;
   let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
   let reentrant =
     Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) reentrant_app
