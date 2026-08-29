@@ -1,5 +1,5 @@
 (executables
- (names live_patcher live_driver live_signals live_controls)
+ (names live_patcher live_driver live_signals live_controls live_containers)
  (libraries
   core
   bonsai
@@ -7,6 +7,7 @@
   bonsai_gtk.vtree
   virtual_dom.ui_effect
   ocgtk.gtk
+  ocgtk.gdk
   ocgtk.common)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))
@@ -62,3 +63,15 @@
     output_controls.txt
     (run %{exe:live_controls.exe}))
    (diff expected_controls.txt output_controls.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_containers.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_containers.txt
+    (run %{exe:live_containers.exe}))
+   (diff expected_containers.txt output_containers.txt))))

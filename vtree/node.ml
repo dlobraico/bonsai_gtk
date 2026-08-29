@@ -174,6 +174,35 @@ let progress_bar
 
 let spinner ?key ?attrs ~spinning () = make ?key ?attrs (Spinner { spinning }) No_children
 
+(* [source] comes last and unlabelled on both of these: it is the one thing an image or a
+   picture cannot do without, and putting it in final position is what lets the optional
+   arguments before it be erased. *)
+let image ?key ?attrs ?(pixel_size = -1) ?(icon_size = Icon_size.Inherit) source =
+  make ?key ?attrs (Image { source; pixel_size; icon_size }) No_children
+;;
+
+let picture
+  ?key
+  ?attrs
+  ?(content_fit = Content_fit.Contain)
+  ?(can_shrink = true)
+  ?alternative_text
+  source
+  =
+  make
+    ?key
+    ?attrs
+    (Picture { source; content_fit; can_shrink; alternative_text })
+    No_children
+;;
+
+(* The trailing [unit] is what makes [?key] and [?attrs] erasable: [~orientation] is
+   labelled, so without it the optional arguments in front of it never get their defaults.
+   Same shape as [spinner] and the rest. *)
+let separator ?key ?attrs ~orientation () =
+  make ?key ?attrs (Separator { orientation }) No_children
+;;
+
 let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children =
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;

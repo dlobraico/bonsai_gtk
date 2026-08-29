@@ -112,6 +112,26 @@ type progress_bar_props =
 
 type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
 
+(* [Image] and [Picture] carry their source as a closed variant rather than as separate
+   optional props: the sources are mutually exclusive and GTK's setters do not compose, so
+   a variant makes the exclusivity a type error and gives [equal_props] one line. *)
+type image_props =
+  { source : Image_source.t
+  ; pixel_size : int [@sexp_drop_if Int.equal (-1)]
+  ; icon_size : Icon_size.t [@sexp_drop_if Icon_size.equal Inherit]
+  }
+[@@deriving sexp_of, equal]
+
+type picture_props =
+  { source : Picture_source.t
+  ; content_fit : Content_fit.t [@sexp_drop_if Content_fit.equal Contain]
+  ; can_shrink : bool [@sexp_drop_if fun b -> b]
+  ; alternative_text : string option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
+type separator_props = { orientation : Orientation.t } [@@deriving sexp_of, equal]
+
 type box_props =
   { orientation : Orientation.t
   ; spacing : int [@sexp_drop_if Int.equal 0]
@@ -138,6 +158,9 @@ type t =
   | Scale of scale_props
   | Progress_bar of progress_bar_props
   | Spinner of spinner_props
+  | Image of image_props
+  | Picture of picture_props
+  | Separator of separator_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t

@@ -22,6 +22,13 @@ let ellipsize_name : Ocgtk_pango.Pango.ellipsizemode -> string = function
   | `END -> "end"
 ;;
 
+let content_fit_name : Gtk_enums.contentfit -> string = function
+  | `FILL -> "fill"
+  | `CONTAIN -> "contain"
+  | `COVER -> "cover"
+  | `SCALE_DOWN -> "scale-down"
+;;
+
 let int_prop name value ~default =
   if value = default then [] else [ Sexp.List [ Atom name; Atom (Int.to_string value) ] ]
 ;;
@@ -201,6 +208,34 @@ let rec dump (w : Widget.t) : Sexp.t =
          | `NONE -> []
          | e -> [ Sexp.List [ Atom "ellipsize"; Atom (ellipsize_name e) ] ])
      | "GtkSpinner" -> flag_prop "spinning" (W.Spinner.get_spinning (cast w))
+     (* Only the icon name is printed for an image, and only [has-paintable] for a
+        picture: a file-backed source becomes a texture whose identity is not stable
+        across runs, and its pixels are not what these tests are claiming. *)
+     | "GtkImage" ->
+       (match W.Image.get_icon_name (cast w) with
+        | None -> []
+        | Some n -> [ Sexp.List [ Atom "icon"; Atom n ] ])
+       @ int_prop "pixel-size" (W.Image.get_pixel_size (cast w)) ~default:(-1)
+     | "GtkPicture" ->
+       let p : W.Picture.t = cast w in
+       flag_prop "has-paintable" (Option.is_some (W.Picture.get_paintable p))
+       @ (match W.Picture.get_content_fit p with
+          | `CONTAIN -> []
+          | f -> [ Sexp.List [ Atom "content-fit"; Atom (content_fit_name f) ] ])
+       @ (if W.Picture.get_can_shrink p then [] else [ Sexp.Atom "no-shrink" ])
+       @
+         (match W.Picture.get_alternative_text p with
+         | None -> []
+         | Some t -> [ Sexp.List [ Atom "alt"; Atom t ] ])
+     | "GtkSeparator" ->
+       [ Sexp.List
+           [ Atom "orientation"
+           ; Atom
+               (match W.Orientable.get_orientation (W.Orientable.from_gobject w) with
+                | `HORIZONTAL -> "horizontal"
+                | `VERTICAL -> "vertical")
+           ]
+       ]
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

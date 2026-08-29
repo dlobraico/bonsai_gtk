@@ -114,6 +114,26 @@ type progress_bar_props =
 
 type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
 
+(* [Image] and [Picture] carry their source as a closed variant rather than as separate
+   optional props: the sources are mutually exclusive and GTK's setters do not compose, so
+   a variant makes the exclusivity a type error and gives [equal_props] one line. *)
+type image_props =
+  { source : Image_source.t
+  ; pixel_size : int [@sexp_drop_if Int.equal (-1)]
+  ; icon_size : Icon_size.t [@sexp_drop_if Icon_size.equal Inherit]
+  }
+[@@deriving sexp_of, equal]
+
+type picture_props =
+  { source : Picture_source.t
+  ; content_fit : Content_fit.t [@sexp_drop_if Content_fit.equal Contain]
+  ; can_shrink : bool [@sexp_drop_if fun b -> b]
+  ; alternative_text : string option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
+type separator_props = { orientation : Orientation.t } [@@deriving sexp_of, equal]
+
 type box_props =
   { orientation : Orientation.t
   ; spacing : int [@sexp_drop_if Int.equal 0]
@@ -140,6 +160,9 @@ type t =
   | Scale of scale_props
   | Progress_bar of progress_bar_props
   | Spinner of spinner_props
+  | Image of image_props
+  | Picture of picture_props
+  | Separator of separator_props
   | Box of box_props
   | Window of window_props
   | Native of Native.t
@@ -158,6 +181,9 @@ let name = function
   | Scale _ -> "Scale"
   | Progress_bar _ -> "ProgressBar"
   | Spinner _ -> "Spinner"
+  | Image _ -> "Image"
+  | Picture _ -> "Picture"
+  | Separator _ -> "Separator"
   | Box _ -> "Box"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
@@ -177,6 +203,9 @@ let same_kind a b =
   | Scale _, Scale _
   | Progress_bar _, Progress_bar _
   | Spinner _, Spinner _
+  | Image _, Image _
+  | Picture _, Picture _
+  | Separator _, Separator _
   | Box _, Box _
   | Window _, Window _ -> true
   | Native a, Native b -> String.equal a.name b.name
@@ -197,6 +226,9 @@ let equal_props a b =
   | Scale a, Scale b -> equal_scale_props a b
   | Progress_bar a, Progress_bar b -> equal_progress_bar_props a b
   | Spinner a, Spinner b -> equal_spinner_props a b
+  | Image a, Image b -> equal_image_props a b
+  | Picture a, Picture b -> equal_picture_props a b
+  | Separator a, Separator b -> equal_separator_props a b
   | Box a, Box b -> equal_box_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload

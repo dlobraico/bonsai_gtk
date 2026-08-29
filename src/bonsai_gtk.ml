@@ -6,6 +6,10 @@ module Attr = Bonsai_gtk_vtree.Attr
 module Key = Bonsai_gtk_vtree.Key
 module Align = Bonsai_gtk_vtree.Align
 module Ellipsize = Bonsai_gtk_vtree.Ellipsize
+module Content_fit = Bonsai_gtk_vtree.Content_fit
+module Icon_size = Bonsai_gtk_vtree.Icon_size
+module Image_source = Bonsai_gtk_vtree.Image_source
+module Picture_source = Bonsai_gtk_vtree.Picture_source
 module Orientation = Bonsai_gtk_vtree.Orientation
 
 module Native = struct
@@ -15,6 +19,8 @@ module Native = struct
 
   let impl = Native_gtk.impl
   let node = Native_gtk.node
+
+  module Picture = Paintable_picture
 end
 
 module Effect = Gtk_effect

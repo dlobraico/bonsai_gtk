@@ -135,3 +135,29 @@ let%expect_test "the numeric family's constructors" =
         ((kind (Spinner ((spinning true)))) (attrs ()) (children No_children))))))
     |}]
 ;;
+
+let%expect_test "images, pictures and separators" =
+  print_s
+    [%sexp
+      (Node.box
+         ~orientation:Vertical
+         [ Node.image ~pixel_size:16 (Icon_name "list-add-symbolic")
+         ; Node.image Empty
+         ; Node.picture ~content_fit:Contain ~can_shrink:true (Filename "/tmp/thumb.png")
+         ; Node.separator ~orientation:Horizontal ()
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Box ((orientation Vertical)))) (attrs ())
+     (children
+      (List
+       (((kind (Image ((source (Icon_name list-add-symbolic)) (pixel_size 16))))
+         (attrs ()) (children No_children))
+        ((kind (Image ((source Empty)))) (attrs ()) (children No_children))
+        ((kind (Picture ((source (Filename /tmp/thumb.png))))) (attrs ())
+         (children No_children))
+        ((kind (Separator ((orientation Horizontal)))) (attrs ())
+         (children No_children))))))
+    |}]
+;;

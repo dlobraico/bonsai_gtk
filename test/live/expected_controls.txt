@@ -5,7 +5,8 @@
     (GtkButton (label (plain)) (css (text-button))
      (children (GtkLabel (text plain))))
     (GtkButton (label ()) (icon list-add-symbolic) frameless
-     (css (flat image-button)) (children (GtkImage (valign center))))
+     (css (flat image-button))
+     (children (GtkImage (icon list-add-symbolic) (valign center))))
     (GtkButton (label ()) (css (text-button))
      (children (GtkLabel (text boxed))))
     (GtkToggleButton (label (bold)) (css (text-button toggle))
@@ -14,7 +15,8 @@
      (children (GtkBuiltinIcon (halign center) (valign center))
       (GtkLabel (text agree) (xalign 0) hexpand)))
     (GtkSwitch
-     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))
+     (children (GtkImage (icon switch-on-symbolic) (opacity 0))
+      (GtkImage (icon switch-off-symbolic) (opacity 0)) (GtkGizmo)))
     (GtkEntry (text typed) (placeholder name) (width-chars 8)
      (children
       (GtkText (cursor text)
@@ -29,16 +31,16 @@
        (children
         (GtkLabel (text passphrase) (xalign 0) (ellipsize end)
          (max-width-chars 3))))
-      (GtkImage (css (caps-lock-indicator)) (tooltip "Caps Lock is on")
-       (cursor text))))
+      (GtkImage (icon caps-lock-symbolic) (css (caps-lock-indicator))
+       (tooltip "Caps Lock is on") (cursor text))))
     (GtkSearchEntry (text bach) (placeholder filter) (search-delay 200)
      (css (search))
-     (children (GtkImage)
+     (children (GtkImage (icon system-search-symbolic))
       (GtkText hexpand (cursor text)
        (children
         (GtkLabel (text filter) (xalign 0) (ellipsize end)
          (max-width-chars 3))))
-      (GtkImage (tooltip "Clear Entry"))))))))
+      (GtkImage (icon edit-clear-symbolic) (tooltip "Clear Entry"))))))))
 scheduled during patch: 0
 (GtkWindow (title (controls)) (css (background)) hidden
  (children
@@ -47,7 +49,8 @@ scheduled during patch: 0
     (GtkButton (label (plain)) (css (text-button))
      (children (GtkLabel (text plain))))
     (GtkButton (label ()) (icon list-add-symbolic) frameless
-     (css (flat image-button)) (children (GtkImage (valign center))))
+     (css (flat image-button))
+     (children (GtkImage (icon list-add-symbolic) (valign center))))
     (GtkButton (label ()) (css (text-button))
      (children (GtkLabel (text boxed))))
     (GtkToggleButton (label (bold)) active (css (text-button toggle))
@@ -56,7 +59,8 @@ scheduled during patch: 0
      (children (GtkBuiltinIcon (halign center) (valign center))
       (GtkLabel (text agree) (xalign 0) hexpand)))
     (GtkSwitch active state
-     (children (GtkImage (opacity 0)) (GtkImage (opacity 0)) (GtkGizmo)))
+     (children (GtkImage (icon switch-on-symbolic) (opacity 0))
+      (GtkImage (icon switch-off-symbolic) (opacity 0)) (GtkGizmo)))
     (GtkEntry (text typed) (placeholder name) (width-chars 8)
      (children
       (GtkText (cursor text)
@@ -71,16 +75,16 @@ scheduled during patch: 0
        (children
         (GtkLabel (text passphrase) (xalign 0) (ellipsize end)
          (max-width-chars 3))))
-      (GtkImage (css (caps-lock-indicator)) (tooltip "Caps Lock is on")
-       (cursor text))))
+      (GtkImage (icon caps-lock-symbolic) (css (caps-lock-indicator))
+       (tooltip "Caps Lock is on") (cursor text))))
     (GtkSearchEntry (text bach) (placeholder filter) (search-delay 200)
      (css (search))
-     (children (GtkImage)
+     (children (GtkImage (icon system-search-symbolic))
       (GtkText hexpand (cursor text)
        (children
         (GtkLabel (text filter) (xalign 0) (ellipsize end)
          (max-width-chars 3))))
-      (GtkImage (tooltip "Clear Entry"))))))))
+      (GtkImage (icon edit-clear-symbolic) (tooltip "Clear Entry"))))))))
 scheduled outside patch: 3
 entry signals reaching Bonsai: 8
 declined toggle true, check true, switch true (state true); reached Bonsai: 0
@@ -119,9 +123,11 @@ changed events reaching Bonsai from patches: 0
     (GtkSpinButton (value 3) (range 0 100) numeric (css (horizontal))
      (children (GtkText hexpand vexpand (cursor text))
       (GtkButton (label ()) (icon value-decrease-symbolic)
-       (css (image-button down)) (children (GtkImage (valign center))))
+       (css (image-button down))
+       (children (GtkImage (icon value-decrease-symbolic) (valign center))))
       (GtkButton (label ()) (icon value-increase-symbolic)
-       (css (image-button up)) (children (GtkImage (valign center))))))
+       (css (image-button up))
+       (children (GtkImage (icon value-increase-symbolic) (valign center))))))
     (GtkProgressBar (fraction 0.3) (text p) show-text (css (horizontal))
      (children (GtkLabel (text p))
       (GtkGizmo (valign center) hexpand (children (GtkGizmo (css (left)))))))
@@ -139,9 +145,11 @@ value-changed reaching Bonsai from patches: 0
     (GtkSpinButton (value 6) (range 0 100) numeric (css (horizontal))
      (children (GtkText hexpand vexpand (cursor text))
       (GtkButton (label ()) (icon value-decrease-symbolic)
-       (css (image-button down)) (children (GtkImage (valign center))))
+       (css (image-button down))
+       (children (GtkImage (icon value-decrease-symbolic) (valign center))))
       (GtkButton (label ()) (icon value-increase-symbolic)
-       (css (image-button up)) (children (GtkImage (valign center))))))
+       (css (image-button up))
+       (children (GtkImage (icon value-increase-symbolic) (valign center))))))
     (GtkProgressBar (fraction 0.6) (text p) show-text (css (horizontal))
      (children (GtkLabel (text p))
       (GtkGizmo (valign center) hexpand (children (GtkGizmo (css (left)))))))

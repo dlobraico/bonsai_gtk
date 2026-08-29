@@ -100,6 +100,9 @@ and destroy ctx (live : live) =
   | Scale _
   | Progress_bar _
   | Spinner _
+  | Image _
+  | Picture _
+  | Separator _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.

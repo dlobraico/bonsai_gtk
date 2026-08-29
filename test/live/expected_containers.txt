@@ -1,0 +1,22 @@
+(GtkWindow (title (media)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkImage (icon list-add-symbolic) (pixel-size 16)) (GtkImage)
+    (GtkPicture has-paintable) (GtkPicture has-paintable (content-fit cover))
+    (GtkSeparator (orientation horizontal) (css (horizontal)))))))
+(GtkWindow (title (media)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkImage (pixel-size 16)) (GtkImage (icon edit-find-symbolic))
+    (GtkPicture (content-fit cover) no-shrink)
+    (GtkPicture (content-fit cover))
+    (GtkSeparator (orientation vertical) (css (vertical)))))))
+same widget across the swap: true
+shows the new texture: true
+(GtkWindow (title (media)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkImage (pixel-size 16)) (GtkImage (icon edit-find-symbolic))
+    (GtkPicture (content-fit cover) no-shrink)
+    (GtkPicture has-paintable (content-fit cover))
+    (GtkSeparator (orientation vertical) (css (vertical)))))))

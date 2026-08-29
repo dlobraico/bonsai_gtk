@@ -288,6 +288,64 @@ val progress_bar
     layout. *)
 val spinner : ?key:Key.t -> ?attrs:Attr.t list -> spinning:bool -> unit -> t
 
+(** A [GtkImage]: an icon, at icon sizes. Its [source] is a closed variant rather than a
+    set of optional arguments because GTK's setters do not compose -- [set_from_file]
+    after [set_from_icon_name] silently wins, and there is no "which one is set" to diff
+    -- so exclusivity is a type error here instead. [Empty] goes through
+    [gtk_image_clear], the only call that actually un-sets a source.
+
+    [pixel_size] fixes the icon's size in pixels; [-1], GTK's own, means "derive it from
+    [icon_size]". [icon_size] is the theme-level hint ([Inherit] takes it from the
+    surrounding context).
+
+    An image is for icons and small decorations, and scales its content to a square. A
+    photograph or a rendered page wants {!picture}, which keeps the image's aspect ratio
+    and can be told how to fit.
+
+    [set_from_gicon], [set_from_pixbuf] and [set_from_paintable] are deliberately absent:
+    a [GIcon], a [GdkPixbuf] and a [GdkPaintable] are all ocgtk values, and the vtree may
+    not name those. They belong on the native side, as [Bonsai_gtk.Native.Picture] does
+    for paintables. *)
+val image
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?pixel_size:int
+  -> ?icon_size:Icon_size.t
+  -> Image_source.t
+  -> t
+
+(** A [GtkPicture]: an image at its own size and aspect ratio. [source] is a closed
+    variant for the same reason as {!image}'s; [Empty] is [set_paintable None], since
+    [GtkPicture] has no [clear].
+
+    [content_fit] is how the image is scaled into the allocation ([Contain], GTK's own,
+    letterboxes) and [can_shrink] (also GTK's own [true]) is what allows the widget to be
+    smaller than its image at all. [alternative_text] is the accessible description, the
+    "alt" attribute's equivalent.
+
+    Sizing, which is the part that surprises everyone: [Attr.width_request] and
+    [Attr.height_request] raise a picture's {i minimum} size but not its {i natural} one,
+    which GTK derives from the image's own pixel dimensions -- so a homogeneous container
+    still sizes to the image. To cap the {i allocated} size, put the picture in an
+    [Overlay] as an unmeasured overlay ([Attr.measure_overlay false]) over a spacer sized
+    with [width_request]/[height_request], and use
+    [~can_shrink:true ~content_fit:Contain].
+
+    A paintable source -- a texture the application rendered itself -- is not expressible
+    here, because the vtree may not name ocgtk types. Use [Bonsai_gtk.Native.Picture]. *)
+val picture
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?content_fit:Content_fit.t
+  -> ?can_shrink:bool
+  -> ?alternative_text:string
+  -> Picture_source.t
+  -> t
+
+(** A [GtkSeparator]: the rule between things. [orientation] is the whole of it -- a
+    [Horizontal] separator is a horizontal line, drawn across a vertical stack. *)
+val separator : ?key:Key.t -> ?attrs:Attr.t list -> orientation:Orientation.t -> unit -> t
+
 val box
   :  ?key:Key.t
   -> ?attrs:Attr.t list

@@ -14,6 +14,9 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Scale _ -> W_scale.impl
   | Progress_bar _ -> W_progress_bar.impl
   | Spinner _ -> W_spinner.impl
+  | Image _ -> W_image.impl
+  | Picture _ -> W_picture.impl
+  | Separator _ -> W_separator.impl
   | Box _ -> W_box.impl
   | Window _ -> W_window.impl
   | Native n -> Native_gtk.impl_of_payload n

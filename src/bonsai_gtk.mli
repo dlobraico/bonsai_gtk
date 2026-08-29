@@ -22,6 +22,10 @@ module Attr = Bonsai_gtk_vtree.Attr
 module Key = Bonsai_gtk_vtree.Key
 module Align = Bonsai_gtk_vtree.Align
 module Ellipsize = Bonsai_gtk_vtree.Ellipsize
+module Content_fit = Bonsai_gtk_vtree.Content_fit
+module Icon_size = Bonsai_gtk_vtree.Icon_size
+module Image_source = Bonsai_gtk_vtree.Image_source
+module Picture_source = Bonsai_gtk_vtree.Picture_source
 module Orientation = Bonsai_gtk_vtree.Orientation
 
 (** The escape hatch, for GTK widgets this library has no {!Node} constructor for. An
@@ -38,6 +42,11 @@ module Native : sig
 
   val impl : (module S with type input = 'a) -> 'a impl
   val node : ?key:Key.t -> ?attrs:Attr.t list -> 'a impl -> 'a -> Node.t
+
+  (** The library's own {!node}: a [GtkPicture] fed a [GdkPaintable]. It ships here rather
+      than as a [Node] constructor because its input is an ocgtk value, which the vtree
+      may not name -- and it is the worked example an application copies. *)
+  module Picture = Paintable_picture
 end
 
 (** [Ui_effect] plus {!Effect.quit}. *)
