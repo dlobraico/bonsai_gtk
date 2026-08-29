@@ -468,6 +468,80 @@ val box
   -> t list
   -> t
 
+(** A [GtkCenterBox]: three children addressed by role rather than position, with the
+    centre one centred in the box as a whole rather than between its neighbours — which is
+    what a header bar wants and what a three-child {!box} cannot do.
+
+    Every slot is optional and independently patched: dropping [?center] empties that slot
+    and leaves the other two alone. [shrink_center_last] is GTK's own [true] — when the
+    three do not fit, the start and end children give up space first.
+
+    [baseline_position] is not exposed; a centre box that needs it is a {!native} node. *)
+val center_box
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?shrink_center_last:bool
+  -> ?start:t
+  -> ?center:t
+  -> ?end_:t
+  -> unit
+  -> t
+
+(** A [GtkPaned]: two children with a handle the user can drag between them. Both halves
+    are required — a paned with one side is a {!box}, and GTK renders the empty half as
+    dead space with a handle into nothing.
+
+    [position] is the divider's offset in pixels from the start edge. [None] leaves GTK's
+    own split (the halves' natural sizes); [Some n] pins it. Unlike every other
+    user-movable value in this library it is {i not} controlled (spec §6.5's deliberate
+    exception): the user drags the handle continuously, and re-asserting the model's
+    position on every frame would make it immovable. It is written at creation and then
+    only when the {i node's} value changes, so a drag stands until the model asks for
+    something else.
+
+    That makes {!Attr.on_position_changed} informative rather than corrective: attach it
+    when the position must be remembered, and expect the widget and the model to differ
+    between renders when it is not attached.
+
+    [wide_handle] draws the fat, obviously-draggable separator. [resize_start] and
+    [resize_end] (both [true]) say whether a half takes part in redistributing extra
+    space; [shrink_start] and [shrink_end] (both [false]) say whether a half may be
+    dragged below its child's minimum size, where GTK clips the child silently. All six
+    are written at creation, so the node's value stands whatever GTK's property default
+    is. *)
+val paned
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?position:int
+  -> ?wide_handle:bool
+  -> ?resize_start:bool
+  -> ?resize_end:bool
+  -> ?shrink_start:bool
+  -> ?shrink_end:bool
+  -> orientation:Orientation.t
+  -> start:t
+  -> end_:t
+  -> unit
+  -> t
+
+(** A [GtkOverlay]: a main child, plus any number of children painted on top of it.
+
+    The main child is what the overlay is sized to. Each overlay child is positioned by
+    its own {!Attr.halign}/{!Attr.valign} and margins — an overlay has no coordinates of
+    its own — and by default is also measured, so a large overlay child grows the whole
+    overlay. {!Attr.measure_overlay}[ false] on an overlay child turns that off, which is
+    the idiom for capping a picture at the size of whatever is underneath it rather than
+    letting the image dictate the layout.
+
+    Overlay order is {i not} reconciled: GTK offers no "insert an overlay at a position",
+    so overlays stack in the order they were added and a reorder in [~overlays] leaves the
+    painting order alone (M1 ruling 4). Keys still preserve child identity, which is what
+    a patch needs; a stack whose paint order really must change should give each layer its
+    own key and accept a remount, or be a {!native} node.
+
+    [gtk_overlay_set_clip_overlay] is not exposed; see {!Attr.measure_overlay}. *)
+val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t
+
 val window
   :  ?key:Key.t
   -> ?attrs:Attr.t list

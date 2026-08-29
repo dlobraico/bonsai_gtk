@@ -302,6 +302,43 @@ let rec dump (w : Widget.t) : Sexp.t =
      | "GtkRevealer" ->
        flag_prop "reveal" (W.Revealer.get_reveal_child (cast w))
        @ flag_prop "revealed" (W.Revealer.get_child_revealed (cast w))
+     | "GtkCenterBox" ->
+       (* Only the non-GTK value: which of the three slots are filled is visible in the
+          children, and an empty slot parents nothing at all. *)
+       if W.Center_box.get_shrink_center_last (cast w)
+       then []
+       else [ Sexp.Atom "no-shrink-center-last" ]
+     (* [position] and [position-set] together: [position] alone cannot distinguish a
+        divider the node pinned from one GTK computed, and pinning it is what
+        [Node.paned ~position] does (GTK sets [position-set] as a side effect of
+        [set_position]). This is also the read-back for the one prop in this library that
+        is deliberately not controlled. *)
+     | "GtkPaned" ->
+       let p : W.Paned.t = cast w in
+       [ Sexp.List [ Atom "position"; Atom (Int.to_string (W.Paned.get_position p)) ] ]
+       @ flag_prop "position-set" (W.Paned.get_position_set p)
+       @ flag_prop "wide-handle" (W.Paned.get_wide_handle p)
+       @ (if W.Paned.get_resize_start_child p then [] else [ Sexp.Atom "no-resize-start" ])
+       @ (if W.Paned.get_resize_end_child p then [] else [ Sexp.Atom "no-resize-end" ])
+       @ flag_prop "shrink-start" (W.Paned.get_shrink_start_child p)
+       @ flag_prop "shrink-end" (W.Paned.get_shrink_end_child p)
+     (* [measure-overlay] is a setting the *overlay* holds about each child, so a child's
+        own dump cannot show it; print it from this side, as the indices of the children
+        the overlay does not measure. The main child is skipped: it is not an overlay, and
+        GTK's getter reports [false] for it whatever the overlay is doing, so including it
+        would print every overlay as having an unmeasured child 0. *)
+     | "GtkOverlay" ->
+       let o : W.Overlay.t = cast w in
+       let main = W.Overlay.get_child o in
+       (match
+          List.filter_mapi (widget_children w) ~f:(fun i c ->
+            if Option.exists main ~f:(fun m -> Gobject.same m c)
+               || W.Overlay.get_measure_overlay o c
+            then None
+            else Some i)
+        with
+        | [] -> []
+        | idxs -> [ [%sexp `unmeasured (idxs : int list)] ])
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

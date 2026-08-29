@@ -22,6 +22,9 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Expander _ -> W_expander.impl
   | Revealer _ -> W_revealer.impl
   | Box _ -> W_box.impl
+  | Center_box _ -> W_center_box.impl
+  | Paned _ -> W_paned.impl
+  | Overlay _ -> W_overlay.impl
   | Window _ -> W_window.impl
   | Native n -> Native_gtk.impl_of_payload n
 ;;

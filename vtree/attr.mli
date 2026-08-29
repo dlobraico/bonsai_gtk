@@ -21,6 +21,7 @@ module Name : sig
     | Widget_name
     | Cursor_name
     | Test_id
+    | Measure_overlay
     | On_clicked
     | On_toggled
     | On_changed
@@ -29,6 +30,7 @@ module Name : sig
     | On_value_changed
     | On_expanded_changed
     | On_revealed
+    | On_position_changed
   [@@deriving sexp_of, compare, equal]
 
   (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
@@ -59,6 +61,7 @@ type t =
   | Widget_name of string
   | Cursor_name of string
   | Test_id of string
+  | Measure_overlay of bool
   | On_clicked of unit Handler.t
   | On_toggled of bool Handler.t
   | On_changed of string Handler.t
@@ -67,6 +70,7 @@ type t =
   | On_value_changed of float Handler.t
   | On_expanded_changed of bool Handler.t
   | On_revealed of bool Handler.t
+  | On_position_changed of int Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -126,6 +130,22 @@ val widget_name : string -> t
 val cursor_name : string -> t
 
 val test_id : string -> t
+
+(** For a child of {!Node.overlay}'s [~overlays]: whether the overlay's own size request
+    takes this child into account. [false] — the useful case — lets an overlay be laid out
+    at the size of its {i main} child and merely painted over, which is how an image is
+    kept from dictating the size of what contains it. GTK's own default is [true].
+
+    This is the one attr in this module that no widget applies to itself: it is a setting
+    the {i overlay} holds about this child ([gtk_overlay_set_measure_overlay]), so it
+    rides on the child node's attrs and is read by the overlay's impl — on insert, and
+    again through [Widget_impl.list_ops.updated] when it changes.
+
+    Inert on any other widget, and on an overlay's main child: no other container reads
+    it. [gtk_overlay_set_clip_overlay] is the same mechanism and is not exposed; it is
+    three lines beside this one if it is wanted. *)
+val measure_overlay : bool -> t
+
 val on_clicked : unit Ui_effect.t -> t
 
 (** Fires when the user flips a [toggle_button], [check_button] or [switch], carrying the
@@ -198,6 +218,17 @@ val on_expanded_changed : (bool -> unit Ui_effect.t) -> t
     prop -- [reveal] is controlled against [reveal-child], which the user cannot move on
     their own. It is a notification, and a revealer that carries none is not broken. *)
 val on_revealed : (bool -> unit Ui_effect.t) -> t
+
+(** Fires while the user drags a {!Node.paned}'s handle, carrying the divider position the
+    widget now holds. This is [notify::position], so it also fires for the library's own
+    writes — which the patcher's reentrancy guard drops, as it does for the rest of the
+    [notify::] family.
+
+    Purely informative: unlike the toggles' [active], a paned's [~position] is {i not}
+    controlled (see {!Node.paned}), so a model that ignores this attr is not broken — it
+    simply does not learn where the user left the handle. Attach it when the position must
+    survive a restart, or be mirrored somewhere else in the UI. *)
+val on_position_changed : (int -> unit Ui_effect.t) -> t
 
 val many : t list -> t
 val empty : t

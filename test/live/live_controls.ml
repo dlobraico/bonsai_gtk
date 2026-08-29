@@ -13,8 +13,8 @@ let nth_child (live : P.live) i : P.live =
   | Single (Some box) ->
     (match box.children with
      | List children -> List.nth_exn children i
-     | No_children | Single _ -> assert false)
-  | No_children | Single None | List _ -> assert false
+     | No_children | Single _ | Slots _ -> assert false)
+  | No_children | Single None | List _ | Slots _ -> assert false
 ;;
 
 let () =
@@ -221,7 +221,7 @@ let () =
   let editable_of (live : P.live) =
     match live.children with
     | Single (Some e) -> W.Editable.from_gobject e.widget
-    | No_children | Single None | List _ -> assert false
+    | No_children | Single None | List _ | Slots _ -> assert false
   in
   let live = P.mount ctx ~path:"root" ~is_root:true (entry_view "a") in
   let writes = ref 0 in

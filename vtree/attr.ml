@@ -22,6 +22,7 @@ module Name = struct
       | Widget_name
       | Cursor_name
       | Test_id
+      | Measure_overlay
       | On_clicked
       | On_toggled
       | On_changed
@@ -30,6 +31,7 @@ module Name = struct
       | On_value_changed
       | On_expanded_changed
       | On_revealed
+      | On_position_changed
     [@@deriving sexp_of, compare, equal]
 
     (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
@@ -43,7 +45,8 @@ module Name = struct
       | On_search_changed
       | On_value_changed
       | On_expanded_changed
-      | On_revealed -> true
+      | On_revealed
+      | On_position_changed -> true
       | Margin_start
       | Margin_end
       | Margin_top
@@ -62,7 +65,8 @@ module Name = struct
       | Can_focus
       | Widget_name
       | Cursor_name
-      | Test_id -> false
+      | Test_id
+      | Measure_overlay -> false
     ;;
   end
 
@@ -91,6 +95,7 @@ type t =
   | Widget_name of string
   | Cursor_name of string
   | Test_id of string
+  | Measure_overlay of bool
   | On_clicked of unit Handler.t
   | On_toggled of bool Handler.t
   | On_changed of string Handler.t
@@ -99,6 +104,7 @@ type t =
   | On_value_changed of float Handler.t
   | On_expanded_changed of bool Handler.t
   | On_revealed of bool Handler.t
+  | On_position_changed of int Handler.t
   | Many of t list
 [@@deriving sexp_of]
 
@@ -123,6 +129,7 @@ let name = function
   | Widget_name _ -> Some Widget_name
   | Cursor_name _ -> Some Cursor_name
   | Test_id _ -> Some Test_id
+  | Measure_overlay _ -> Some Measure_overlay
   | On_clicked _ -> Some On_clicked
   | On_toggled _ -> Some On_toggled
   | On_changed _ -> Some On_changed
@@ -131,6 +138,7 @@ let name = function
   | On_value_changed _ -> Some On_value_changed
   | On_expanded_changed _ -> Some On_expanded_changed
   | On_revealed _ -> Some On_revealed
+  | On_position_changed _ -> Some On_position_changed
 ;;
 
 let rec equal a b =
@@ -152,7 +160,8 @@ let rec equal a b =
   | Sensitive a, Sensitive b
   | Visible a, Visible b
   | Focusable a, Focusable b
-  | Can_focus a, Can_focus b -> Bool.equal a b
+  | Can_focus a, Can_focus b
+  | Measure_overlay a, Measure_overlay b -> Bool.equal a b
   | Opacity a, Opacity b -> Float.equal a b
   | On_clicked a, On_clicked b -> Handler.equal a b
   | On_toggled a, On_toggled b -> Handler.equal a b
@@ -162,6 +171,7 @@ let rec equal a b =
   | On_value_changed a, On_value_changed b -> Handler.equal a b
   | On_expanded_changed a, On_expanded_changed b -> Handler.equal a b
   | On_revealed a, On_revealed b -> Handler.equal a b
+  | On_position_changed a, On_position_changed b -> Handler.equal a b
   | Many a, Many b -> List.equal equal a b
   | _ -> false
 ;;
@@ -187,6 +197,11 @@ let can_focus b = Can_focus b
 let widget_name s = Widget_name s
 let cursor_name s = Cursor_name s
 let test_id s = Test_id s
+
+(* A setting the *overlay* holds about this child, not a property of the child, so it is
+   read by [w_overlay] from the child node's attrs rather than written by [Attr_apply];
+   see the mli. *)
+let measure_overlay b = Measure_overlay b
 let on_clicked eff = On_clicked (fun () -> eff)
 let on_toggled f = On_toggled f
 let on_changed f = On_changed f
@@ -195,5 +210,6 @@ let on_search_changed f = On_search_changed f
 let on_value_changed f = On_value_changed f
 let on_expanded_changed f = On_expanded_changed f
 let on_revealed f = On_revealed f
+let on_position_changed f = On_position_changed f
 let many l = Many l
 let empty = Many []

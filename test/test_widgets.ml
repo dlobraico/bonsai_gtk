@@ -201,3 +201,79 @@ let%expect_test "single-child containers" =
                (((kind (Label ((text shown)))) (attrs ()) (children No_children))))))))))))))
     |}]
 ;;
+
+let%expect_test "slot containers print their slots by name" =
+  print_s
+    [%sexp
+      (Node.center_box
+         ~start:(Node.label "l")
+         ~center:(Node.label "c")
+         ~end_:(Node.button ~label:"r" ())
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Center_box ())) (attrs ())
+     (children
+      (Slots
+       ((start
+         (Single (((kind (Label ((text l)))) (attrs ()) (children No_children)))))
+        (center
+         (Single (((kind (Label ((text c)))) (attrs ()) (children No_children)))))
+        (end
+         (Single
+          (((kind (Button ((label (r))))) (attrs ()) (children (Single ()))))))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.paned
+         ~orientation:Horizontal
+         ~position:240
+         ~start:(Node.label "sidebar")
+         ~end_:(Node.label "content")
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Paned ((orientation Horizontal) (position (240))))) (attrs ())
+     (children
+      (Slots
+       ((start
+         (Single
+          (((kind (Label ((text sidebar)))) (attrs ()) (children No_children)))))
+        (end
+         (Single
+          (((kind (Label ((text content)))) (attrs ()) (children No_children)))))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.overlay
+         ~overlays:
+           [ Node.picture ~attrs:[ Attr.measure_overlay false ] (Filename "/tmp/t.png") ]
+         (Node.box ~orientation:Vertical ~attrs:[ Attr.width_request 150 ] [])
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Overlay ())) (attrs ())
+     (children
+      (Slots
+       ((child
+         (Single
+          (((kind (Box ((orientation Vertical)))) (attrs ((Width_request 150)))
+            (children (List ()))))))
+        (overlays
+         (List
+          (((kind (Picture ((source (Filename /tmp/t.png)))))
+            (attrs ((Measure_overlay false))) (children No_children)))))))))
+    |}]
+;;
+
+let%expect_test "find_by_test_id descends into slots" =
+  let view =
+    Node.overlay
+      ~overlays:[ Node.label ~attrs:[ Attr.test_id "badge" ] "9" ]
+      (Node.label "under")
+  in
+  print_s [%sexp (Option.is_some (Node.find_by_test_id view "badge") : bool)];
+  [%expect {| true |}]
+;;

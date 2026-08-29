@@ -49,30 +49,77 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   in
   Signals.update_slots slots node.attrs;
   let children =
-    match node.children, impl.children with
-    | No_children, _ -> Children.No_children
-    | Single c, Single { set } ->
-      let live_c =
-        Option.map c ~f:(fun c -> mount ctx ~path:(child_path path 0) ~is_root:false c)
-      in
-      set widget (Option.map live_c ~f:(fun l -> l.widget));
-      Single live_c
-    | List cs, List { insert; _ } ->
-      let lives =
-        List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
-      in
-      List.fold lives ~init:None ~f:(fun after l ->
-        insert widget ~after l.widget;
-        Some l.widget)
-      |> (ignore : Widget.t option -> unit);
-      List lives
-    | (Single _ | List _), _ ->
-      invalid_argf "%s: node has children but %s takes none" path impl.name ()
+    mount_children ctx ~path ~impl_name:impl.name widget node.children impl.children
   in
   (match node.kind with
    | Window _ -> ctx.on_window_created widget
    | _ -> ());
   { node; widget; impl; defaults; slots; handler_ids; children }
+
+(* One shape, mounted. The three helpers below are what a top-level shape and a slot of
+   that shape share: a slot is not a special case, it is the same code under a longer
+   path. *)
+and mount_single ctx ~path parent ~set (c : Node.t option) : live option =
+  let live_c =
+    Option.map c ~f:(fun c -> mount ctx ~path:(child_path path 0) ~is_root:false c)
+  in
+  set parent (Option.map live_c ~f:(fun l -> l.widget));
+  live_c
+
+and mount_list ctx ~path parent ~(ops : Widget_impl.list_ops) (cs : Node.t list)
+  : live list
+  =
+  let lives =
+    List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
+  in
+  List.fold lives ~init:None ~f:(fun after l ->
+    ops.insert parent ~after ~node:l.node l.widget;
+    Some l.widget)
+  |> (ignore : Widget.t option -> unit);
+  lives
+
+and mount_slots ctx ~path ~impl_name parent node_slots op_slots =
+  (* Slot lists are written by this repository on both sides, and are short and fixed, so
+     equal length and equal order is a fair requirement -- and a loud one when broken. *)
+  match List.zip node_slots op_slots with
+  | Unequal_lengths ->
+    invalid_argf
+      "%s: %s has %d slots, node has %d"
+      path
+      impl_name
+      (List.length op_slots)
+      (List.length node_slots)
+      ()
+  | Ok pairs ->
+    List.map pairs ~f:(fun ((name, cs), (op_name, op)) ->
+      if not (String.equal name op_name)
+      then invalid_argf "%s: slot %s does not exist on %s" path name impl_name ();
+      let path = sprintf "%s/%s" path name in
+      match cs, (op : Widget_impl.slot_ops) with
+      | Children.Single c, Slot_single { set } ->
+        name, Children.Single (mount_single ctx ~path parent ~set c)
+      | List cs, Slot_list ops ->
+        name, Children.List (mount_list ctx ~path parent ~ops cs)
+      | (No_children | Single _ | List _ | Slots _), _ ->
+        invalid_argf "%s: slot %s has the wrong shape for %s" path name impl_name ())
+
+and mount_children
+  ctx
+  ~path
+  ~impl_name
+  parent
+  (children : Node.t Children.t)
+  (ops : Widget_impl.child_ops)
+  : live Children.t
+  =
+  match children, ops with
+  | No_children, _ -> Children.No_children
+  | Single c, Single { set } -> Single (mount_single ctx ~path parent ~set c)
+  | List cs, List ops -> List (mount_list ctx ~path parent ~ops cs)
+  | Slots node_slots, Slots op_slots ->
+    Slots (mount_slots ctx ~path ~impl_name parent node_slots op_slots)
+  | (Single _ | List _ | Slots _), _ ->
+    invalid_argf "%s: node's children do not match %s's shape" path impl_name ()
 
 and destroy ctx (live : live) =
   (* Slots are emptied before anything is torn down: GTK emits signals synchronously from
@@ -80,10 +127,7 @@ and destroy ctx (live : live) =
      already gone. *)
   Signals.clear_slots live.slots;
   Signals.disconnect live.widget live.handler_ids;
-  (match live.children with
-   | No_children -> ()
-   | Single c -> Option.iter c ~f:(destroy ctx)
-   | List l -> List.iter l ~f:(destroy ctx));
+  Children.iter live.children ~f:(destroy ctx);
   match live.node.kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
   | Window _ -> W.Window.destroy (cast live.widget)
@@ -107,6 +151,9 @@ and destroy ctx (live : live) =
   | Frame _
   | Expander _
   | Revealer _
+  | Center_box _
+  | Paned _
+  | Overlay _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.
@@ -119,10 +166,7 @@ and destroy ctx (live : live) =
    ever appearing as a container child would be freed before the [remove] that names it. *)
 and disarm (live : live) =
   Signals.clear_slots live.slots;
-  match live.children with
-  | No_children -> ()
-  | Single c -> Option.iter c ~f:disarm
-  | List l -> List.iter l ~f:disarm
+  Children.iter live.children ~f:disarm
 
 and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
   check_placement ~path ~is_root node;
@@ -165,86 +209,139 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
     live.node <- node;
     live)
 
+and patch_single ctx ~path parent ~set (old_c : live option) (new_c : Node.t option)
+  : live option
+  =
+  match old_c, new_c with
+  | None, None -> None
+  | Some o, None ->
+    disarm o;
+    set parent None;
+    destroy ctx o;
+    None
+  | None, Some n ->
+    let l = mount ctx ~path:(child_path path 0) ~is_root:false n in
+    set parent (Some l.widget);
+    Some l
+  | Some o, Some n ->
+    let l = patch ctx ~path:(child_path path 0) ~is_root:false o n in
+    (* [patch] returns a different record only when the kind changed, in which case the
+       old widget is still the container's child; [set] replaces (and unparents) it. *)
+    if not (phys_equal l o) then set parent (Some l.widget);
+    Some l
+
+and patch_list
+  ctx
+  ~path
+  parent
+  ~(ops : Widget_impl.list_ops)
+  (olds : live list)
+  (news : Node.t list)
+  : live list
+  =
+  let edits =
+    Reconcile.diff
+      ~key:(fun (n : Node.t) -> n.key)
+      ~same_kind:(fun a b -> Kind.same_kind a.Node.kind b.Node.kind)
+      ~old:(List.map olds ~f:(fun l -> l.node))
+      ~new_:news
+  in
+  (* [cur] mirrors, over lives, exactly what [Reconcile.apply] would do over nodes, so the
+     indices the reconciler computed stay valid — and so [cur] is also what every op reads
+     its placement out of. *)
+  (* The widget a child at [index] must be placed after, read off the patcher's own list
+     rather than GTK's: a container that interposes children of its own (list-box rows,
+     stack pages) has a live child list that does not match these indices. *)
+  let after_of cur index =
+    if index = 0 then None else Some (List.nth_exn cur (index - 1)).widget
+  in
+  let cur = ref olds in
+  List.iter edits ~f:(fun (op : Node.t Reconcile.op) ->
+    match op with
+    | Remove { index } ->
+      let l = List.nth_exn !cur index in
+      disarm l;
+      ops.remove parent l.widget;
+      destroy ctx l;
+      cur := List.filteri !cur ~f:(fun i _ -> i <> index)
+    | Insert { index; item } ->
+      let l = mount ctx ~path:(child_path path index) ~is_root:false item in
+      ops.insert parent ~after:(after_of !cur index) ~node:item l.widget;
+      cur := List.take !cur index @ (l :: List.drop !cur index)
+    | Move { from; to_ } ->
+      let l = List.nth_exn !cur from in
+      (* [to_] indexes the list as it will be *after* the move, so the predecessor is
+         computed with [l] already removed. *)
+      let without = List.filteri !cur ~f:(fun i _ -> i <> from) in
+      ops.move parent ~child:l.widget ~after:(after_of without to_);
+      cur := List.take without to_ @ (l :: List.drop without to_)
+    | Update { index; item; old = _ } ->
+      let l = List.nth_exn !cur index in
+      (* Read *before* [patch], which writes [live.node <- node] at the end: reading it
+         afterwards would hand the hook two identical nodes, and every parent-held setting
+         would silently stop updating. *)
+      let old_node = l.node in
+      let l' = patch ctx ~path:(child_path path index) ~is_root:false l item in
+      if phys_equal l l'
+      then ops.updated parent ~old:old_node ~node:item l'.widget
+      else (
+        (* The kind changed, so [patch] mounted a replacement and destroyed [l]; [l]'s
+           widget is still parented here. Remove it, then place the replacement where it
+           was — [after] over the list with [l] taken out. ([l]'s widget was still
+           parented while it was destroyed, which is what we want for the widgets M0 can
+           hold here: destroying a non-window live only disconnects it. A [Window] live in
+           a list would be destroyed for real before this [remove], which is fine — its
+           own [destroy] unparents it — but is worth re-checking if windows ever become
+           list children.) *)
+        let without = List.filteri !cur ~f:(fun i _ -> i <> index) in
+        ops.remove parent l.widget;
+        ops.insert parent ~after:(after_of without index) ~node:item l'.widget);
+      cur := List.mapi !cur ~f:(fun i x -> if i = index then l' else x));
+  !cur
+
+and patch_slots ctx ~path ~impl_name parent old_slots new_slots op_slots =
+  (* Every slot list here comes from the same fixed constructor and the same impl, so a
+     length or name mismatch is a bug in one of them rather than anything a caller did. *)
+  match List.zip old_slots new_slots with
+  | Unequal_lengths ->
+    invalid_argf "%s: %s's slots changed shape under an unchanged kind" path impl_name ()
+  | Ok pairs ->
+    (match List.zip pairs op_slots with
+     | Unequal_lengths ->
+       invalid_argf
+         "%s: %s has %d slots, node has %d"
+         path
+         impl_name
+         (List.length op_slots)
+         (List.length new_slots)
+         ()
+     | Ok triples ->
+       List.map triples ~f:(fun (((name, old_c), (new_name, new_c)), (op_name, op)) ->
+         if not (String.equal name new_name && String.equal name op_name)
+         then invalid_argf "%s: slot %s does not exist on %s" path new_name impl_name ();
+         let path = sprintf "%s/%s" path name in
+         match old_c, new_c, (op : Widget_impl.slot_ops) with
+         | Children.Single o, Children.Single n, Slot_single { set } ->
+           name, Children.Single (patch_single ctx ~path parent ~set o n)
+         | List o, List n, Slot_list ops ->
+           name, Children.List (patch_list ctx ~path parent ~ops o n)
+         | (No_children | Single _ | List _ | Slots _), _, _ ->
+           invalid_argf "%s: slot %s has the wrong shape for %s" path name impl_name ()))
+
 and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
+  let impl_name = live.impl.name in
   match live.children, node.children, live.impl.children with
   | No_children, No_children, _ -> No_children
   | Single old_c, Single new_c, Single { set } ->
-    (match old_c, new_c with
-     | None, None -> Single None
-     | Some o, None ->
-       disarm o;
-       set live.widget None;
-       destroy ctx o;
-       Single None
-     | None, Some n ->
-       let l = mount ctx ~path:(child_path path 0) ~is_root:false n in
-       set live.widget (Some l.widget);
-       Single (Some l)
-     | Some o, Some n ->
-       let l = patch ctx ~path:(child_path path 0) ~is_root:false o n in
-       (* [patch] returns a different record only when the kind changed, in which case the
-          old widget is still the container's child; [set] replaces (and unparents) it. *)
-       if not (phys_equal l o) then set live.widget (Some l.widget);
-       Single (Some l))
-  | List olds, List news, List { insert; move; remove } ->
-    let ops =
-      Reconcile.diff
-        ~key:(fun (n : Node.t) -> n.key)
-        ~same_kind:(fun a b -> Kind.same_kind a.Node.kind b.Node.kind)
-        ~old:(List.map olds ~f:(fun l -> l.node))
-        ~new_:news
-    in
-    (* [cur] mirrors, over lives, exactly what [Reconcile.apply] would do over nodes, so
-       the indices the reconciler computed stay valid — and so [cur] is also what every op
-       reads its placement out of. *)
-    (* The widget a child at [index] must be placed after, read off the patcher's own list
-       rather than GTK's: a container that interposes children of its own (list-box rows,
-       stack pages) has a live child list that does not match these indices. *)
-    let after_of cur index =
-      if index = 0 then None else Some (List.nth_exn cur (index - 1)).widget
-    in
-    let cur = ref olds in
-    List.iter ops ~f:(fun (op : Node.t Reconcile.op) ->
-      match op with
-      | Remove { index } ->
-        let l = List.nth_exn !cur index in
-        disarm l;
-        remove live.widget l.widget;
-        destroy ctx l;
-        cur := List.filteri !cur ~f:(fun i _ -> i <> index)
-      | Insert { index; item } ->
-        let l = mount ctx ~path:(child_path path index) ~is_root:false item in
-        insert live.widget ~after:(after_of !cur index) l.widget;
-        cur := List.take !cur index @ (l :: List.drop !cur index)
-      | Move { from; to_ } ->
-        let l = List.nth_exn !cur from in
-        (* [to_] indexes the list as it will be *after* the move, so the predecessor is
-           computed with [l] already removed. *)
-        let without = List.filteri !cur ~f:(fun i _ -> i <> from) in
-        move live.widget ~child:l.widget ~after:(after_of without to_);
-        cur := List.take without to_ @ (l :: List.drop without to_)
-      | Update { index; item; old = _ } ->
-        let l = List.nth_exn !cur index in
-        let l' = patch ctx ~path:(child_path path index) ~is_root:false l item in
-        if not (phys_equal l l')
-        then (
-          (* The kind changed, so [patch] mounted a replacement and destroyed [l]; [l]'s
-             widget is still parented here. Remove it, then place the replacement where it
-             was — [after] over the list with [l] taken out. ([l]'s widget was still
-             parented while it was destroyed, which is what we want for the widgets M0 can
-             hold here: destroying a non-window live only disconnects it. A [Window] live
-             in a list would be destroyed for real before this [remove], which is fine —
-             its own [destroy] unparents it — but is worth re-checking if windows ever
-             become list children.) *)
-          let without = List.filteri !cur ~f:(fun i _ -> i <> index) in
-          remove live.widget l.widget;
-          insert live.widget ~after:(after_of without index) l'.widget);
-        cur := List.mapi !cur ~f:(fun i x -> if i = index then l' else x));
-    List !cur
-  | (No_children | Single _ | List _), _, _ ->
+    Single (patch_single ctx ~path live.widget ~set old_c new_c)
+  | List olds, List news, List ops ->
+    List (patch_list ctx ~path live.widget ~ops olds news)
+  | Slots old_slots, Slots new_slots, Slots op_slots ->
+    Slots (patch_slots ctx ~path ~impl_name live.widget old_slots new_slots op_slots)
+  | (No_children | Single _ | List _ | Slots _), _, _ ->
     invalid_argf
       "%s: %s's children changed shape under an unchanged kind"
       path
-      live.impl.name
+      impl_name
       ()
 ;;

@@ -269,6 +269,56 @@ let box ?key ?attrs ?(spacing = 0) ?(homogeneous = false) ~orientation children 
   make ?key ?attrs (Box { orientation; spacing; homogeneous }) (List children)
 ;;
 
+(* The slot containers. Each names its children by role, so the shape is [Slots] and each
+   slot carries the shape it wants: three optional singles for a centre box, two required
+   singles for a paned, and a single plus a list for an overlay. *)
+let center_box ?key ?attrs ?(shrink_center_last = true) ?start ?center ?end_ () =
+  make
+    ?key
+    ?attrs
+    (Center_box { shrink_center_last })
+    (Slots [ "start", Single start; "center", Single center; "end", Single end_ ])
+;;
+
+(* Both halves are required: a paned with one side is a box, and GTK renders an empty half
+   as dead space with a draggable handle into nothing. *)
+let paned
+  ?key
+  ?attrs
+  ?position
+  ?(wide_handle = false)
+  ?(resize_start = true)
+  ?(resize_end = true)
+  ?(shrink_start = false)
+  ?(shrink_end = false)
+  ~orientation
+  ~start
+  ~end_
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Paned
+       { orientation
+       ; position
+       ; wide_handle
+       ; resize_start
+       ; resize_end
+       ; shrink_start
+       ; shrink_end
+       })
+    (Slots [ "start", Single (Some start); "end", Single (Some end_) ])
+;;
+
+let overlay ?key ?attrs ?(overlays = []) child =
+  make
+    ?key
+    ?attrs
+    (Overlay ())
+    (Slots [ "child", Single (Some child); "overlays", List overlays ])
+;;
+
 let window ?key ?attrs ?title ?default_size child =
   make ?key ?attrs (Window { title; default_size }) (Single (Some child))
 ;;
@@ -278,12 +328,5 @@ let native ?key ?attrs n = make ?key ?attrs (Native n) No_children
 let rec find_by_test_id t id =
   if Option.equal String.equal (Attrs.test_id t.attrs) (Some id)
   then Some t
-  else (
-    let kids =
-      match t.children with
-      | No_children -> []
-      | Single c -> Option.to_list c
-      | List l -> l
-    in
-    List.find_map kids ~f:(fun c -> find_by_test_id c id))
+  else Children.find_map t.children ~f:(fun c -> find_by_test_id c id)
 ;;

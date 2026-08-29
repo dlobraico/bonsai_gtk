@@ -35,14 +35,17 @@ let impl : Widget_impl.t =
   ; reassert = None
   ; signals = []
   ; children =
+      (* A box holds nothing about its children beyond their order, so it neither reads
+         the inserted node nor needs the [updated] hook. *)
       Widget_impl.List
         { insert =
-            (fun parent ~after child ->
+            (fun parent ~after ~node:_ child ->
               W.Box.insert_child_after (cast parent) child after)
         ; move =
             (fun parent ~child ~after ->
               W.Box.reorder_child_after (cast parent) child after)
         ; remove = (fun parent child -> W.Box.remove (cast parent) child)
+        ; updated = Widget_impl.no_list_update
         }
   }
 ;;

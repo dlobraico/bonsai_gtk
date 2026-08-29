@@ -32,8 +32,8 @@ let nth_box_child (live : P.live) i : Widget.t =
   | Single (Some box) ->
     (match box.children with
      | List children -> (List.nth_exn children i).widget
-     | No_children | Single _ -> assert false)
-  | No_children | Single None | List _ -> assert false
+     | No_children | Single _ | Slots _ -> assert false)
+  | No_children | Single None | List _ | Slots _ -> assert false
 ;;
 
 let () =
@@ -170,7 +170,7 @@ let () =
     (Option.value_exn
        (match live.children with
         | Single c -> c
-        | No_children | List _ -> None))
+        | No_children | List _ | Slots _ -> None))
       .P.widget
   in
   let pristine = (W.Label.new_ (Some "l") :> Widget.t) in

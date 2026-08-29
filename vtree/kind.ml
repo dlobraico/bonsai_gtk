@@ -182,6 +182,30 @@ type box_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The slot containers (spec §5.3's fourth children shape). Their children are addressed
+   by role rather than position, and none of the props below is about a child -- an
+   overlay's per-child measure flag lives on the child node's attrs, because it is a
+   setting the overlay holds about that child rather than a property of either widget. *)
+type center_box_props = { shrink_center_last : bool [@sexp_drop_if fun b -> b] }
+[@@deriving sexp_of, equal]
+
+(* [position] is [None] for "leave GTK's own split". It is deliberately *not* controlled
+   -- see [Node.paned] -- which is why it is an option rather than a plain int: there is a
+   difference between "put it at 240" and "wherever it ended up". *)
+type paned_props =
+  { orientation : Orientation.t
+  ; position : int option [@sexp_drop_if Option.is_none]
+  ; wide_handle : bool [@sexp_drop_if fun b -> not b]
+  ; resize_start : bool [@sexp_drop_if fun b -> b]
+  ; resize_end : bool [@sexp_drop_if fun b -> b]
+  ; shrink_start : bool [@sexp_drop_if fun b -> not b]
+  ; shrink_end : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+(* A [GtkOverlay] has no properties of its own: it is entirely its children. *)
+type overlay_props = unit [@@deriving sexp_of, equal]
+
 type window_props =
   { title : string option [@sexp_drop_if Option.is_none]
   ; default_size : (int * int) option [@sexp_drop_if Option.is_none]
@@ -209,6 +233,9 @@ type t =
   | Expander of expander_props
   | Revealer of revealer_props
   | Box of box_props
+  | Center_box of center_box_props
+  | Paned of paned_props
+  | Overlay of overlay_props
   | Window of window_props
   | Native of Native.t
 [@@deriving sexp_of]
@@ -234,6 +261,9 @@ let name = function
   | Expander _ -> "Expander"
   | Revealer _ -> "Revealer"
   | Box _ -> "Box"
+  | Center_box _ -> "CenterBox"
+  | Paned _ -> "Paned"
+  | Overlay _ -> "Overlay"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
 ;;
@@ -260,6 +290,9 @@ let same_kind a b =
   | Expander _, Expander _
   | Revealer _, Revealer _
   | Box _, Box _
+  | Center_box _, Center_box _
+  | Paned _, Paned _
+  | Overlay _, Overlay _
   | Window _, Window _ -> true
   | Native a, Native b -> String.equal a.name b.name
   | _ -> false
@@ -287,6 +320,9 @@ let equal_props a b =
   | Expander a, Expander b -> equal_expander_props a b
   | Revealer a, Revealer b -> equal_revealer_props a b
   | Box a, Box b -> equal_box_props a b
+  | Center_box a, Center_box b -> equal_center_box_props a b
+  | Paned a, Paned b -> equal_paned_props a b
+  | Overlay a, Overlay b -> equal_overlay_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload
   | _ -> false

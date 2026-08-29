@@ -180,6 +180,30 @@ type box_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The slot containers (spec §5.3's fourth children shape). Their children are addressed
+   by role rather than position, and none of the props below is about a child -- an
+   overlay's per-child measure flag lives on the child node's attrs, because it is a
+   setting the overlay holds about that child rather than a property of either widget. *)
+type center_box_props = { shrink_center_last : bool [@sexp_drop_if fun b -> b] }
+[@@deriving sexp_of, equal]
+
+(* [position] is [None] for "leave GTK's own split". It is deliberately *not* controlled
+   -- see [Node.paned] -- which is why it is an option rather than a plain int: there is a
+   difference between "put it at 240" and "wherever it ended up". *)
+type paned_props =
+  { orientation : Orientation.t
+  ; position : int option [@sexp_drop_if Option.is_none]
+  ; wide_handle : bool [@sexp_drop_if fun b -> not b]
+  ; resize_start : bool [@sexp_drop_if fun b -> b]
+  ; resize_end : bool [@sexp_drop_if fun b -> b]
+  ; shrink_start : bool [@sexp_drop_if fun b -> not b]
+  ; shrink_end : bool [@sexp_drop_if fun b -> not b]
+  }
+[@@deriving sexp_of, equal]
+
+(* A [GtkOverlay] has no properties of its own: it is entirely its children. *)
+type overlay_props = unit [@@deriving sexp_of, equal]
+
 type window_props =
   { title : string option [@sexp_drop_if Option.is_none]
   ; default_size : (int * int) option [@sexp_drop_if Option.is_none]
@@ -207,6 +231,9 @@ type t =
   | Expander of expander_props
   | Revealer of revealer_props
   | Box of box_props
+  | Center_box of center_box_props
+  | Paned of paned_props
+  | Overlay of overlay_props
   | Window of window_props
   | Native of Native.t
 [@@deriving sexp_of]

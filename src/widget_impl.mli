@@ -2,24 +2,52 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-(** How the patcher attaches children to a container of this kind. *)
+(** The one child slot of a single-child container. [None] empties it. *)
+type single_ops = { set : Widget.t -> Widget.t option -> unit }
+
+(** The ordered children of a list container. *)
+type list_ops =
+  { insert : Widget.t -> after:Widget.t option -> node:Node.t -> Widget.t -> unit
+  (** Add a child that is not yet in the container, placing it directly after [after] — or
+      first when [after] is [None]. [after] is the live widget the patcher's own
+      bookkeeping says precedes this position, never a widget read back out of GTK: a
+      container that interposes children of its own (list-box rows, stack pages) has a
+      live child list that does not match the reconciler's indices, and only the patcher's
+      list is authoritative.
+
+      [node] is the child's description: some containers keep per-child settings of their
+      {i own} — an overlay's measure flag, a grid cell, a stack page's title — which are
+      not properties of the child widget and so are read from the child node's attrs here
+      rather than applied by [Attr_apply]. *)
+  ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
+  (** Move a child already in the container to sit directly after [after] ([None] =
+      first). [after] is computed over the sibling list with [child] already taken out of
+      it, which is the order GTK's [reorder_child_after] expects.
+
+      A container GTK gives no reordering primitive for — [Overlay] is the M1 case — makes
+      this a documented no-op: identity is preserved by keys, and only the paint or tab
+      order goes unreconciled. *)
+  ; remove : Widget.t -> Widget.t -> unit
+  ; updated : Widget.t -> old:Node.t -> node:Node.t -> Widget.t -> unit
+  (** Called after a child that stayed in place was patched, with its previous and new
+      descriptions. This is where those same parent-held settings are re-applied when they
+      change. {!no_list_update} for containers that have none. *)
+  }
+
+(** One slot of a {!Slots} container: a slot has a shape of its own, and the patcher
+    drives it with exactly the code it uses for a top-level shape. *)
+type slot_ops =
+  | Slot_single of single_ops
+  | Slot_list of list_ops
+
+(** How the patcher attaches children to a container of this kind. It must agree with the
+    [Children.t] shape the node constructors build — for {!Slots}, down to the slot names
+    and their order; the patcher raises [Invalid_argument] otherwise. *)
 type child_ops =
   | No_children
-  | Single of { set : Widget.t -> Widget.t option -> unit }
-  | List of
-      { insert : Widget.t -> after:Widget.t option -> Widget.t -> unit
-      (** Add a child that is not yet in the container, placing it directly after [after]
-          — or first when [after] is [None]. [after] is the live widget the patcher's own
-          bookkeeping says precedes this position, never a widget read back out of GTK: a
-          container that interposes children of its own (list-box rows, stack pages) has a
-          live child list that does not match the reconciler's indices, and only the
-          patcher's list is authoritative. *)
-      ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
-      (** Move a child already in the container to sit directly after [after] ([None] =
-          first). [after] is computed over the sibling list with [child] already taken out
-          of it, which is the order GTK's [reorder_child_after] expects. *)
-      ; remove : Widget.t -> Widget.t -> unit
-      }
+  | Single of single_ops
+  | List of list_ops
+  | Slots of (string * slot_ops) list
 
 (** Everything the patcher needs to realize one {!Kind.t} as a GTK widget. *)
 type t =
@@ -63,3 +91,7 @@ val batch : Widget.t -> (unit -> unit) -> unit
 
 (** Raises [Invalid_argument]: impl [name] was handed a kind it does not own. *)
 val wrong_kind : string -> Kind.t -> 'a
+
+(** The do-nothing {!list_ops.updated}, for a container that holds no per-child settings
+    of its own. Written once rather than as a lambda per impl. *)
+val no_list_update : Widget.t -> old:Node.t -> node:Node.t -> Widget.t -> unit

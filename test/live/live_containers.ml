@@ -16,8 +16,8 @@ let nth_child (live : P.live) i =
   | Single (Some box) ->
     (match box.children with
      | List children -> (List.nth_exn children i).P.widget
-     | No_children | Single _ -> assert false)
-  | No_children | Single None | List _ -> assert false
+     | No_children | Single _ | Slots _ -> assert false)
+  | No_children | Single None | List _ | Slots _ -> assert false
 ;;
 
 (* A 2x2 opaque texture, built in memory. [Gdk.Wrappers.Texture.save_to_png] then gives us
@@ -183,9 +183,9 @@ let () =
        | Single (Some box) ->
          (match box.children with
           | List children -> List.nth_exn children i
-          | No_children | Single _ -> assert false)
-       | No_children | Single None | List _ -> assert false)
-    | No_children | Single None | List _ -> assert false
+          | No_children | Single _ | Slots _ -> assert false)
+       | No_children | Single None | List _ | Slots _ -> assert false)
+    | No_children | Single None | List _ | Slots _ -> assert false
   in
   (* Both specs are connected at all: outside a patch, each [notify::] reaches Bonsai. *)
   let before = !scheduled in
@@ -239,5 +239,58 @@ let () =
   print_s (Live_tree.dump live.widget);
   let live = P.patch ctx ~path:"root" ~is_root:true live (slots ~swapped:true) in
   print_s (Live_tree.dump live.widget);
+  P.destroy ctx live;
+  (* Slots: each is patched independently, so clearing one and replacing another's child
+     outright must leave the third alone. The overlay case is stavekeeper's thumbnail
+     trick -- an unmeasured overlay over a sized spacer -- so [measure-overlay] is checked
+     as a live property, not just a node. *)
+  let slots ~center ~badge =
+    Node.window
+      ~title:"slots"
+      (Node.paned
+         ~attrs:[ Attr.on_position_changed (fun _ -> Ui_effect.Ignore) ]
+         ~orientation:Horizontal
+         ~position:120
+         ~start:
+           (Node.center_box
+              ~start:(Node.label "L")
+              ?center:(if center then Some (Node.label "C") else None)
+                (* The [end] slot's *kind* changes across the patch, so the patcher mounts
+                   a replacement and the slot's [set] has to install it -- the [Single]
+                   swap, driven through a named slot rather than a whole container. *)
+              ~end_:(if center then Node.button ~label:"R" () else Node.label "R")
+              ())
+         ~end_:
+           (Node.overlay
+              ~overlays:
+                (Node.label ~key:"badge" ~attrs:[ Attr.measure_overlay badge ] "9"
+                 :: (if badge then [ Node.label ~key:"extra" "+" ] else []))
+              (Node.box
+                 ~orientation:Vertical
+                 ~attrs:[ Attr.width_request 150; Attr.height_request 60 ]
+                 []))
+         ())
+  in
+  let live = P.mount ctx ~path:"root" ~is_root:true (slots ~center:true ~badge:false) in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch ctx ~path:"root" ~is_root:true live (slots ~center:false ~badge:true)
+  in
+  print_s (Live_tree.dump live.widget);
+  (* [Attr.on_position_changed] is informative rather than corrective -- a paned's
+     [position] is the documented exception to the controlled rule -- so all there is to
+     check is that its spec is connected at all. *)
+  let paned : P.live =
+    match live.children with
+    | Single (Some p) -> p
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let before = !scheduled in
+  Gobject.Property.notify paned.widget ~name:"position";
+  printf "paned notify reaching Bonsai: %d\n" (!scheduled - before);
+  (* A slot mismatch -- a name or a shape the impl does not have -- is structural misuse
+     like a nested window, and the patcher raises on it rather than dropping the child.
+     There is nothing here that can provoke it: every [Slots] node comes from a
+     constructor whose slot list is written beside the impl's. *)
   P.destroy ctx live
 ;;

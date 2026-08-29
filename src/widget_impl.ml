@@ -2,14 +2,24 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
+type single_ops = { set : Widget.t -> Widget.t option -> unit }
+
+type list_ops =
+  { insert : Widget.t -> after:Widget.t option -> node:Node.t -> Widget.t -> unit
+  ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
+  ; remove : Widget.t -> Widget.t -> unit
+  ; updated : Widget.t -> old:Node.t -> node:Node.t -> Widget.t -> unit
+  }
+
+type slot_ops =
+  | Slot_single of single_ops
+  | Slot_list of list_ops
+
 type child_ops =
   | No_children
-  | Single of { set : Widget.t -> Widget.t option -> unit }
-  | List of
-      { insert : Widget.t -> after:Widget.t option -> Widget.t -> unit
-      ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
-      ; remove : Widget.t -> Widget.t -> unit
-      }
+  | Single of single_ops
+  | List of list_ops
+  | Slots of (string * slot_ops) list
 
 type t =
   { name : string
@@ -33,3 +43,6 @@ let batch (w : Widget.t) f =
 ;;
 
 let wrong_kind name kind = invalid_argf "%s impl received %s" name (Kind.name kind) ()
+
+(* For containers with no per-child settings of their own -- the common case. *)
+let no_list_update _parent ~old:_ ~node:_ _child = ()
