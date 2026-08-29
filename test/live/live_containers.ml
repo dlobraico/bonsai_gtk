@@ -243,7 +243,9 @@ let () =
   (* Slots: each is patched independently, so clearing one and replacing another's child
      outright must leave the third alone. The overlay case is stavekeeper's thumbnail
      trick -- an unmeasured overlay over a sized spacer -- so [measure-overlay] is checked
-     as a live property, not just a node. *)
+     as a live property, not just a node, and is flipped false -> true -> false so the
+     [updated] hook is seen writing in both directions. [extra], which names no attr, is
+     unmeasured throughout: that is GTK's default and this library's. *)
   let slots ~center ~badge =
     Node.window
       ~title:"slots"
@@ -275,6 +277,10 @@ let () =
   print_s (Live_tree.dump live.widget);
   let live =
     P.patch ctx ~path:"root" ~is_root:true live (slots ~center:false ~badge:true)
+  in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    P.patch ctx ~path:"root" ~is_root:true live (slots ~center:true ~badge:false)
   in
   print_s (Live_tree.dump live.widget);
   (* [Attr.on_position_changed] is informative rather than corrective -- a paned's

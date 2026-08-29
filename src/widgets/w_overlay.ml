@@ -4,11 +4,13 @@ open Gtk_import
 
 (* The overlay holds this about each of its overlay children; it is not a property of the
    child, so it rides on the child node's attrs and is read here (see
-   [Attr.measure_overlay]). Default [true] is GTK's. *)
+   [Attr.measure_overlay]). Default [false] is GTK's own
+   ([GtkOverlayLayoutChild:measure]): an overlay child does not grow the overlay unless it
+   is asked to. *)
 let measure (node : Node.t) =
   match Attrs.find node.attrs Measure_overlay with
   | Some (Measure_overlay b) -> b
-  | Some _ | None -> true
+  | Some _ | None -> false
 ;;
 
 let impl : Widget_impl.t =

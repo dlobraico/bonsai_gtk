@@ -528,16 +528,19 @@ val paned
 
     The main child is what the overlay is sized to. Each overlay child is positioned by
     its own {!Attr.halign}/{!Attr.valign} and margins — an overlay has no coordinates of
-    its own — and by default is also measured, so a large overlay child grows the whole
-    overlay. {!Attr.measure_overlay}[ false] on an overlay child turns that off, which is
-    the idiom for capping a picture at the size of whatever is underneath it rather than
-    letting the image dictate the layout.
+    its own — and by default is {i not} measured (GTK's default), so the overlay stays the
+    size of its main child however large the layers over it are. That is what caps a
+    picture at the size of whatever is underneath it rather than letting the image dictate
+    the layout. {!Attr.measure_overlay}[ true] on an overlay child opts back in, and the
+    overlay then requests at least as much room as that child needs.
 
     Overlay order is {i not} reconciled: GTK offers no "insert an overlay at a position",
     so overlays stack in the order they were added and a reorder in [~overlays] leaves the
     painting order alone (M1 ruling 4). Keys still preserve child identity, which is what
-    a patch needs; a stack whose paint order really must change should give each layer its
-    own key and accept a remount, or be a {!native} node.
+    a patch needs — but they are no way around this: a keyed reorder is a [Move], and a
+    [Move] is exactly what the overlay swallows. A stack whose paint order really must
+    change has to {i change} the keys, so the reconciler removes and re-inserts rather
+    than moving, or be a {!native} node.
 
     [gtk_overlay_set_clip_overlay] is not exposed; see {!Attr.measure_overlay}. *)
 val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t

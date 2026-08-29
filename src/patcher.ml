@@ -316,9 +316,18 @@ and patch_slots ctx ~path ~impl_name parent old_slots new_slots op_slots =
          (List.length new_slots)
          ()
      | Ok triples ->
-       List.map triples ~f:(fun (((name, old_c), (new_name, new_c)), (op_name, op)) ->
+       List.mapi triples ~f:(fun i (((name, old_c), (new_name, new_c)), (op_name, op)) ->
          if not (String.equal name new_name && String.equal name op_name)
-         then invalid_argf "%s: slot %s does not exist on %s" path new_name impl_name ();
+         then
+           invalid_argf
+             "%s: slot %d is %s in the live tree, %s in the node, %s on %s"
+             path
+             i
+             name
+             new_name
+             op_name
+             impl_name
+             ();
          let path = sprintf "%s/%s" path name in
          match old_c, new_c, (op : Widget_impl.slot_ops) with
          | Children.Single o, Children.Single n, Slot_single { set } ->

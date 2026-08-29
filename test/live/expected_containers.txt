@@ -158,9 +158,23 @@ declined expander true, revealer true (revealed true); reached Bonsai: 0
    (children
     (GtkCenterBox (children (GtkLabel (text L)) (GtkLabel (text R))))
     (GtkPanedHandle (cursor col-resize))
-    (GtkOverlay
+    (GtkOverlay (unmeasured (2))
      (children
       (GtkBox (spacing 0) (css (vertical)) (width-request 150)
        (height-request 60))
       (GtkLabel (text 9)) (GtkLabel (text +))))))))
+(GtkWindow (title (slots)) (css (background)) hidden
+ (children
+  (GtkPaned (position 120) position-set (css (horizontal))
+   (children
+    (GtkCenterBox
+     (children (GtkLabel (text L)) (GtkLabel (text C))
+      (GtkButton (label (R)) (css (text-button))
+       (children (GtkLabel (text R))))))
+    (GtkPanedHandle (cursor col-resize))
+    (GtkOverlay (unmeasured (1))
+     (children
+      (GtkBox (spacing 0) (css (vertical)) (width-request 150)
+       (height-request 60))
+      (GtkLabel (text 9))))))))
 paned notify reaching Bonsai: 1

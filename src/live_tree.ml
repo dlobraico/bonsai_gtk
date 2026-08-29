@@ -324,9 +324,10 @@ let rec dump (w : Widget.t) : Sexp.t =
        @ flag_prop "shrink-end" (W.Paned.get_shrink_end_child p)
      (* [measure-overlay] is a setting the *overlay* holds about each child, so a child's
         own dump cannot show it; print it from this side, as the indices of the children
-        the overlay does not measure. The main child is skipped: it is not an overlay, and
-        GTK's getter reports [false] for it whatever the overlay is doing, so including it
-        would print every overlay as having an unmeasured child 0. *)
+        the overlay does not measure -- indices into the *whole* child list, main child
+        included at 0, so the first overlay child is 1. The main child is never listed: it
+        is not an overlay, and GTK's getter reports [false] for it whatever the overlay is
+        doing, so including it would print every overlay as having an unmeasured 0. *)
      | "GtkOverlay" ->
        let o : W.Overlay.t = cast w in
        let main = W.Overlay.get_child o in

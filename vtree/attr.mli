@@ -132,9 +132,11 @@ val cursor_name : string -> t
 val test_id : string -> t
 
 (** For a child of {!Node.overlay}'s [~overlays]: whether the overlay's own size request
-    takes this child into account. [false] — the useful case — lets an overlay be laid out
-    at the size of its {i main} child and merely painted over, which is how an image is
-    kept from dictating the size of what contains it. GTK's own default is [true].
+    takes this child into account. [false] — GTK's own default
+    ([GtkOverlayLayoutChild:measure]), and this library's — lets an overlay be laid out at
+    the size of its {i main} child and merely painted over, which is how an image is kept
+    from dictating the size of what contains it. [true] is the opt-in: the overlay then
+    requests at least as much room as this child needs.
 
     This is the one attr in this module that no widget applies to itself: it is a setting
     the {i overlay} holds about this child ([gtk_overlay_set_measure_overlay]), so it
