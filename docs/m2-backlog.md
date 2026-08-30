@@ -1,0 +1,699 @@
+# Backlog carried out of M2
+
+Items deferred by the M2 task reviews, their rulings, and whatever M1 left open that M2 did
+not close. The ledger with every ruling is
+`.superpowers/sdd/2026-08-30-bonsai-gtk-m2/progress.md`; per-task detail is in the
+`task-N-report.md` and `task-N-review.md` files beside it. Nothing here blocks M2.
+
+The file is renamed this time. M1 kept `m1-backlog.md` on purpose — "a rename churns links
+for nothing" — but two milestones in, a file called `m1-backlog.md` describing M2's
+leftovers is a trap, so this is `m2-backlog.md` and `git mv` carried the history. The M1
+history is under the old path.
+
+## Closed during M2 (was "do first in M2")
+
+All thirteen, in the tasks the plan put them in.
+
+- **Seal `Attr.t`** — the constructors moved to `Attr.Private` and `Attr.t` is
+  `private Private.t`, so an application can neither build one from a raw constructor nor
+  match on one without spelling the coercion. Task 1 (`09ee6f7`, made compiler-enforced in
+  `1daa1b5`: the plan's alias spelling does not typecheck). `Attr.Name.t` stays concrete,
+  deliberately — see "API shape decisions" below.
+- **A vtree-level `Kind.t -> Attr.Name.t list` event table** (`vtree/events.ml`), so
+  `Bonsai_gtk_test` rejects the event attrs `Signals.require_specs` rejects at mount instead
+  of certifying a tree the runtime refuses. Task 1 (`09ee6f7`).
+- **A headless `Search_changed` action, and one for an expander** — `Action.Search_changed`
+  and `Action.Set_expanded`. Task 1 (`09ee6f7`).
+- **`Overlay`/`Stack`/`Grid` `move` is a no-op** → an explicit unordered marker.
+  `Widget_impl.list_ops.move` is an `option`; `None` means "no reorder primitive" and
+  `Reconcile.diff ~ordered:false` emits no `Move` at all rather than one that is dropped. A
+  `Move` reaching a container without `move` is `Invalid_argument`, because a dropped one
+  desynchronises the patcher's child list from GTK's. Task 2 (`ee64cc6`).
+- **A reassert-and-fixup-only walk for phys-equal roots** — `Patcher.reassert_only`, taken by
+  `Driver.frame` whenever Bonsai hands back the physically same node. Task 2 (`ee64cc6`).
+- **Per-`reassert` `batch` cost** — `Widget_impl.batch_if`, so a `reassert` that writes
+  nothing pays no freeze/thaw. Measured at ~80 ns per `batch` call, which is what kept the
+  conditional rather than removing the bracket. Task 2 (`ee64cc6`).
+- **`w_switch`'s `create` hand-rolled the active write** — it routes through `reassert` like
+  every other controlled kind. Task 2 (`ee64cc6`).
+- **`Signals.spec.fire` reads state back off the widget** → the existential-event version.
+  `spec` is now a variant: `Read_back` is the M1 shape, `Payload : ('p, 'r) payload -> spec`
+  carries the signal's own arguments *and* a return value handed back to GTK. Task 4
+  (`9c081e5`) rather than Tasks 1–3 — `ListBox::row-activated` was the forcing case, and it
+  arrives with the container.
+- **`min > max` content bounds on `Node.scrolled_window`** are rejected at the constructor.
+  Task 3 (`b458449`).
+- **`Attr.grid_cell` and `Attr.page_title` are silently inert outside their container** —
+  now `Invalid_argument` naming the container that *does* read the attr, from a table in
+  `vtree/placement.ml` that both the patcher and the headless handle read. Task 3
+  (`b458449`, moved to `vtree` in `a9b7b34`).
+- **A same-frame stack name *swap* still raises** — fixed by pass-level give-ups-then-takes.
+  Task 3 (`b458449`).
+- **`Kind.entry_props` has no `max_length`** — it has one, and `w_entry`'s `reassert`
+  compares against the truncated text (in characters) so that truncation does not cause a
+  per-frame write. Task 3 (`b458449`).
+- **ocgtk fork: `Widget.set_name : t -> string option -> unit`** — landed with the other two
+  nullable bindings on the fork's `m2-bindings` branch and pinned. Task 14; pin bumped to
+  `649498b4` in `3a87d1c`. (The *behavioural* half is not taken — see "Do first in M3".)
+
+## Closed during M2 from the M1 final-review carries
+
+- **A `Node.stack ~visible_child` naming a page that never exists is silently inert
+  forever** — now `Invalid_argument` from the fixup pass, listing the pages the stack does
+  have, with a carve-out for an empty stack (a model rendering no pages has no name it could
+  pass that would be right). Task 3 (`b458449`).
+- **`Attr.Name.is_event` is tested on 2 of 32 names** — `test/test_events.ml` now partitions
+  `Attr.Name.all` and pins both halves, and a second test checks the partition against
+  `Events.for_kind` and `Events.controller_family`. Task 1 (`09ee6f7`).
+- **`mount` is not exception-safe** — `Patcher.mount` tears down what it built and re-raises.
+  It was not "bounded", as the M1 entry assumed: every signal a partial mount had connected
+  rooted a closure holding the runtime, which held the shadow tree, which held GObject
+  references back, so one connected handler in a failed mount retained the whole driver and
+  its Bonsai graph permanently (~50k live words per failure, measured). Task 12 (`629185c`).
+- **`Bonsai_gtk_test` has no validating `recompute_view`** — `Handle` is a hand-written
+  signature shadowing all three entry points that skipped the checks. The first run found a
+  call site certifying a tree the runtime refuses. Task 13 (`e7a1e7e`).
+- **`test/handle/test_gallery.ml`'s "exactly once" comment is inaccurate** — the claim is now
+  checked against `Kind.Variants.descriptions` and `Attr.Name.all` rather than asserted in
+  prose. Task 13 (`c5fb8a2`).
+
+## Do first in M3
+
+- **`Attr.on_click` cannot claim the event sequence.** The gesture deliberately does not, so
+  a click on a card also reaches its list box's click-to-select — but an application that
+  wants to *consume* one has no way to say so. Tasks 4–5.
+- **`Attr.on_focus_enter`/`on_focus_leave` are events, not the `contains_focus` query**
+  stavekeeper polls. An app that needs the bit keeps it in its own model. Task 4.
+- **The focus attrs take no `?phase`**, while `on_click`, `on_key_pressed` and
+  `on_key_released` all do. Visibly asymmetric in a sexp golden
+  (`test/handle/test_handle.ml` prints `(On_focus_leave <handler>)` beside
+  `(On_key_pressed (phase Bubble) …)`), and adding one would let
+  `Events.key_phase_rejection` generalise into a `family_phase_rejection`. Tasks 4–5.
+- **`TextView` exposes no cursor position.** The controlled write preserves the caret as a
+  character offset — exact for an in-place rewrite, approximate for one that changes length
+  before the caret. `notify::cursor-position` is the hook for an application that wants to
+  own the caret, and it is what closes the stated approximation. Task 9.
+- **`Bonsai_gtk_test.Key_press` cannot model propagation**, and neither can anything else
+  here: there is no widget hierarchy in the handle for an event to travel through, and the
+  live suite cannot synthesise a press at all. See "Tests worth adding". Tasks 4–5.
+- **The `Keyval` table is curated, not complete** — seventeen names plus `Keyval.f` and
+  `Keyval.of_char`; anything else is a raw `int`. Task 5.
+- **No live test delivers a synthetic click or key press.** Task 4 landed on option (c) —
+  plumbing only — and this is the biggest untested surface in the milestone. It has its own
+  entry under "Tests worth adding", with what *is* covered and what the two closing routes
+  are.
+- **`Child_keys` is one ephemeron table per module and is never compacted**: an entry is
+  removed on `remove` and otherwise waits for the GC. Correct — the table is keyed on the
+  child widget the patcher retains, which is the invariant `child_keys.mli` states and Tasks
+  7–8 inherited — but nothing measures it, and `child_keys.mli` exposes no size accessor, so
+  `forget_children`/`forget_rows` are also unpinned (task-7 review M4: replacing the
+  `Flow_box` arm of `Patcher.destroy` with `| Flow_box _ -> ()` leaves the goldens
+  byte-identical, verified). A `Child_keys.length` exposed for tests plus one live case per
+  container closes both, and should be done for all three containers at once.
+- **`after_of` is still `O(index)` and the `cur` bookkeeping `O(n)` per op, so a list patch
+  is `O(n·ops)`.** M1 predicted "M2's `ListBox` is what will feel it". **It did not** — what
+  bit instead was `apply_selection`, which was `O(|selected| × rows)` per frame and cost
+  **24 ms per idle frame at 200-selected-of-1000**; a per-call key→child map took it to
+  **0.39 ms**, in both `w_list_box.ml` and `w_flow_box.ml`, with a live bench regression
+  (task-6 M6 → task-7 I1, `e9e7793`). The reconciler's own `O(n·ops)` was never the term
+  that showed up in a measurement. Recorded so M3 spends the next optimisation where the
+  numbers are rather than where the prediction was.
+- **A hidden `~current_page` diverges forever with no diagnostic** (`w_notebook.ml`'s select
+  fixup): a page carrying `Attr.visible false` that is also `~current_page` makes the fixup
+  write on every frame, forever, with no error. Same shape as a `~selected` a list box's
+  selection mode cannot hold. Both are "a model to bring into line", both are candidates for
+  the `Patcher.ctx.report` hook Task 9 built, and whichever task gives it to them should
+  measure their parked frames at the same time. Tasks 8–10.
+- **`w_list_box.ml` and `w_flow_box.ml` are two copies of one container.** M2 declined to
+  functorise them (task-7 deviation 8, and the reviewer agreed) on the grounds that no fix
+  had had to be made twice — and then I1 was made twice in the same round. The standing
+  trigger the review left: if M3 produces a third, that is the evidence the header comment
+  says would settle it.
+- **The behavioural half of the fork's three nullable bindings is not taken.** The pin now
+  has them, and the library still writes `Some`: `Unset Widget_name` writes
+  `Some d.widget_name` rather than `None`, `w_stack.ml` writes `Some ""` for a dropped
+  `Attr.page_title` (so it still leaves a blank clickable switcher button — the
+  containers-M1 item the binding existed to close), and `w_password_entry.ml` still forces
+  `""`. Task 14 scoped itself to the fork and left these deliberately: they are behaviour
+  changes to M2 code with goldens attached. The password-entry one has no visible effect
+  (GTK normalises the NULL back to `""` once the internal `GtkText` exists, measured on
+  4.22); `Attr.widget_name`'s doc needs rewriting when the first one is taken.
+- **`Patcher.require_slots` is not called on the patch path** (`src/patcher.ml`; the mount
+  call is its only one, while `require_specs` has two). If a widget impl drifted so that
+  `Events.for_kind` lists an attr the impl declares no spec for, and an app adds that attr
+  conditionally on frame 2, mount's check passed, patch's `require_specs` consults the table
+  and passes, `update_slots` never sees the orphan, and the handler silently never fires.
+  Needs a pre-existing drift that `live_events.ml` catches in CI, hence Minor — but it is a
+  one-line fix and the review named it "the one I would take before Task 4 lands the
+  controller attrs". task-1 review Minor 8.
+- **`Bonsai_gtk_test.Action.Activate_row` fires on a row carrying `Attr.row_activatable
+  false`**, and `Activate_child`/`Set_page` follow it. It is the one place the headless
+  handle certifies something the runtime will not do, everywhere else in M2 considerable
+  trouble was taken so that it cannot, and the argument for it — the harness models no event
+  routing at all, and filtering this one case would be the only routing it implements — was
+  accepted. Recorded because the decision should be revisited once, deliberately, for all
+  three, and `bonsai_gtk_test.mli` should gain a sentence if it stands. task-6 review M5.
+
+## API shape decisions before they become breaking
+
+- **`Bonsai_gtk_test.Action.t` is a public variant with nineteen constructors** — M1 took it
+  from one to five, M2 from five to nineteen — with the same exhaustive-match exposure
+  `Attr.t` had before it was sealed. Sealing it means the same `private` treatment.
+- **`Key_response.t`, `Phase.t`, `Selection_mode.t`, `Wrap_mode.t`, `Tab_position.t`,
+  `Level_bar_mode.t`, `Click_event.t`, `Key_event.t` and `Modifiers.t` are all public
+  variants or records.** Most are GTK enums and will not grow; `Key_response.t` and
+  `Click_event.t` are this library's own, and either could.
+- **`Kind.t` derives `variants`**, which publishes a lowercase constructor function per kind
+  plus the whole `Variants` module (`fold`, `iter`, `map`, `make_matcher`, `to_rank`,
+  `to_name`, …) — about thirty names on the type every widget task extends, in the commit
+  whose theme was narrowing. Only `Variants.descriptions` is wanted. Deriving in `kind.ml`
+  and re-exporting `val descriptions` (or a `constructor_count`) is the shape.
+  task-1 review Minor 9.
+- **`Events.key_phase` is public and answers for a node `key_phase_rejection` rejects.** The
+  mli says the disagreeing case is "a value no caller ever reaches", which is true of the two
+  in-repo consumers but is a convention rather than a guarantee for a public `vtree` module.
+  Noted because the surrounding code (`Placement`, `Attr.Private`) is otherwise careful to
+  make wrong use unrepresentable rather than discouraged. task-5 review M5.
+- **`Placement.is_read_by ~parent name` answers `true` for a name that is not a placement
+  attr at all.** The mli says so and `misplaced` pre-filters, so nothing in the tree can be
+  misled — but the name reads as a question about one attr and answers a different question
+  over two-thirds of its domain. task-3 re-review.
+- **`Controllers.key_pressed_answer` and `key_pressed_declined` are test-facing exports** that
+  widen `controllers.mli`. They exist because no real key press can be delivered; they should
+  go the day one can. Task 5.
+- `Expert.Driver.root_widget : Widget.t option` cannot survive `Node.windows` (M3).
+- `start ?flags` (spec §4.1) is unimplemented; `NON_UNIQUE` is needed for two instances.
+- No `close-request` on `Node.window`. With no handler a model can neither veto nor observe a
+  window close, which is exactly the frame in which M3's `Node.windows` has to reconcile
+  multi-window state.
+- `Kind.t`'s sexps are lossy — `sexp_of` only, with `[@sexp_drop_if]` dropping default-valued
+  fields — so a `Node.t` sexp is a view for tests, not a serialisation.
+- **`Node.editable_label` has no `~editable`, `~width_chars` or `~xalign`**, though all three
+  exist on `GtkEditable` and `w_entry.ml` already writes them. A rename-in-place field will
+  want at least `~width_chars`. task-11 carry 1.
+- **`Node.flow_box` accepts `~min_children_per_line > ~max_children_per_line`** silently; the
+  mli documents that the maximum wins. Ruled better than a check — recorded so it is not
+  rediscovered as an omission. task-7 M2.
+- **`W_spin_button` rejects `Attr.on_changed`** even though `GtkSpinButton` implements
+  `GtkEditable` — defensible, undocumented in `Node.spin_button`, and it reads as a bug to
+  whoever tries it. Carried from M1.
+
+## Carried out of M2's task reviews (Minor, unfixed)
+
+Each cites the review in `.superpowers/sdd/2026-08-30-bonsai-gtk-m2/`.
+
+Diagnostics and contracts:
+
+- **A `Node.notebook` page whose `~key` is missing raises with no node path** — the
+  constructor runs before a tree exists, so the message names the child's index instead.
+  That is the intended trade (a better message at the point of the mistake), but the M1 live
+  case that used to prove the patcher prefixes a child path no longer proves it. Noting, so
+  a later reader does not conclude the prefixing was dropped. task-6 M4.
+- **A `row_*` attr on a list box's `?placeholder` is accepted and silently inert** —
+  `Placement.read_by`'s granularity is the parent's *kind*, not its slot, so the placeholder
+  is indistinguishable from a row. The identical case for `Attr.measure_overlay` on an
+  overlay's main child is under "Tests worth adding". task-6 M7.
+- **`Controllers.update`'s unconditional `clear t` is safe only because `sync`'s re-arm is
+  unconditional.** A future "skip `update_slots` when the attrs are physically equal"
+  optimisation in either place would reintroduce the Task 4 round-2 regression in a worse
+  form — every controller slot on every node empty on every frame — and the re-arm branch has
+  nothing saying it must not become conditional. One comment closes it. task-4 re-review 2.
+- **Several `Click_event` doc claims have no test and cannot have one in M2**: that `x`/`y`
+  are in the widget's own coordinates, that `n_press` counts up within a multi-click, that
+  `~button:0` means "any", and that the gesture does not claim the sequence. Part of the
+  option-(c) gap rather than a separate omission — recorded so that gap is understood to
+  cover the documented *semantics*, not just "a press arrives". task-4 M4.
+- **Each controller's GClosure holds an OCaml root on the widget's wrapper**:
+  `Signals.connect_all` passes the widget into both trampolines and both controller specs
+  ignore it (`fun _w …`), so there is a second GObject/OCaml reference cycle per controller
+  on top of the one M1's own handlers create. Broken correctly by `release`/`sync`'s
+  `disconnect`, so nothing leaks today; narrowing it means changing `connect_all`'s signature,
+  which every M1 spec shares. It is another reason the still-unwritten GC/lifetime test
+  matters. task-4 M6, inherited unchanged by the key controller (task-5).
+- **`patch_children`'s catch-all message conflates two bugs**: "the node's children shape
+  changed under an unchanged kind" and "the impl's `child_ops` disagrees with both", the
+  second a registry bug and unreachable today. Carried from M1.
+- **`Native_gtk.S.destroy`'s doc does not mention that a replacement's `create` runs first**,
+  which spec §6.6 says and the mli does not. Carried from M1.
+- **Two grid children in one cell have no diagnostic** — overlapping spans are attached
+  silently and painted on top of each other; detecting it needs a per-patch occupancy set.
+  Carried from M1.
+
+Behaviour:
+
+- **A search-entry write that empties the box leaves its echo record unconsumed.** GTK emits
+  `search-changed` synchronously, cancelling the timeout, when the text becomes empty; inside
+  a patch `Signals.dispatch` drops that on `in_patch` before `fire` can consume the record, so
+  a `""` record survives to be matched against a later emission. Benign — what is lost is a
+  duplicate rather than a search — but the one-record-one-emission invariant does not hold, and
+  M2's headless `Search_changed` action or anything that iterates the main loop mid-patch
+  changes that. Carried from M1.
+- **One failing fixup drops the rest of the pass's fixups** (`run_fixups`'s
+  `Exn.protect ~finally` clears the queue behind the raise). Bounded, because the frame is the
+  last one. Carried from M1.
+- **`drop_stack_names` runs *before* the mount in `patch`'s kind-change arm**, so a mount that
+  raises there leaves the old subtree alive with its names already given up. The mirror image —
+  `ctx.stacks` keeping registrations from a subtree whose mount raised — is not a defect and
+  Task 12 pinned it. Bounded, since the frame is broken. Carried from M1.
+- **An overlay child whose *kind* changes jumps to the top of the z-order** (the kind-change
+  arm is remove-then-insert, and `add_overlay` appends). Distinct from "`Overlay` has no
+  reorder". Carried from M1.
+- **`w_switch`'s `reassert` cannot see a `state`/`active` divergence** — latent, since nothing
+  connects `state-set`. Carried from M1.
+- **The spin button's `reassert` compares the committed value, not what the user is looking
+  at**: while an edit is uncommitted the widget displays something the adjustment does not
+  hold, so nothing is written. GTK's editing model rather than a defect, but
+  `Node.spin_button`'s doc says "the value the widget currently holds". Carried from M1.
+- **`w_calendar.ml`'s `same_marks` is order- and duplicate-sensitive; the write is not.**
+  `[1; 2]` → `[2; 1]` costs a `clear_marks`, a re-mark and a redraw for no visible change.
+  Argued and accepted: set-ifying costs an allocation per calendar per differing frame to save
+  ≤31 `mark_day`s for a view that no application writes, and if one appears the fix belongs in
+  the view. task-11 M6.
+- **`w_text_view.ml`'s repeat-report suppression depends on whether the intervening valid text
+  caused a write.** After a valid text that *wrote*, a repeat of a refused text is reported
+  again; after a valid text the buffer already held — which returns at `holds` and never
+  reaches the memo-clearing line — the same repeat is silent. Both defensible; recorded because
+  it is the one place the reporting rule is a function of something other than the model's own
+  sequence of texts. task-9 re-review 2 RR2.
+
+Consistency:
+
+- **`take_report` uses `state w` rather than `Cache.find_opt`** (`w_text_view.ml`), so it will
+  mint a `{ stale = true }` record for a widget whose entry was collected, once per frame,
+  purely to find `None` in it. Harmless and unreachable while `create` runs first.
+  task-9 re-review R3.
+- **`enqueue_fixups`' `Text_view` arm enqueues nothing** — the placement is right and the name
+  now covers two jobs. If a second caller arrives, a `notify_interests`/`enqueue` split is
+  worth the rename. task-9 re-review R2.
+- **`Signals.read_back.connect`'s connection list has exactly one user**, and the dedup the
+  calendar needs for it lives in `w_calendar.ml` rather than in `Signals`. A third user is when
+  it should move. task-11 carry 6.
+- **The calendar's four unexposed heading signals** (`next-month`, `prev-month`, `next-year`,
+  `prev-year`) are a decision recorded in `vtree/events.ml` and nowhere a user reads. If an
+  application ever wants "the user is browsing" separately from "the date changed", that is the
+  hook — as is `notify::day`, the unconnected fourth, which would make the calendar's
+  completeness argument structural rather than measured. task-11 carries 5 and 7.
+- **The editable label's `~text` is compared `O(len)` per idle frame**, like every entry's; at
+  100 000 characters that is **1.22 ms per idle frame**, about 7% of a 60 fps budget for one
+  widget (measured). It is `Node.entry`'s existing behaviour, not a regression. If a profile
+  ever shows entries dominating an idle frame, the fix is `w_text_view.ml`'s cache generalised
+  over `GtkEditable`, in one place for all four kinds. task-11 carry 3 / re-review M5.
+- **`apply_button_props` writes an empty label on the toggle-button create path** while its
+  `Button` sibling deliberately does not. Carried from M1.
+- **A dropped placeholder builds the empty label `create` avoids.** Carried from M1.
+- **`w_entry.ml`'s shared-machinery comment overclaims**: only `text` and `changed` are shared.
+  Carried from M1.
+- **`Paintable_picture.apply` writes three props outside `Widget_impl.batch`**, and it is the
+  file the docs point at as the worked example. Carried from M1.
+- **`Native.Picture` has no `alternative_text`** although `Node.picture` does. Carried from M1.
+- **Three conventions for writing a default-valued prop at `create`** — `W_image` uses two of
+  them in adjacent lines. Carried from M1.
+- **`w_frame.create` and `w_center_box.update` write outside `Widget_impl.batch`.** Carried
+  from M1.
+- **`test/live/live_controllers.ml` is 800-odd lines over seven blocks**, and
+  `test/handle/test_gallery.ml` is 1077 lines of which ~540 are one golden, with the three
+  sweeps behind it. Both want splitting before M3 grows them again; a large pure-motion diff
+  in front of a round's substance is what made it not worth doing inside M2.
+  task-5 report, task-13 N7.
+- **The two `all_kinds` lists** in `test/test_events.ml` and `test/live/live_events.ml` are
+  still duplicated verbatim. Each is now count-checked against `Kind.t`, so neither can rot
+  silently; neither is checked against the other. task-1 Minor 3 residual.
+- **`task-8-report.md`'s deviation 6 is stale** — it still justifies the sixth gallery page by
+  "per-page state that visibly survives (each page holds an entry)", which the fix round's N3
+  corrected in `examples/gallery.ml`. A record, not code. task-8 N10.
+
+## Tests worth adding
+
+- **No synthetic click or key press exists in the pinned ocgtk binding, so no test anywhere
+  delivers one.** There is no `GdkEvent` constructor for any event subtype (checked every
+  `*event*.mli` under `gdk/generated/` for `new_`/`alloc`); `Gobject.Signal.emit_by_name` and
+  `.notify` take no arguments and return unit, so neither can carry a click's
+  `~n_press ~x ~y` or a key press's `~keyval ~keycode ~state`; and
+  `Event_controller_key.forward` only re-routes an event a controller is already processing.
+  What is covered instead, and what the gap therefore is:
+  - the *plumbing* — that `Attr.on_click` attaches a `GtkGestureClick` with the right `button`
+    and `phase`, that dropping the attr removes it, that GTK and this library agree on what is
+    attached — is `test/live/live_controllers.ml`, counting by the debugging name `Controllers`
+    sets on each controller;
+  - the same *plumbing* for keys — one shared `GtkEventControllerKey`, carrying the phase the
+    attrs asked for (read back off the live controller), dropping one attr empties one slot
+    while dropping both removes the controller, and two attrs asking for different phases are
+    rejected at mount and at patch — is `test/live/live_controllers.ml` too. `armed=` on every
+    line is what distinguishes an attached controller from one that would actually call a
+    handler, which is otherwise unobservable for an event nothing can deliver;
+  - the *handler* — that a middle click with shift reaches the application's closure with the
+    right `Click_event.t`, and that a key handler consumes Escape and lets `x` through — is
+    `test/handle/test_handle.ml`, headlessly, through
+    `Bonsai_gtk_test.Action.{Click_at,Key_press,Key_release}`. `Key_press` prints the
+    `Key_response.t` the handler answered, because that half of a key press is a value GTK
+    reads synchronously and there is no GTK headless;
+  - the *trampoline* between them — slots, the `in_patch` guard, the exception guard, and the
+    value `Payload` hands back to GTK on each of those three paths — is
+    `test/live/live_signals.ml`, which calls the callback `Signals.connect_all` built rather
+    than emitting through GTK; and the key spec's own mapping from `Key_response.t` to that
+    value is `Controllers.key_pressed_answer`, called directly in `live_controllers.ml` over
+    all four constructors.
+  - **Not covered:** that GTK actually routes a real button press, or a real keystroke, to the
+    controller this library attached — and, for keys specifically, **that propagation works**:
+    neither suite can show that a `Handled` Escape failed to reach a sibling, or that a
+    `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The routing is
+    GTK's, and every input to it is asserted; the routing itself is not. Compensating controls:
+    the gallery's Input section, and the real-display click-through below. Closing it properly
+    needs an ocgtk fork patch exposing a `GdkEvent` constructor or
+    `gtk_test_widget_click`/`gtk_test_widget_send_key` (none is bound today), or the XTEST
+    route below. Tasks 4 and 5.
+- **A synthetic click or key press may be reachable through XTEST rather than through the
+  binding**, and this is the single most valuable follow-up in the file: it would *close* the
+  gap above rather than compensate for it. The plan closed the question against ocgtk and did
+  not consider driving the X server the live tests already run on — `xdotool`/`xte` under the
+  same `xvfb` would deliver a real button press and a real keystroke to a real window, which is
+  exactly the step no suite in this repository takes. It needs a package in the dev shell and a
+  live test that maps widget coordinates to screen coordinates. Task 13's review asked for this
+  to become a numbered bead rather than a backlog line, "because the backlog is where the same
+  gap has already sat since M1"; the controller filed it.
+- Focus is the exception and *is* covered end to end: `Widget.grab_focus` on a presented window
+  really drives `GtkEventControllerFocus`, and `live_controllers.ml` asserts the handler fires,
+  that the reentrancy guard drops a focus change made during a patch, and that a removed
+  controller stops firing. Task 4.
+- **Real-display click-through of `examples/gallery.exe`** — it has only ever been run under
+  `xvfb`. **Task 13 built the page** (the gallery's *Input* tab): a click card reporting button,
+  press count, widget-local coordinates and modifiers; a `Capture`-phase key controller that
+  consumes Escape (`Handled_and`, with a counter) and observes every other key without
+  consuming it (`Propagate_and`, with an entry below it that must still receive the text); and
+  two entries whose focus enter/leave name which one has it. **The remaining work is a person
+  running it on a real display and confirming all four readouts move.**
+- **GC/lifetime**: remove a keyed child, `Gc.full_major`, assert the widget was finalized — the
+  spec's central ownership assumption, still unwritten (carried from M0). M2 makes it more
+  interesting, not less: `Child_keys` is an ephemeron table on exactly those widgets, and the
+  controller GClosure cycle above is a second root per controller.
+- **After-display spin regression** (needs a frame counter under `Private`) — carried from M0.
+- `Driver.schedule_event`'s broken guard is exercised but not asserted: nothing public observes
+  the Bonsai action queue's length. Task 1.
+- **No live per-kind `update` sweep.** Task 13's headless sweep proves the patcher will not
+  *skip* an impl's `update` (`props_changed=true`); it says nothing about whether `update`
+  writes anything, and `test/handle/` links no ocgtk. There is still no single live
+  `Live_tree.dump` golden over the whole catalogue. Tasks 10 and 13.
+- **`forget_children`/`forget_rows` are unpinned** — see the `Child_keys` item under "Do first
+  in M3"; the closing shape is a `Child_keys.length` for tests. task-7 M4.
+- **`Reconcile`'s two theorems live only in one widget's comment**: `Reconcile.diff` emits every
+  `Move` with `from > to_`, and it can never emit `to_ = n-1`, so no container's `move` ever
+  needs `reorder_child`'s past-the-end clamp. Recorded in `w_notebook.ml`; they are theorems,
+  not measurements, and would otherwise be re-derived. task-8 carry 4.
+- **`Live_tree`'s notebook dump cannot show page order** (the internal `GtkStack` holds its
+  children in insertion order), and more generally any container that holds widgets on a
+  child's behalf — a stack's switcher buttons, a list box's placeholder — has the same "the
+  dump is the only independent reading" problem. task-8 carries 2 and 5.
+- **The text-view cache's invariant has no independent idle-frame test**, and cannot have one:
+  reading the buffer to check that nothing read the buffer would itself leak and would defeat
+  the thing under test. What defends it is the ratio bench. Worth knowing before anything
+  relaxes that bench. task-9 carry 4.
+- **The month-and-year heading walk (Dec → Jan) is absent from the calendar golden** — it is the
+  case the day-selected dedup's safety argument rests on most. Behaviour probed and correct;
+  one more `walk` line would put it in the golden. task-11 re-review M1.
+- **`live_text.ml`'s "showing today" assertion can flake across midnight** — it compares against
+  a `Date.today` computed after the mount. Capturing `today` once before is free.
+  task-11 re-review M2.
+- **Teardown of all three calendar connections is unasserted.** Low risk (the type forces the
+  list, and a surviving handler on a destroyed widget finds a cleared slot), but it is the one
+  property of the connection-list change that no test observes. task-11 re-review M3.
+- **The text view's repeat-report suppression for a *rebuilt* equal string is untested** —
+  `already_refused`'s `String.equal` arm suppresses a duplicate report, which is `node.mli`'s
+  "once per offending text" promise, and the suite pins only the physically-same-string case.
+  One extra line patching a `String.copy` closes it, and it is the arm a later "simplify this to
+  `phys_equal`" would silently break. task-9 re-review 2 RR1.
+- **Nested `Attr.many` has no golden** — `test/test_attrs.ml` covers one level, and `flatten`'s
+  documented depth-first left-to-right order is what makes `Attrs.of_list`'s last-write-wins
+  meaningful. One extra attr in the existing test closes it. task-1 Minor 10.
+- **Three expect tests pass props the sexp then drops** (`test/test_widgets.ml`'s
+  `~content_fit:Contain`, `~can_shrink:true`, `~vpolicy:Automatic`, `~step:1.` are all defaults,
+  erased by `[@sexp_drop_if]`), so they look like coverage and are not. Carried from M1.
+- **`examples/gallery.ml` writes its sample PNG to a fixed path in `$TMPDIR`**, so
+  `Out_channel.write_all` follows whatever is already there. Example-only, and the fixed name is
+  what stops the per-run litter. Carried from M1.
+- `Live_tree.dump` collapses a placeholder `""`, and truncates text at 60 characters.
+  `focusable`/`can_focus` are absent from it. Carried from M1 and Task 9.
+- **`Bonsai_gtk_vtree.Placement`'s granularity is the parent's *kind*, not its slot**, so
+  `Attr.measure_overlay` on a `Node.overlay`'s **main** child, and a `row_*` attr on a list
+  box's `?placeholder`, are both accepted and both stay inert. Tightening it means threading the
+  slot name in beside the kind; worth doing when a slot container reads two different placement
+  attrs on two different slots, and not before. M2 task-3 M6, task-6 M7.
+- **Nothing distinguishes `Driver.frame`'s phys-equal fast path from the slow one.** Replacing
+  `phys_equal node live.Patcher.node` with `false` used to leave the whole suite green because
+  the two paths were behaviourally identical by design. Task 2 made the fast path *narrower*
+  (`reassert_only`) rather than merely equal, so the flip is now a performance change rather
+  than a no-op — but still not a behavioural one, so the guard remains unpinned.
+  M2 task-2 Minor 1.
+- Untested-but-implemented update branches: `Frame.label_align`, `Expander.use_markup`,
+  `Revealer.transition`/`transition_duration` (none is printed by `Live_tree.dump`), and
+  `W_image.update` writing `pixel_size` back to `-1`. Carried from M1.
+
+## Known-and-accepted dump quirks
+
+Do not "fix" these when an expected file surprises you:
+
+- `Live_tree` prints `opacity` as GTK reports it (8-bit storage), so `Attr.opacity 0.5` reads
+  back `0.501961`.
+- Every `GtkSpinButton` dump carries a constant `numeric` line: the node default is `true` where
+  GTK's own is `false`.
+- GTK's icon-name resolution for `GtkImage` can churn across GTK versions, so image dumps may
+  need re-promoting on a GTK bump.
+- A `Grid` child whose `Attr.grid_cell` changes is re-attached, which moves it to the end of
+  GTK's child list; the cell is the placement, so nothing moves on screen — but the dump order
+  changes.
+- GTK 4.22 leaves `gtk_root_get_focus` pointing into a widget across an unparent and a
+  re-parent, so the save/restore in `w_grid.ml`'s `updated` hook is insurance rather than a
+  repair.
+- **`set_current_page` on a page whose child is hidden emits `switch-page` and leaves the
+  current page unchanged** — which is why `w_notebook.ml`'s select fixup reads the live widget
+  back rather than trusting the index it wrote. Task 8.
+- **`GtkFlowBox.remove` *does* emit `selected-children-changed` on 4.22.** The M2 plan called it
+  a documented quirk that it does not; that was stale. Task 7.
+- **The live suite has two stderr producers**, not one — the "the one stderr line is …"
+  convention three M2 reports used no longer holds. task-7 re-review N2.
+- **`test/live/expected_controllers.txt` has been seen to flake under Xvfb**, with
+  `focus-enter,focus-leave` arriving one frame early. Observed once, on a `ci.sh` run against a
+  restored pin; it is a timing flake in the controllers focus test, not a regression — recorded
+  here so a future pin bump is not blamed for it. task-14 M11.
+- `expected_controllers.txt`'s `gtk=` name lists follow attach order, so reordering
+  `Events.Family.t` for tidiness reorders them even though every `armed=` assertion holds.
+
+## Plumbing / hygiene
+
+- `scripts/ci.sh`'s generated-opam check is `git diff --exit-code -- '*.opam'`; add `HEAD` so
+  *staged* drift is caught too.
+- `scripts/setup-switch.sh`: the reinstall stamp keys on `rev`, so a dirty `.ocgtk-src` at the
+  pinned rev is not rebuilt — add a `git status --porcelain` check. **And `opam reinstall ocgtk`
+  does not update `bonsai-gtk-ocgtk-rev`**, which is worse than no evidence because it looks like
+  evidence: either have `setup-switch.sh` document it or have the reinstall path clear the stamp.
+  Task 14.
+- **Flake: a `gir_gen`-capable shell**, so the fork's generator work does not depend on
+  `nix develop ~/src/stavekeeper#girgen`. Every generator command in Task 14 ran through that.
+- Node paths are frozen at mount, so `on_exn` logs name a stale path after a move.
+- `Signals.slots`' outer `ref` is built by mutation and never re-assigned afterwards.
+- **A `Driver` is never reclaimed, stopped or not**: a `Driver.create` that is stopped without
+  ever being framed still retains ~39k live words, and a failed `Expert.embed` about ~10k, on a
+  heap settled through two full majors. It is the Bonsai graph rather than anything GTK —
+  Incremental's state is global and outlives the observer invalidation `stop` performs — so an
+  application that builds a driver per dialog grows without bound. The lever is Bonsai's, not
+  this library's; if M3 wants defence in depth, it is disconnecting the patcher's signal closures
+  from a finalizer-safe place, or holding the driver from the `ctx` weakly. `Driver.stop` does
+  now drop `on_root_widget_changed`. Task 12.
+- **`Bonsai_gtk.start`'s `on_window_created` has the same shape** and is not dropped by
+  `Driver.stop`: it closes over the `GtkApplication`. Harmless today, one line to fix the day it
+  is not.
+- **`drain`-shaped loops (`while Glib.Main.pending () do …`) can fail to terminate** right after
+  a major collection that finalizes many wrappers (reproduced twice by the Task 12 reviewer).
+  `test/live/live_embed.ml`'s `drain` is bounded for that reason; every other live test's is not.
+- The 16 ms tickless cadence is hard-coded (`src/scheduler.ml`), and `request_frame` does not
+  cancel a pending `request_frame_soon`.
+- `after_of` is `O(index)` per op and the surrounding `cur` bookkeeping `O(n)` per op — see "Do
+  first in M3" for what actually showed up in a measurement instead.
+- The `Update` kind-change arm still removes a child after `patch` destroyed the old live widget
+  — latent until M3's `Node.windows` puts a `Window` in a list.
+- `Widget_impl.snapshot` is 17 getter calls per widget creation and grows with every widget-wide
+  attr; the shape to reach for is lazy per-field capture on first `Set`.
+- The `page` helper is duplicated across the Task 5 live tests.
+- Redundant `(deps …)` in `test/live/dune`.
+- **`Bonsai_gtk` re-exports four enum modules the M2 plan never listed** — `Selection_mode`,
+  `Tab_position`, `Wrap_mode`, `Level_bar_mode` — plus the five event-value modules. They are in
+  the README and in spec §7 now; spec §5.1's constructor sketch is still M0's and does not show
+  `?tab_pos`, `?wrap` or `?mode`. Tasks 8–10 carries, routed to Task 16's spec sweep.
+- **The port's shell-side gap** (stavekeeper, not this repo): `app#quit` bypasses
+  `on_close_request`, so the port needs an embed-side equivalent of `Viewer_window.teardown_all
+  ()` or it will skip `Embedded.stop` on the quit path. Task 12.
+- **The Stavekeeper pin bump is outstanding**: `ocgtk-pin.json`, `flake.nix`'s
+  `fetchFromGitHub` hash `sha256-0q4wCAXgYenhKwSobYJ1wVgs/ZptWeCp9UPipzTJ/Z0=` and
+  `scripts/setup-ocgtk.sh` all still point at the pre-M2 fork commit; then `nix build` and the
+  smoke test. This repository's pin has moved (`3a87d1c`); Stavekeeper's has not.
+
+## ocgtk fork
+
+The pin is `649498b4` (`ocgtk-pin.json`), the head of the fork's `m2-bindings` branch, which is
+pushed and to which fork `main` has been fast-forwarded. Twelve commits sit on it beyond M1's
+pin. `ci.sh` is green against it.
+
+### Fixed in M2's fork round — do not re-file these
+
+- **`gtk_list_box_get_selected_rows`'s missing `g_object_ref_sink`**, and the other 23
+  transfer-container list returns with the same shape. The M1 backlog carried this as the most
+  valuable fork patch M2 had found, and it was: the stub handed out one unbalanced unref per
+  selected row, which disposed still-parented rows within a few frames of a major collection
+  and segfaulted. Fixed in the generator rather than by hand, with a refcount-invariant
+  regression test.
+- **`g_object_ref_sink` on a constructor's return, for a type that is not
+  `GInitiallyUnowned`** — `GtkStringList` and its kin held two references and dropped one.
+- **The three nullable string bindings** M1 wanted: `Widget.set_name`,
+  `Password_entry.get_placeholder_text`/`set_placeholder_text` (the getter was a *crash*, not a
+  wrong value), and `Stack_page.set_title`. The library has not taken the behavioural benefit —
+  see "Do first in M3".
+- **`gtk_drop_down_get_selected_item`'s missing sink** (as a side effect of the transfer sweep).
+  Its other half is not fixed — see below.
+- **A GObject handler reached from OCaml's finaliser re-entering the runtime.** The M1 entry
+  called it a hang; it is a **memory-safety bug** — measured as a segfault as soon as the
+  callback allocates, with no bonsai_gtk involved at all, and reachable by any downstream
+  application that connects `destroy` and lets the widget be collected. The fork now guards all
+  three finalisers and reports once, non-fatally. The consequence a consumer inherits is that a
+  handler reached during finalisation no longer runs at all; `signals.mli` states the rule.
+- `pango_glyph_item_apply_attrs`'s aliased transfer-full instance, and `gtk_builder_get_objects`'
+  bare-GObject elements.
+
+### Still open on the fork
+
+- **No transfer-full `char*` return is freed anywhere in the generated stubs** — a memory leak in
+  every one of them, and **the highest-value remaining fork item**. The one M2 walks into is
+  `gtk_text_buffer_get_text`: `ml_text_buffer_gen.c` copies the result and never `g_free`s it,
+  while the method is `transfer-ownership="full"`. Reproduced: 200 whole-buffer reads of a 1 MB
+  `GtkTextBuffer` grow RSS by 201 MB and a `Gc.full_major` reclaims none of it.
+  `get_slice`, `gtk_text_iter_get_text` and `gtk_text_iter_get_slice` are the same shape, so
+  there is **no** way to read a text buffer through this binding without leaking it.
+  `w_text_view.ml` works around it on the *frame* path only (a cache invalidated from
+  `GtkTextBuffer::changed`, so an idle frame reads nothing) — **it does not fix the edit path and
+  cannot**, because `Attr.on_changed`'s contract is to hand the handler the buffer's full text.
+  Each keystroke in a 1 MB document costs 0.42 ms and leaks 1 MB; sustained typing leaks several
+  MB a second. That is the number to weigh. The generator already emits `g_free (result)` after
+  copying a transfer-full *array*; the single-`char*` path is the miss, so this is a small
+  `gir_gen` change plus a regeneration — genuine new work, not a re-run. Task 9, Task 14 item 4d
+  #4.
+- **Transfer-full GObject in-parameters, ~30 sites.** The generator now emits `g_object_ref` on a
+  `transfer-ownership="full"` in-param, which closes a real double-drop — **held back** because at
+  least six of those sites would `g_object_ref` a `GtkExpression`
+  (`gtk_string_filter_new`, `gtk_bool_filter_new`, `gtk_numeric_sorter_new`,
+  `gtk_string_sorter_new`, `gtk_property_expression_new`, `gtk_drop_down_new`), and a
+  `GtkExpression` **is not a `GObject`**: it has its own `gtk_expression_ref`/`unref`. Applying it
+  wholesale would trade a leak for a probable `G_OBJECT` cast critical. Needs a generator change
+  that recognises the ref-counted non-GObject types, then regeneration. Task 14 item 4d #1.
+- **31 constructors build non-GObject fundamentals and wrap them through
+  `ml_gobject_val_of_ext`**, whose finaliser is `g_object_unref (G_OBJECT (ptr))` — an invalid
+  cast critical plus a leak on every collection.
+  `ml_constant_expression_gen.c`, `ml_object_expression_gen.c`, `ml_property_expression_gen.c`
+  and 28 `GskRenderNode` subclasses. Not caused by the M2 round, which removes one bogus critical
+  per construction and leaves the leak. **Same root cause as the in-param item above, and it
+  should be one issue with it rather than two.** Related: 9 constructors (not the 11 the report
+  says) keep a sink on a non-`GInitiallyUnowned` type even after regeneration, and 9 of those 11
+  sink lines are in files in no `dune-generated.inc` — dead code. A tighter rule would be "sink
+  iff `GInitiallyUnowned`". Task 14 item 4d #3, review M10.
+- **GBytes returns, 6 sites**, want `g_boxed_copy` because `Val_GBytes` adopts. Well covered by
+  `gir_gen`'s tests; held back only to keep the M2 branch to the two classes audited by hand.
+  Task 14 item 4d #2.
+- **`gtk_drop_down_get_selected_item` still returns a bare custom block where the `.mli` promises
+  an `option`** — so a `Some` with the raw pointer word as its payload, and `caml_failwith` on a
+  NULL return rather than `None`. The missing sink half is fixed; this half is not.
+  `ml_gobject_val_of_ext_option` exists two functions away in `wrappers.c`. Nothing here calls it,
+  and it is worth fixing because it is the *obvious* call for "what is selected".
+- **`gtk_drop_down_get_expression` answers `None` on a drop-down that has one**, and its stub
+  `g_object_ref_sink`s a `GtkExpression`, which is not a `GObject`. Measured on GTK 4.22. Nothing
+  here calls it, but it means this library cannot assert that `~enable_search:true` will actually
+  filter — the expression is what the popup's filter reads.
+- **`Gobject.unref` is not exposed** (it exists as `ml_g_object_unref` in `ml_gobject.c` with no
+  `val` in `gobject.mli`), and **`Widget.destroy` is not bound either** — there is no
+  `gtk_widget_destroy` in GTK 4, but `gtk_window_destroy` and `g_object_run_dispose` are unbound
+  too. Noted because `test_dispose_reentry.ml` had to emit `destroy` by hand rather than drop a
+  reference, and a control that disposes deliberately is a better test than one that emits.
+  Task 14 items 4d #6 and #7.
+- **`g_object_ref_sink` is still the wrong primitive on the borrowed-return path.** For a borrowed
+  reference you want `g_object_ref`; `ref_sink` differs only on a floating object, and then it
+  *claims the float* instead of adding a reference, so the wrapper's finaliser would destroy an
+  object the container still points at. Nothing reachable is floating today (measured), but
+  `generate_ref_sink_stmt`'s borrowed-return branch would be correct by construction with
+  `g_object_ref`. task-14 re-review N2.
+- **`test_transfer_container_lists.ml` pins 3 of the 24 sites** (ListBox, FlowBox, Builder). The
+  remaining 21 — `text_iter`, `tree_view`, `cell_layout`, `size_group`, `window_group`,
+  `accessible_list`, `application`, `gesture`, `emblemed_icon`, the four GDK sites and all three
+  Pango sites — are unpinned, which is why C1 got through the first round. All of them sit behind
+  `require_gtk`, which `Alcotest.skip ()`s without a display, so on a display-less runner the file
+  pins nothing at all. Table-driving it properly is a task, not a fix-round minor. task-14 M9.
+- **The generated tree is 34 files behind its own generator** (28 files / 31 sites of the
+  transfer-full GObject in-param class, and 6 borrowed-`GBytes` returns) — disclosed rather than
+  hidden, since both are the held-back items above. When the first is taken up, that inventory is
+  the place to start. task-14 re-review N6.
+- **`docs/dev-notes.md` does not exist**, though ten generated ocgtk files point at it as the
+  authoritative "re-apply on any vendor re-sync" list. Pre-existing, and now load-bearing: the M2
+  round adds more hand-applied hunks whose survival depends on exactly that discipline.
+  task-14 re-review N3.
+- **`GList*` is declared for 13 GSList-returning stubs.** It works because both structs lead with
+  `data`/`next`, but the types are incompatible and `-Wincompatible-pointer-types` is an error by
+  default in GCC 14+ and Clang 16+. Builds clean on this toolchain. Pre-existing and systemic.
+  task-14 re-review N4.
+- **The `caml_remove_global_root`-from-a-finaliser residual** in `ml_closure_invalidate`
+  (`ml_gobject.c`): it does not allocate, and the counting case exercises it, but nothing asserts
+  it.
+- **Two commit messages on the pushed branch are wrong and cannot be fixed**: `4ea70268` says
+  "190 files" where the figure is 206 generated `.c` files, and lists `gtk gio gdk gsk pango`
+  while 19 of the 279 removals are in `gdkpixbuf`; `a913c307` misclassifies 7 of the 24 sites it
+  touches (four are `transfer-ownership="none"`, the three Pango ones are `"full"`) and says 21
+  where it is 24. The substantive halves were repaired in the code, the override comment and
+  `overrides.md`. task-14 M3, M4.
+- **`task-14-report.md`'s 4b regression paragraph overstates the reproduction** — it says removing
+  the sink leaves the suite hanging, where the reviewer got a clean `[FAIL]` in seconds; it should
+  say "hangs *or* fails" and give the condition. A record, not code. task-14 M7.
+- **The aliasing audit's headline count is 93 where it should be 75** (`overrides/pango.sexp`,
+  `architecture/gir_gen/overrides.md`): restricted to methods, functions and constructors as the
+  sentence states, 93 both double-counts one representation and omits the other. The safety
+  conclusion is unaffected. task-14 re-review N1.
+- **A stray `transfer_strategy = Ts_none;` sits mid-sentence inside a doc comment**
+  (`gir_gen/lib/type_mappings.ml:256`). Harmless, pre-existing, worth deleting while nearby.
+  task-14 re-review N5.
+- **Handler ids come from one global counter, not a per-instance one** (measured on this GLib:
+  two handlers on two different `GtkTextBuffer`s and one on a `GtkTextView` got 118/119/120). So
+  `signals.mli`'s worse case for disconnecting a handler id from the wrong object — "at worst
+  disconnects an unrelated handler that happens to share the number" — cannot happen here: the
+  wrong disconnect logs `instance '0x…' has no handler with id 'N'` and leaves the real handler
+  connected. Still a bug, and still the one `Signals.connection` exists to prevent; the doc's
+  second clause is the theoretical half and should say so if it is ever rewritten.
+- **The fork has no working `dune build @fmt`**: `gir_gen/.ocamlformat` pins 0.29.0 and the
+  `#girgen` shell ships a different build. The fork's problem, not the branch's, and a bead of its
+  own.
+- **`test_glyph_item_alias` needs a display** (`require_gtk`), so on a display-less runner it
+  skips — and so does the C1 regression it exists to pin.
+- **Six upstream PRs are open as drafts** (#173–#178, `docs/upstream/README.md`) pending
+  maintainer-side review; topic branches are pushed, each a single scrubbed commit cherry-picked
+  onto `upstream/main`. **The twelve `m2-bindings` commits have no topic branch or PR yet** and
+  need the same treatment — and the scrub grep must be re-run over all of them, because
+  `a913c307`, `4ea70268` and `95c1d6e8` edit generated files that still carry `score-library-*`
+  comments in their diff context. Once anything merges upstream, rebase `bonsai-gtk`, re-run
+  `nix build .#ocgtk`, move the pin.
+- ocgtk's commit 2 hand-patches stubs commit 3's generator now emits; upstream may prefer
+  regeneration (said in the PR text).
+- The OxCaml `caml_alloc_custom_dep` branch of the GBytes accounting is only exercised in the opam
+  switch, not in the stock-OCaml Nix build.
+
+### Confirmed out of reach, and routed around
+
+Each is a milestone of its own rather than a patch, and M2's workaround stands:
+
+- **`List_box.set_header_func` / `set_sort_func` / `set_filter_func`** — the generator emits no
+  GIR-callback-taking method at all. Sort and filter in the model; a header is an ordinary
+  non-selectable, non-activatable row.
+- **`GLib.DateTime`** — there is no `GLib-2.0.gir` in the checkout to generate one from, which is
+  why `Node.calendar` takes a `Core.Date.t` and converts to GTK's three integers in one place.
+- **`gdk_keyval_name` / `gdk_keyval_from_name`** — no namespace-level function is generated, which
+  is why `Keyval` is a curated table of `int`s.
+
+### The rule this established
+
+For any new binding call that returns objects: **read the *stub*, not the GIR.** A
+`Val_GList_with` site without `g_object_ref_sink`, or any `Val_*` wrapping a transfer-none
+pointer, is an unbalanced unref that GC turns into a use-after-free — and neither the type checker
+nor a short-lived test will show it, because nothing collects before exit.
+`test/live/live_lists.ml`'s first block is the shape of test that does: N frames, a
+`Gc.full_major`, and an assertion that the widgets are still there.

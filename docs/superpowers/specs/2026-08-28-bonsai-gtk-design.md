@@ -171,6 +171,45 @@ val start
   itself is built on (plus a `GtkApplication` to own the main loop and present the
   window), and what the live tests and embedders with their own main loop use directly.
 
+**M2 amendment (2026-08-30).** There is a second entry point, and it is the one an
+existing GTK application uses: `Bonsai_gtk.Expert.embed` (`Expert.Embedded`, `src/embed.ml`).
+
+```ocaml
+val embed
+  :  ?time_source:Bonsai.Time_source.t
+  -> ?optimize:bool
+  -> ?target_frames_per_second:float
+  -> (local_ Bonsai.graph -> Node.t Bonsai.t)
+  -> Embedded.t
+```
+
+It builds the computation, mounts it with one frame, and starts a tick on whatever main
+context the embedder is already running; it creates no `GtkApplication` and runs no main
+loop. Three things follow from "the caller owns the window", and all three invert a rule
+`start` states above:
+
+- **The root must *not* be a `Node.window`.** `Driver.create` therefore takes a
+  `?root_kind`, and `check_root` rejects each way round with a message naming the other
+  entry point. The rule "a `Node.window` anywhere below the root is rejected" is unchanged
+  and, for an embedded tree, means *anywhere at all*.
+- **`Embedded.widget` is a wrapper `embed` owns, not the rendered root.** The root node's
+  *kind* may change between frames, and the patcher answers a kind change by mounting a
+  replacement and destroying the original — so a caller handed the rendered root would
+  afterwards hold a widget nothing renders into again, with no exception and nothing on
+  stderr. The wrapper is a `GtkOverlay` holding the tree as its main child: measured, it is
+  the only single-child container in GTK 4 that allocates its child exactly as the caller's
+  own container would (a box or a grid drops the child's alignment on one axis; only an
+  overlay forwards `halign`/`valign` as well as the expand flags).
+- **`stop` empties the wrapper but does not unparent it**, because it did not parent it.
+
+The obligation embedding adds is about waste rather than safety — the shadow tree holds a
+reference to every widget it built, so an embedded tree survives its host and a frame after
+the host is gone patches a tree nobody can see rather than freeing memory. But it is a real
+obligation: an embed dropped without `stop` is permanently unreclaimable, because the
+patcher's signal closures hold the runtime, which holds the shadow tree, which holds
+GObject references back. `stop` is what breaks the cycle, and it is also what disconnects
+the `destroy` backstop `create` installs — see the §11 amendment on finalisation.
+
 ### 4.2 Frame
 
 A frame is, in order:
@@ -201,6 +240,16 @@ skips every impl `update` and `Attrs.diff` writes nothing, so no GTK call is
 made. A walk restricted to the re-assert and fixup passes for a phys-equal root
 is on the backlog.
 
+**M2 amendment (2026-08-30).** That walk landed. `Patcher.reassert_only` runs
+`Widget_impl.reassert` and the fixup enqueues over the shadow tree and nothing else, and
+`Driver.frame` takes it whenever the new root is `phys_equal` to the live one. The
+reasoning the M1 amendment gives is unchanged and is what makes the narrowing safe rather
+than a re-introduction of the guard it removed: what the phys-equal argument rules out is
+skipping the frame, not diffing it, and with the node physically identical there is nothing
+for `Attrs.diff` to find and nothing for `Kind.equal_props` to admit — so a full patch
+would walk the same tree to reach the same two calls. An idle tick is now nearly free, and
+a declined edit is still put back.
+
 ### 4.3 Scheduling
 
 - `Scheduler.request_frame` arms one coalesced
@@ -217,7 +266,10 @@ is on the backlog.
   tick costs one stabilization *plus* one walk of the shadow tree that issues
   no GTK calls. Suspending the tick while idle, and a re-assert-and-fixup-only
   walk for a phys-equal root, are noted future optimizations, not part of this
-  design.
+  design. **M2 amendment (2026-08-30):** the second of those two landed
+  (`Patcher.reassert_only`, §4.2), so an idle tick now costs one stabilization
+  plus a re-assert-and-fixup walk rather than a full one. Suspending the tick
+  while idle is still not done.
 - A non-positive `target_frames_per_second` installs no tick at all
   (`Scheduler.start_tick` with `fps <= 0.`). Frames still happen on
   interaction via `request_frame`. After-display handlers still need to be
@@ -302,6 +354,32 @@ Two nodes with the same attrs are equal by value except handlers, which are
 compared physically (they are re-created each frame anyway; equality only
 short-circuits slot writes).
 
+**M2 amendment (2026-08-30).** Two changes to what this section describes.
+
+*The variant is sealed.* `Attr.t` is `private Attr.Private.t`: the constructors live in
+`Attr.Private`, and an application can neither build one from a raw constructor nor match
+on one without spelling `(a :> Attr.Private.t)` — which is legal for anyone, deliberately,
+and carries no stability promise. The alias form the M1 plan wrote down does not typecheck;
+`type t = private Private.t` is what does, and it is compiler-enforced rather than
+promised. `Attr.Name.t` stays concrete on purpose: `Attr_apply.unset`'s exhaustive match
+over it is the mechanism that makes "unset restores the creation-time default" impossible
+to forget for a new attribute, and sealing it would trade a compile error inside the
+library for a silent omission.
+
+*The controller attrs ship in M2, not M3.* `on_key_pressed`, `on_key_released`,
+`on_focus_enter` and `on_focus_leave` — listed above as if they were ordinary widget-wide
+attrs — are here, joined by `on_click`, and all five take the shape this section does not
+anticipate: `on_click` and the two key attrs take a `?phase` (`Phase.t`, GTK's propagation
+phase, defaulting to `Bubble`), `on_click` also takes a `?button`, and `on_key_pressed`'s
+handler is **not** a `Handler.t` — it returns a `Key_response.t`, because GTK asks a key
+press whether anything handled it and routes the event on the answer synchronously (§6.4).
+`on_map` and `on_unmap` do **not** ship: nothing has wanted them, and a lifecycle attr on a
+declarative tree wants a design of its own. `css_provider` is likewise still M3.
+
+The five are also unlike every other event attr in being legal on *any* node: they are not
+signals of a widget class but controllers the runtime attaches to whatever carries the
+attr, and the controller exists exactly as long as the attr does.
+
 ### 5.3 Children shapes
 
 Fixed per kind, encoded in constructor arguments:
@@ -340,12 +418,44 @@ GTK's. The consequence for an unordered container is stated in
 not as a sequence, and an `Update` is therefore indexed by the child's position
 in the *live* list rather than in `new_`.
 
+The table's `List` row is also now complete: `ListBox`, `FlowBox` and `Notebook` are all
+`List`, and **their children require keys** — a child without one is `Invalid_argument`
+from the *constructor* (`Node.require_child_keys`, retrofitted to `Node.stack`), naming the
+child's index, because at that point there is no tree to prefix a path onto and the mistake
+is in the call. A list box's rows and a flow box's children are wrapped by the impl in a
+`GtkListBoxRow` / `GtkFlowBoxChild` it owns — there is no `Node.list_box_row` — and per-row
+settings arrive as placement attrs on the child (`Attr.row_selectable`,
+`Attr.row_activatable`). A notebook interposes nothing: its pages *are* its children's
+widgets, and `Attr.tab_label` is a string GTK builds a label from.
+
 ### 5.4 Keys
 
 `Key.t = string`. A node without a key is matched by position + kind. A keyed
 node is matched by key within its sibling list; a key appearing twice among
 siblings is an error at patch time. Keys are what preserve widget state
 (focus, entry text, scroll position) across reorders.
+
+**M2 amendment (2026-08-30).** With three keyed containers whose *selection* is also named
+by key, one rule decides what a key that names no child does, and it is a rule about
+arity rather than about the container:
+
+> A container that shows exactly **one** of its children raises when told to show one that
+> does not exist. A container with a **plural** selection ignores keys it cannot find.
+
+So `Node.stack ~visible_child` and `Node.notebook ~current_page` are `Invalid_argument`
+(from the fixup pass, which is the first point at which the child list is known — with an
+empty-container carve-out, since a model rendering no pages has no name it could pass that
+would be right), while a `list_box`'s or `flow_box`'s `~selected` filters itself down to the
+keys that have children. The asymmetry is not arbitrary: a required single-child argument is
+a claim about a set the caller can see, so a name outside it is a typo, whereas a plural
+selection and the child list routinely come from different Bonsai state and a key naming a
+child that has not arrived yet is a frame a correct model passes *through*. Such a ghost key
+is inert while it names nothing and selected on the frame its child arrives — the same frame,
+pinned in both directions.
+
+Duplicate sibling keys are checked at mount as well as at patch (§11), and `Child_keys` —
+the ephemeron table each container keeps from child widget to key — is keyed on the child
+widget the patcher retains, never on the wrapper row, or the entry dies with the wrapper.
 
 ## 6. Patcher
 
@@ -478,6 +588,49 @@ back with the class getter. Key and pointer events come from
 to the widget. Signals ocgtk cannot bind at all (boxed-record or out
 parameters) are omitted from the API and listed in the widget's doc comment.
 
+**M2 amendment (2026-08-30).** `spec` is a variant with two arms, because step 4 above —
+"reads the current handler ... converts GTK arguments to the OCaml event value" — is not
+always possible.
+
+- `Read_back` is the M1 shape and still the ordinary one: GTK's callback carries nothing
+  useful, the value the user just changed is on the widget, and `fire` reads it back with
+  the class getter. Every M1 signal and every `notify::` one is one of these. Its `connect`
+  now returns a `connection` **list**, because one attr may need more than one GTK emission
+  to be complete: a `GtkCalendar`'s date moves by a day click (`day-selected`) *or* by a
+  heading walk (which emits only `notify::month`/`notify::year` and no `day-selected` at
+  all — measured), and an attr that heard one and not the other would be a prop the model
+  cannot keep up with. All of them share one attr name and therefore one slot, so
+  `update_slots` and `require_slots` are unchanged.
+- `Payload : ('p, 'r) payload -> spec` is for the signals whose arguments cannot be
+  recovered afterwards. Three exist: `GtkListBox::row-activated` (the row is gone by the
+  time anything could look for it), `GtkGestureClick::pressed` (the coordinates are stored
+  nowhere), and `GtkEventControllerKey::key-pressed`. `'p` is what the `connect` closure
+  assembles — it may combine the callback's arguments with things read off the object,
+  which is how a click's button and modifiers get in — and `'r` is what the callback hands
+  **back** to GTK. Both are existential.
+
+`fire` on a `Payload` spec returns `'r * unit Ui_effect.t option` rather than
+`'r Ui_effect.t`, and that shape is load-bearing: the return value has to reach GTK
+synchronously on the C stack, and a Bonsai effect is scheduled and performed later. So the
+*decision* is a pure function of the event, made in the trampoline, and the *consequence*
+is an ordinary effect. `Attr.on_key_pressed`'s `Key_response.t` is that split, surfaced.
+Each `Payload` spec also carries a `declined` value — what the trampoline answers GTK on
+the three paths that reach no handler (an empty slot, an emission during a patch, a `fire`
+that raised) — because the inert answer differs per signal and nothing else knows it: for a
+key controller it is `false`, "not handled", or a widget with no handler would swallow every
+key it saw.
+
+Event controllers are the other change. `Attr.on_click`, `on_key_pressed`,
+`on_key_released`, `on_focus_enter` and `on_focus_leave` are declared by **no impl**: they
+are legal on every kind, so there is no `signals` list they could belong to. `Controllers`
+attaches them on demand, one controller per *family* (`Click`, `Focus`, `Key` —
+`Events.Family.t`, the single exhaustive table `Events.is_controller_attr`,
+`Signals.require_slots`'s skip list and `Controllers.update`'s dispatch all derive from),
+and detaches a family the moment its last attr goes. The controllers are named
+(`Event_controller.set_name`, never `set_static_name` — that stores the pointer uncopied,
+and a computed OCaml string is reclaimed heap) so that a live test can tell this library's
+controllers apart from the three a `GtkButton` brings of its own.
+
 ### 6.5 Controlled text widgets
 
 `Entry`, `SearchEntry`, `PasswordEntry`, `EditableLabel`, `TextView`:
@@ -521,6 +674,43 @@ The rule reaches beyond text: `ToggleButton`, `CheckButton` and `Switch`
   writing it every frame would fight the user's drag handle.
   `Attr.on_position_changed` reports where it was left, and an app that wants it
   controlled can round-trip it through its own model.
+
+**M2 amendment (2026-08-30).** The list of controlled props grows, the fixup-pass exception
+grows with it, and the rule gains a third case for a value the widget cannot hold.
+
+*New controlled props.* A `TextView`'s buffer text, a `DropDown`'s `~selected`, a
+`Calendar`'s `~date`, an `EditableLabel`'s `~text` **and** its `~editing` flag all
+re-assert. Three details each cost a round to find: a text view's `reassert` compares
+against a **cached** last-written string rather than reading the buffer back, because
+`gtk_text_buffer_get_text` is transfer-full and nothing frees it (a megabyte of notes would
+leak a megabyte per idle frame); a calendar's date is written **day-1-first**, then year,
+then month, then the real day, because each GTK setter rebuilds the whole date and refuses
+outright if the result is not a real day (the obvious year-month-day order gets four of five
+transitions wrong — measured, pinned); and an editable label's two props are written
+text-then-editing, because entering editing mode selects the whole text and a write after
+`start_editing` would collapse the selection.
+
+*New fixup-pass cases.* Joining a stack's visible child, for the same reason (the child may
+not exist when `reassert` runs): a `ListBox`'s and `FlowBox`'s `~selected`, and a
+`Notebook`'s `~current_page` — the last of which reads the live widget back rather than
+trusting an index, because `set_current_page` on a page whose child is hidden emits
+`switch-page` and leaves the current page unchanged (measured).
+
+*Refuse, record, report.* A controlled prop may name a value the widget genuinely cannot
+hold: text that is not valid UTF-8 or contains a NUL for a `GtkTextBuffer`, a NUL for a
+`GtkEditableLabel`, a `Date.t` in year 0 for a `GtkCalendar` (GTK's year range is 1–9999).
+Raising would end the application (§11), and writing would corrupt — GTK empties a text
+buffer *before* refusing invalid UTF-8, so the previous contents are lost. So the impl
+**refuses** the write before touching the widget, **records** it so the frames after it cost
+nothing, and **reports** it once through `Patcher.ctx.report` with the node's path — once
+per offending value, not once per frame. The refusal decision is made *before* any
+comparison, or a parked frame would take the compare's cost forever. The next value GTK will
+take is written normally.
+
+*`batch_if`.* `reassert` runs on every patch of a node of its kind, including the patches
+that write nothing, and `Widget_impl.batch`'s freeze/thaw measured ~80 ns per call. So
+`reassert` brackets **conditionally**: `Widget_impl.batch_if writes`, with the condition
+being whether this frame is going to write anything at all.
 
 ### 6.6 `Node.native`
 
@@ -616,9 +806,33 @@ Milestones, each merged only with its tests green:
   `GtkOverlayLayoutChild:measure` (an overlay child is unmeasured unless it says
   otherwise), and `Attr.on_position_changed` ships for `Paned` because its
   position is uncontrolled (§6.5).
-- **M2 — lists & text:** ListBox (keyed rows, selection), FlowBox, Notebook,
-  TextView (controlled buffer), DropDown (string list), LevelBar, Calendar,
-  EditableLabel.
+- **M2 — lists & text:** *done* (2026-08-30). ListBox (keyed rows, controlled
+  selection, per-row `Attr.row_selectable`/`row_activatable`, `?placeholder`),
+  FlowBox (keyed children, controlled selection, geometry as props), Notebook
+  (keyed pages, `Attr.tab_label`, controlled `~current_page`, and the one
+  container in the library whose children really move — it has
+  `gtk_notebook_reorder_child`), TextView (controlled buffer), DropDown (string
+  list spliced in place, controlled `~selected`), LevelBar, Calendar,
+  EditableLabel — **37 `Node.*` constructors in all**, checked against
+  `Kind.Variants.descriptions` by `test/handle/test_gallery.ml` rather than
+  counted by hand. With them: the five event-controller attrs `Attr.on_click`,
+  `on_key_pressed`, `on_key_released`, `on_focus_enter`, `on_focus_leave`
+  (§5.2, §6.4); `Bonsai_gtk.Expert.embed` (§4.1); four new enum modules
+  (`Selection_mode`, `Tab_position`, `Wrap_mode`, `Level_bar_mode`) and five
+  new event-value modules (`Phase`, `Modifiers`, `Click_event`, `Keyval`,
+  `Key_event`, `Key_response`); and `Bonsai_gtk_test.Action.t` grown from five
+  constructors to **nineteen** (§9).
+
+  Two details this section did not anticipate. **The controller attrs came
+  forward from M3**, because the mechanism M2 had to build for
+  `ListBox::row-activated` — a signal whose payload cannot be read back off the
+  widget — is the same `Payload` mechanism they need (§6.4), and building it
+  twice would have been the waste. **`Calendar` takes a `Core.Date.t`**, not
+  GTK's three integers and not a `GDateTime`: `gtk_calendar_get_date` and
+  `gtk_calendar_select_day` trade in `GDateTime`, this binding has no
+  `GDateTime` anywhere, and there is no `GLib-2.0.gir` in the checkout to
+  generate one from — so the year/month/day conversion (GTK's month is
+  zero-based; its day is not) exists exactly once, in `w_calendar.ml`.
 - **M3 — chrome & popups:** HeaderBar, ActionBar, Popover, MenuButton +
   `Node.menu` (GMenu model + GAction routing), AlertDialog / FileDialog
   effects, `Node.windows` multi-window, `Attr.shortcut` (GtkShortcutController).
@@ -633,7 +847,12 @@ writing it. Until then `Attr.css_provider` applies a provider to a widget's own
 style context).
 
 Implementation notes carried from the survey: `ListBox`/`FlowBox` sorting and
-filtering are done in the Bonsai model (the GTK callbacks are unbound);
+filtering are done in the Bonsai model (the GTK callbacks are unbound — **M2
+amendment (2026-08-30):** confirmed against the fork, and it covers headers too;
+`set_sort_func`, `set_filter_func` and `set_header_func` are unreachable because
+ocgtk's generator emits no GIR-callback-taking method at all, so a header is an
+ordinary row carrying `Attr.row_selectable false` and `Attr.row_activatable
+false`);
 `Grid` children are re-`attach`ed on any coordinate change; `Notebook` reorders
 use `reorder_child`; `Stack` pages are keyed by `name`; prop batches are
 bracketed with `Gobject.Property.freeze_notify`/`thaw_notify`.
@@ -693,6 +912,53 @@ package in the workspace — so a directory depending on `bonsai_gtk.vtree` *and
 `test/handle/` (package `bonsai_gtk_test`). `scripts/ci.sh` runs both `-p`
 builds; the second needs `bonsai_gtk` installed first, as opam installs it, so
 the script installs it into a temporary prefix.
+
+**M2 amendment (2026-08-30).** Layer 2 no longer certifies trees the runtime refuses. The
+handle validates three things, and all three come from tables that live in `vtree` — which
+is what lets `test_lib` consult them without depending on ocgtk:
+
+- **`Events.for_kind`**, the `Kind.t -> Attr.Name.t list` table (exhaustive, no wildcard
+  arm), so an `Attr.on_clicked` on a `Node.label` raises here exactly as
+  `Signals.require_specs` raises it at mount. This closes the M1 hole where a headless suite
+  went green on a tree whose first frame would raise.
+- **`Placement.read_by`/`reader`**, so a placement attr on a container that does not read it
+  raises here too, naming the container that does. This one matters more than it looks: a
+  misplaced placement attr is applied by nobody and read by nobody, so without the check a
+  headless suite is the *only* place it could ever have been caught, and it passed.
+- **`Events.key_phase_rejection`**, so two key attrs asking for different propagation phases
+  raise here as well.
+
+Both sides call the same function for each message, so they are identical outright rather
+than by convention. All three run on **every** entry point that advances a handle —
+`show`, `show_into_string`, `show_diff`, `store_view`, `recompute_view`,
+`recompute_view_until_stable` — which is why `Bonsai_gtk_test.Handle` is a hand-written
+signature rather than an alias for `Bonsai_test.Handle`: the checks live in the
+`Result_spec`'s `view`, and three of those six never built one. The first run of the fixed
+version found a call site certifying a tree the runtime refuses. (`Handle.t` is still
+`Bonsai_test.Handle.t`, so `Bonsai_test.Handle.recompute_view` typechecks and still skips
+the check; making `t` abstract would cost the interop the four omitted values depend on.)
+
+`Action.t` is now nineteen constructors: M1's five, nine more for the M2 signals
+(`Search_changed`, `Set_expanded`, `Activate_row`, `Activate_child`, `Set_selection`,
+`Set_page`, `Set_selected`, `Select_day`, `Set_editing`), and five for the controllers
+(`Click_at`, `Key_press`, `Key_release`, `Focus_enter`, `Focus_leave`). `Key_press` prints
+the `Key_response.t` the handler answered, because that half of a key press is a value GTK
+reads synchronously and there is no GTK here.
+
+**What layer 2 still cannot see** is the other half, and it is two halves. First, the
+*structural* checks that need the widget implementations or a live tree: a `grid` child with
+no `Attr.grid_cell`, a `stack` page with no `~key` or a `~visible_child` naming no page, two
+stacks under one `~name`, a `stack_switcher` naming no stack, duplicate sibling keys, a
+`Node.window` anywhere but the root. Second, *routing*: every action is delivered to one
+node named by `Attr.test_id`, and there is no widget hierarchy for an event to travel
+through — so a `Key_press` answering `Handled` does not stop a sibling from seeing the key,
+a `Click_at` does not also reach the container that would have handled it, and
+`~phase` (which decides only who sees a key *first*) has no effect here at all. Nor does the
+live suite close that: the pinned binding can synthesise neither a click nor a key press, so
+what the live tests assert is the plumbing on one side (`test/live/live_controllers.ml`,
+which prints `armed=` on every line because an attached controller and one that would
+actually call a handler are otherwise indistinguishable for an event nothing can deliver)
+and the trampoline in the middle. Focus is the exception and is covered end to end.
 
 ## 10. Repository layout and packaging
 
@@ -760,6 +1026,49 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
   answering to both. A subtree being replaced gives its registrations up before
   the replacement is mounted (§6.2), so re-declaring the same stack inside the
   replacement is not a collision.
+- **M2 amendment (2026-08-30).** Six further families of structural message, all
+  `Invalid_argument`, all raised at mount and at patch, and — where a tree exists to
+  prefix one onto — all carrying the node path:
+  - **A placement attr on a container that does not read it.** `Attr.grid_cell` on a box
+    child, `Attr.page_title` on anything but a stack page, `Attr.row_selectable` on a flow
+    box child. The message names the container that *does* read it, because a misplaced
+    placement attr is nearly always a child that ended up in the wrong parent. The table
+    (`vtree/placement.ml`) is exhaustive with a wildcard on the *container* side, so a
+    container that reads none of them rejects all of them — which is what makes this a
+    diagnostic rather than a list of exceptions.
+  - **A `~visible_child` or `~current_page` naming no child**, from the fixup pass, listing
+    the names the container does have. Carve-out: a container with *no* children is left
+    inert, because a required argument leaves a model rendering an empty page list no name
+    it could pass that would be right.
+  - **A `list_box`, `flow_box`, `notebook` or `stack` child with no `~key`**, from the
+    *constructor*, naming the child's index. This one carries no node path deliberately:
+    the constructor runs before there is a tree, and the point of the mistake is the call.
+  - **A `min > max` content bound on `Node.scrolled_window`**, plus the same family of
+    constructor-time arithmetic rejections M2 added elsewhere: a negative
+    `level_bar` bound or an inverted range, a `flow_box` `~max_children_per_line < 1` or a
+    negative `~min_children_per_line`/spacing (GTK reads these as unsigned, so a negative
+    one arrives as a very large positive one with no error), a `calendar`
+    `~marked_days` entry outside 1–31, a `drop_down` `~selected < -1`.
+  - **Two key attrs asking for different propagation phases**
+    (`Events.key_phase_rejection`) — they share one `GtkEventControllerKey` and therefore
+    one phase, so there is nothing the runtime could mount.
+  - **A window root under `embed`, and a non-window root under `start`** (§4.1). Each
+    message names the other entry point, because a caller who returned a window from an
+    embedded computation wanted `start`.
+
+  Every one of these is checked in `Bonsai_gtk_test` as well as at mount, except the
+  structural half §9 lists — and the checks that are shared are shared as *functions*, not
+  as duplicated strings.
+- **M2 amendment (2026-08-30).** One rule that is not a message. **A GTK signal handler
+  reached from OCaml's finaliser is a memory-safety bug**, not an inconvenience: ocgtk's
+  finaliser unrefs the GObject, GTK disposes it, dispose emits `destroy`, and the
+  marshaller calls back into OCaml from the collector — measured as a hang, and as a
+  segfault when the callback allocates, with no bonsai_gtk involved at all. The rule is
+  stated in `src/signals.mli`, the fork carries a guard that makes the emission a
+  once-reported no-op rather than a crash, and `Embed.stop` disconnects its own `destroy`
+  backstop for exactly this reason: `stop` is what makes the wrapper collectable, so a
+  stopped-and-dropped embed's wrapper is precisely the one GTK will dispose from inside
+  finalisation.
 - Exceptions inside a signal trampoline are caught before they reach C
   (undefined behaviour otherwise), logged to stderr with the node path, and
   do not tear down the main loop.
@@ -775,3 +1084,15 @@ scripts/ci.sh               dune build @all; dune runtest; BONSAI_GTK_LIVE_TESTS
   `protect ~finally` either way.
 - ocgtk unsupported signals are omitted at the API level, never silently
   no-op.
+- **M2 amendment (2026-08-30).** Not every wrong value is a raise, and the line between
+  them is now written down — in `vtree/node.mli`'s opening section, because it is not
+  discoverable from a type. A constructor's `Invalid_argument` runs inside the Bonsai
+  computation, so it comes out of `Driver.frame`, which marks the driver broken, abandons
+  the pending fixups and re-raises: **every later frame is a no-op and the window never
+  repaints again.** The rule the checks follow is therefore *reject only what no later
+  frame could make valid*. A state a correct model passes *through* — a `drop_down`
+  `~selected` past the end of a list that is about to grow, a `~selected` key whose row has
+  not arrived — is not rejected: it is inert while it names nothing, applied on the frame it
+  becomes meaningful, and reported once through `Patcher.ctx.report` with the node's path,
+  so that a model which is *permanently* wrong is not silent either. The same channel
+  carries the refuse-record-report cases of §6.5.

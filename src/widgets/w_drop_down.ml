@@ -28,7 +28,7 @@ let of_gtk n = if n = Gtk_constants.invalid_list_position then -1 else n
    - {b it allocates no GObject}, so it does not pay [String_list.new_]'s leaked reference
      (the stub reference-sinks a non-floating constructor return, so one model plus its
      copied strings is leaked per call, permanently, with no [unref] reachable from OCaml
-     to compensate -- see [docs/m1-backlog.md]);
+     to compensate -- see [docs/m2-backlog.md]);
    - {b the selection survives}. [GtkSingleSelection] carries its position across a splice
      and only moves it when the content forces it, where taking a whole new model resets
      it to item 0. So "the widget is never left showing an item the model did not choose"

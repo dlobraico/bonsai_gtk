@@ -98,9 +98,10 @@ let string_property (w : Widget.t) ~name =
   Gobject.Value.get_string v
 ;;
 
-(* The rows of a [GtkListBox] that are selected. Walked with [get_row_at_index], which
-   reference-sinks its result, rather than with [get_selected_rows], which does not; see
-   [W_list_box.rows]. *)
+(* The rows of a [GtkListBox] that are selected. Walked with [get_row_at_index] rather
+   than with [get_selected_rows], for the reason [W_list_box.rows] gives: both are
+   reference-safe as of the current pin, and this keeps the two container arms below
+   identical in shape. *)
 let selected_row_count (b : W.List_box.t) =
   let rec go i n =
     match W.List_box.get_row_at_index b i with
@@ -110,10 +111,9 @@ let selected_row_count (b : W.List_box.t) =
   go 0 0
 ;;
 
-(* The same walk for a [GtkFlowBox]. [gtk_flow_box_get_selected_children] is safe in the
-   pinned fork (its stub sinks each element, unlike the [GtkListBox] twin), but this dump
-   is called in a loop by a debugging session and a count is all it needs; walking keeps
-   the two container arms below identical in shape. *)
+(* The same walk for a [GtkFlowBox]. [gtk_flow_box_get_selected_children] is safe too, but
+   this dump is called in a loop by a debugging session and a count is all it needs;
+   walking keeps the two container arms below identical in shape. *)
 let selected_child_count (b : W.Flow_box.t) =
   let rec go i n =
     match W.Flow_box.get_child_at_index b i with
@@ -136,8 +136,9 @@ let selected_child_count (b : W.Flow_box.t) =
    correctly does {i not} ref. [GtkStringObject.get_string] is transfer-none and copies
    into OCaml. Nothing here is the [get_selected_rows] shape that cost Task 6 a segfault
    -- and note which call is missing: [gtk_drop_down_get_selected_item] would be the
-   obvious way to read the current item, and its stub both fails to ref a transfer-none
-   return {i and} returns a bare custom block where the [.mli] promises an [option]. It is
+   obvious way to read the current item, and its stub returns a bare custom block where
+   the [.mli] promises an [option] (the missing ref on the transfer-none return, which was
+   the same defect's other half, is fixed in the current pin; this half is not). It is
    unusable; the position plus this list says the same thing safely. *)
 let string_object_type = lazy (Gobject.Type.from_name "GtkStringObject")
 
@@ -560,12 +561,10 @@ let rec dump (w : Widget.t) : Sexp.t =
           then []
           else [ Sexp.Atom "activate-on-double-click" ])
        @ flag_prop "show-separators" (W.List_box.get_show_separators b)
-       (* Counted by walking the rows rather than with [get_selected_rows], which is
-          transfer-container and whose generated stub does not reference the rows it wraps
-          -- so calling it hands out one unbalanced unref per selected row and eventually
-          disposes a still-parented row. [W_list_box]'s [rows] carries the full account;
-          this matters here as much as anywhere, because [Live_tree.dump] is the function
-          a debugging session calls in a loop. *)
+       (* Counted by walking the rows. [get_selected_rows] would do here now that the pin
+          carries the sink its stub was missing -- [W_list_box]'s [rows] carries the full
+          account -- but a count is all this needs and the walk keeps this arm identical
+          to the flow box's. *)
        @ int_prop "selected-rows" (selected_row_count b) ~default:0
      | "GtkListBoxRow" ->
        let r : W.List_box_row.t = cast w in

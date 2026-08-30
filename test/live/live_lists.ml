@@ -104,7 +104,7 @@ let () = ignore (Ocgtk_gtk.GMain.init () : string array)
    The fork fixed the identical bug on [GtkFlowBoxChild] one file over
    ([ml_flow_box_gen.c:222-233], whose comment describes exactly this); the [GtkListBox]
    twin is unfixed in the pinned binding, which is why [W_list_box.selected_keys] walks
-   [get_row_at_index] + [is_selected] instead. See docs/m1-backlog.md.
+   [get_row_at_index] + [is_selected] instead. See docs/m2-backlog.md.
 
    The frames here are the real thing: [reassert_only] + [run_fixups] inside the patch
    guard is what [Driver.frame] runs when a computation hands back the physically same

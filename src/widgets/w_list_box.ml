@@ -90,26 +90,27 @@ let row_of ~what (child : Widget.t) : W.List_box_row.t =
 
 (* Every row, in GTK's own order.
 
-   {b Do not replace this with [W.List_box.get_selected_rows]}, however much shorter that
-   reads. [gtk_list_box_get_selected_rows] is transfer-container -- the [GList] is the
-   caller's to free, the rows in it are borrowed -- and ocgtk's generated stub wraps each
-   row with no [g_object_ref_sink] while the wrapper's finaliser unconditionally unrefs it
-   ([ml_list_box_gen.c:229-238]). Every call therefore hands out one unbalanced unref per
-   selected row, and since [apply_selection] reads the selection on every mount, every
-   patch and every no-change frame, an idle application disposes its own still-parented
-   rows within a few frames of a major collection: the selection empties itself, GTK logs
-   "has a parent GtkListBox during dispose", and the process segfaults shortly after.
-   [test/live/live_lists.ml]'s first block reproduces exactly that when this walk is put
-   back.
+   Not [W.List_box.get_selected_rows], and not because that binding is unsafe any more:
+   the pin moved past the fix (fork commit [a913c307], which sinks the elements of every
+   transfer-container list return; [ocgtk-pin.json] is at [649498b4]), so
+   [gtk_list_box_get_selected_rows] now balances its refs like [get_row_at_index] does and
+   either call is safe. This walk stays because three of its four callers want {i every}
+   row rather than the selected ones: [row_by_key] searches all of them, [forget_rows]
+   drops all of their [Child_keys] entries, and [apply_selection] builds its per-call key
+   table from all of them. Only [selected_keys] could take the shorter call today, and it
+   shares this one instead so that "in widget order" and the [Child_keys] lookup are
+   stated once rather than twice. [is_selected] on each row is how a selection is read.
 
-   [get_row_at_index] does [g_object_ref_sink] its result ([ml_list_box_gen.c:258-265]),
-   so this walk is balanced. The fork already carries the identical fix for
-   [GtkFlowBoxChild] one file over ([ml_flow_box_gen.c:222-233], whose comment describes
-   this exact bug); the [GtkListBox] twin is unfixed {i in the pinned binding}. It is
-   fixed on the fork's [m2-bindings] branch (commit [a913c307], which sinks the elements
-   of all 21 transfer-container list returns and pins the ListBox one with a GC regression
-   test), so this prohibition lifts when [ocgtk-pin.json] moves past it -- and not before.
-   Until then, nothing in this library may call [get_selected_rows]. *)
+   The history is worth one line, because it is what the ocgtk-fork half of
+   [docs/m2-backlog.md] is built on. Until the pin moved, the stub wrapped each row with
+   no [g_object_ref_sink] while the wrapper's finaliser unconditionally unrefs it, so
+   every call handed out one unbalanced unref per selected row -- and since
+   [apply_selection] reads the selection on every mount, every patch and every no-change
+   frame, an idle application disposed its own still-parented rows within a few frames of
+   a major collection: the selection emptied itself, GTK logged "has a parent GtkListBox
+   during dispose", and the process segfaulted shortly after. [test/live/live_lists.ml]'s
+   first block is that regression, and it is the reason the rule in [docs/m2-backlog.md]
+   reads "read the stub, not the GIR". *)
 let rows (b : W.List_box.t) =
   let rec go i acc =
     match W.List_box.get_row_at_index b i with

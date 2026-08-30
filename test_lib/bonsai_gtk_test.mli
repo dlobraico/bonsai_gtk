@@ -346,8 +346,13 @@ end
     {b All three are checked by every entry point that advances a handle} --
     [Handle.show], [Handle.show_into_string], [Handle.show_diff], [Handle.store_view],
     [Handle.recompute_view] and [Handle.recompute_view_until_stable] -- on the first call
-    and on every later one. So there is no way to advance a handle past a tree without
-    checking it, and no idiom a test has to avoid.
+    and on every later one. So there is no way to advance a handle {i through this module}
+    past a tree without checking it, and no idiom a test has to avoid. The scope matters:
+    {!Handle.t} is [Bonsai_test.Handle.t], deliberately (it is what lets the four values
+    named below be used unchanged), so [Bonsai_test.Handle.recompute_view handle] still
+    typechecks and still skips the check. Nothing in [test/], [src/] or [examples/] calls
+    it that way, and making [t] abstract to close the hole would cost the interop the
+    omissions depend on.
 
     That took work, and the history is worth a sentence because it is the reason {!Handle}
     is a hand-written signature rather than an alias for [Bonsai_test.Handle]. The checks
@@ -375,7 +380,7 @@ end
     the key, and [Attr.on_key_pressed]'s [~phase] — which decides only who sees a key
     {i first} — has no effect at all here. What a test can show is that a handler made the
     right decision and what that decision did to the model; that GTK then routes the event
-    accordingly is GTK's, and is not checked anywhere (see [docs/m1-backlog.md]), because
+    accordingly is GTK's, and is not checked anywhere (see [docs/m2-backlog.md]), because
     the pinned ocgtk binding can synthesise neither a click nor a key press.
 
     [Handle.do_actions] looks up every action in the call against *one* view snapshot —

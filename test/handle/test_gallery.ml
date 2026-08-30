@@ -13,7 +13,7 @@ open Bonsai.Let_syntax
    rather than as a runtime failure in somebody's app.
 
    "At least once" and not "exactly once", which is what this comment used to claim and
-   what [docs/m1-backlog.md] recorded as inaccurate. The claim is now checked rather than
+   what [docs/m2-backlog.md] recorded as inaccurate. The claim is now checked rather than
    asserted: the three sweeps at the bottom of this file derive what they expect from
    [Kind.Variants.descriptions] and [Attr.Name.all], so the header cannot drift away from
    the tree again without a test going red. *)
@@ -685,11 +685,11 @@ let%expect_test "the gallery names every attr" =
    the same claim as "the only nameless attr" and matters to whoever adds a second
    combinator.
 
-   [Attr.css_class] is the attr [Attr.name] answers [None] for: a css class is a member of
-   a set the patcher adds to and removes from ([Attrs.diff]'s
-   [Add_css_class]/[Remove_css_class]), not a keyed property it sets and unsets, so it has
-   no [Name.t] and the test above would pass with no css class anywhere in the tree. This
-   is that missing half, spelled out rather than left to a reader to notice. *)
+   It has no [Name.t] because a css class is a member of a set the patcher adds to and
+   removes from ([Attrs.diff]'s [Add_css_class]/[Remove_css_class]) rather than a keyed
+   property it sets and unsets -- so the test above would pass with no css class anywhere
+   in the tree. This is that missing half, spelled out rather than left to a reader to
+   notice. *)
 let%expect_test "the gallery uses the one attr with no name" =
   let classes =
     fold_nodes sweep_tree ~init:[] ~f:(fun acc (node : Node.t) ->
@@ -1002,7 +1002,7 @@ let sweep_rows : (placement * Node.t * Node.t) list =
 (* Named for what it checks rather than for the three phases it runs: [test/handle/dune]
    links no ocgtk, so there is no widget and nothing here shows that an impl's [update]
    {i writes} anything. A per-kind live [Live_tree.dump] sweep is still the gap
-   [docs/m1-backlog.md] records. *)
+   [docs/m2-backlog.md] records. *)
 let%expect_test "every kind is diffed, and no kind is skipped" =
   let outcomes = List.map sweep_rows ~f:run_row in
   (* The row list is hand-maintained; [Kind.Variants.descriptions] is not. A kind added to

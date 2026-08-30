@@ -101,7 +101,7 @@ let child_of ~what (child : Widget.t) : W.Flow_box_child.t =
    function is needed for [child_by_key] and [forget_children] regardless, so using it for
    the selection too is one shape rather than two; it depends on no hand patch to a
    generated file, which the [get_selected_children] fix currently is (the real fix
-   belongs in ocgtk's generator -- see docs/m1-backlog.md -- and a regenerated stub could
+   belongs in ocgtk's generator -- see docs/m2-backlog.md -- and a regenerated stub could
    drop it silently); and it makes this file read like [w_list_box.ml], where the walk is
    mandatory. If a future reader is about to "simplify" this into the getter: check the
    stub, not the GIR, and check it again after Task 14. *)

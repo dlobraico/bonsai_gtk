@@ -34,7 +34,7 @@ let buffer (w : Widget.t) : W.Text_buffer.t = W.Text_view.get_buffer (cast w)
    copies the whole buffer (0.42 ms for a megabyte, measured), and
    [ml_gtk_text_buffer_get_text] copies the C string into OCaml and never [g_free]s the
    original -- so every read also leaks the text. That is a binding defect, recorded in
-   [docs/m1-backlog.md] with the other fork patches; no single-string transfer-full return
+   [docs/m2-backlog.md] with the other fork patches; no single-string transfer-full return
    in the generated stubs is freed, so it is the generator's to fix rather than this
    call's. Until then, reading the buffer once per frame would leak a megabyte a frame for
    a megabyte of notes, with the application doing nothing at all. *)

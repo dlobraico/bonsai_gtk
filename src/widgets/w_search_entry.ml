@@ -45,7 +45,7 @@ let set_text w text =
    survives. It is a [""] record, matched against a later [""] emission at a moment when
    the model already holds [""], so what it can cost is a duplicate rather than a search;
    the first non-empty emission flushes it. Worth knowing before anything makes a patch
-   iterate the main loop. See docs/m1-backlog.md. *)
+   iterate the main loop. See docs/m2-backlog.md. *)
 let was_our_own_write w text =
   match Echo.find_opt echoes w with
   | None -> false

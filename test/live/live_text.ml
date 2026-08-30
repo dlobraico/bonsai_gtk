@@ -289,7 +289,7 @@ let () =
 
 (* [get_buffer] is a transfer-none return, and its stub does sink -- checked in
    [ml_text_view_gen.c] before a line of this widget was written, on the rule
-   [docs/m1-backlog.md] states: read the stub, not the GIR. The wrapper's finaliser
+   [docs/m2-backlog.md] states: read the stub, not the GIR. The wrapper's finaliser
    unconditionally unrefs, so a stub that had *not* sunk would hand out one unbalanced
    unref per call, and a few hundred of them plus a collection would dispose the view's
    own buffer under it.
@@ -356,7 +356,7 @@ let () =
    second by an application doing nothing. Comparing the model's text against the buffer's
    by reading the buffer back would make that O(len) per frame -- and worse than O(len),
    because the binding's [gtk_text_buffer_get_text] stub copies the string into OCaml and
-   never frees the C original (see [docs/m1-backlog.md]): a megabyte of notes open on
+   never frees the C original (see [docs/m2-backlog.md]): a megabyte of notes open on
    screen would leak a megabyte a frame, 60 MB a second, with the process doing nothing at
    all. Measured on this machine: one whole-buffer read of 1 MB is 0.42 ms, and a
    [String.equal] over the same megabyte is 0.032 ms.
@@ -1374,7 +1374,7 @@ let () =
    a real click takes: [GtkCalendar] connects its own [calendar_set_month_prev] and
    friends to that signal, so emitting it runs the same handler a pointer press would.
    This is the one place in the suite where a user gesture can be synthesised at all --
-   there is no [GdkEvent] constructor in the binding (see [docs/m1-backlog.md]) -- and it
+   there is no [GdkEvent] constructor in the binding (see [docs/m2-backlog.md]) -- and it
    works here only because the gesture GTK cares about has already been reduced to an
    action signal on an ordinary button. *)
 let heading_buttons w =
