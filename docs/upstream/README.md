@@ -16,10 +16,24 @@ Branch head: `d98d939711d315cfb595d472594407044ff4f147`.
 
 ## Not yet pushed: the M2 branch
 
-`m2-bindings` (five commits, based on `bonsai-gtk` at `d98d9397`) is prepared in
-`.ocgtk-src/` and **has not been pushed**. It is not part of the table above and
-has no topic branch or PR yet; it needs the same cherry-pick-and-scrub treatment
-before any of it is offered upstream.
+`m2-bindings` (eleven commits, based on `bonsai-gtk` at `d98d9397`) is prepared
+in `.ocgtk-src/` and **has not been pushed**. It is not part of the table above
+and has no topic branch or PR yet; it needs the same cherry-pick-and-scrub
+treatment before any of it is offered upstream.
+
+> **Behaviour change to know about before the pin moves.** Commit 7 makes the
+> marshaller refuse to call back into OCaml while a GObject finaliser is
+> unreffing. That does not only prevent a crash: **a handler connected to a
+> signal an object's `dispose` emits — `destroy`, `unrealize`, `unmap`, any
+> `notify::` — stops running** when the collector disposes that object. It fired
+> before (measured, ten of ten for a handler that did not allocate); it now
+> fires zero times, with one message on stderr per process. This repository is
+> safe by construction — the plan's Global Constraints addendum forbids the
+> pattern and Task 13 put the rule in `signals.mli` — but it is a fork-wide
+> change for every other consumer, and it is why the fork's `CHANGELOG.md`
+> leads its Unreleased section with it. The alternative, deferring the
+> finaliser's unref to a `g_idle_add`, would make disposal conditional on a
+> main loop iterating and leak in any program without one.
 
 | # | Commit | Theme | What it closes |
 |---|--------|-------|----------------|
@@ -28,9 +42,17 @@ before any of it is offered upstream.
 | 9 | `bcd39f14` | nullable string bindings | `Widget.set_name`, `Stack_page.set_title` and `Password_entry.get/set_placeholder_text` take and report `string option`. |
 | 10 | `a913c307` | transfer-container lists | The elements of all 21 transfer-container list returns are sunk (`gtk_list_box_get_selected_rows` was the one M2 hit). |
 | 11 | `4ea70268` | constructor ownership | 279 constructors over a plain `GObject` no longer `g_object_ref_sink` a reference the constructor already transferred. |
+| 12 | `03ba87f8` | `(return-aliases-instance)` | `pango_glyph_item_apply_attrs` returns a list that aliases its own instance parameter, so commit 10's per-element free was freeing the caller's record. A fourth override action records the fact the GIR states only in prose. |
+| 13 | `95c1d6e8` | bare-GObject ownership | `GObject.Object` and `GObject.InitiallyUnowned` were mapped as ownership-agnostic values, so twelve borrowed returns (`gtk_builder_get_object`, `gtk_widget_get_template_child`, …) and the elements of `gtk_builder_get_objects` took no reference while their finalisers unref. |
+| 14 | `d06c88fb` | finaliser guard, completed | Commit 7's counter now also covers `finalize_gvalue` and `finalize_gir_record`, the two other finalisers that can drop a last GObject reference. |
+| 15 | `3c9e781b` | dropped-emission report | Once per process at `G_LOG_LEVEL_MESSAGE`, not once per emission at `g_warning` — which flooded stderr and aborted under `G_DEBUG=fatal-warnings`. |
+| 16 | `af8a0916` | CHANGELOG | The behaviour change above, stated where a consumer reads it. |
+| 17 | `cd071aa1` | docs and one lost entry | The `(nullable …)` override reference, a corrected `GtkAdjustment` comment, and a fix for `gir_gen overrides` silently dropping a record's method overrides — which would have taken commit 12's entry with it. |
 
-Commits 10 and 11 are **regenerations applied by hand**: `gir_gen` has emitted
-both since commit 3 and the generated tree was never regenerated. See
+Commits 10, 11, 12 and 13 are **regenerations applied by hand**: `gir_gen` has
+emitted 10 and 11 since commit 3 and the generated tree was never regenerated,
+and 12 and 13 are generator changes of their own whose stub hunks were taken
+from a regeneration and verified against it. See
 `.superpowers/sdd/2026-08-30-bonsai-gtk-m2/task-14-report.md` for what a full
 regeneration would additionally change, and why the rest of it is held back.
 
