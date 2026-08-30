@@ -496,6 +496,27 @@ Do not "fix" these when an expected file surprises you:
 
 ## Plumbing / hygiene
 
+- **The live tests share one X display, and one of them cares who has the focus.** M2's
+  clean-tree pass caught `live_controllers.ml`'s focus block failing once in ten runs of
+  `@test/live/runtest`: another live executable presenting its toplevel takes the input focus
+  away, so a `focus-leave` arrives before the `grab_focus` meant to cause it and the golden
+  diff reads as a regression in the focus controller. Fixed for now by `-j 1` in `scripts/ci.sh`
+  (2 s of 29). Two better fixes, neither taken because both are more than a CI pass should
+  decide: **an `xvfb-run` per rule** — eleven displays, no coupling at all, at the cost of
+  `xvfb-run -a`'s own race for a free display number — or **making the block not depend on
+  toplevel focus**, which is the honest one, since what it wants to assert is that
+  `Widget.grab_focus` drives the controller, not that nothing else on the display ever takes
+  the focus.
+- **`live_text.exe` is 25 s of the live section's 29** (the other ten are 88–563 ms each,
+  measured 2026-08-30). It is the 100 000-character editable-label bench and the 1 MB text-view
+  ones. Nothing is wrong with it, but the whole gate is now shaped by one file, and `-j 1`
+  costs nothing precisely because of that; if the section ever needs to be faster, that is the
+  only place to look.
+- **`dune build @test/live/runtest --force` does not re-run these rules** — each declares a
+  target (`with-stdout-to output_*.txt`), so `--force` returns in 3 s having done nothing, and
+  a loop of them will report a flaky test as green ten times running. Delete
+  `_build/default/test/live/output_*.txt` between runs instead. Cost M2's Task 16 an hour;
+  written down so it costs the next person nothing.
 - **The gallery's click card is not a click target; the words inside it are.** `Attr.on_click`
   sits on the `Node.label`, and `Attr.margin 24` is space *outside* a widget's allocation, so
   the padding that makes the card read as a button is inert — a click 14px below the text moved

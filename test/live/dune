@@ -26,7 +26,15 @@
 
 ; Live tests drive a real GTK display, so they run only under xvfb and only when
 ; explicitly asked for:
-;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
+;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest -j 1
+;
+; `-j 1` because that one `xvfb-run` gives every executable below the same X
+; display, and each of them presents a real toplevel. A window mapping on a
+; display takes the input focus off whichever window held it, so a neighbour
+; starting up mid-test is indistinguishable, to `live_controllers.ml`'s focus
+; block, from the focus controller losing focus on its own -- an intermittent
+; golden diff that reads as a regression in the controller. Without it, 1 run in
+; 10 fails; with it, 0 in 15. scripts/ci.sh carries the rest of the measurements.
 
 (rule
  (alias runtest)

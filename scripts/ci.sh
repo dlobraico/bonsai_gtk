@@ -57,7 +57,29 @@ OCAMLPATH="$prefix/lib${OCAMLPATH:+:$OCAMLPATH}" \
   dune build --build-dir=_build.pkgtest -p bonsai_gtk_test @runtest
 
 echo "== live tests (xvfb)"
-BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
+# `-j 1` is load-bearing, not caution. One `xvfb-run` wraps the whole dune
+# invocation, so all eleven live executables share a single X display, and dune
+# runs them in parallel -- `live_text` alone takes 25 s of the section's 29, so
+# it overlaps every other test in the directory. Each of them presents a real
+# toplevel, and a window mapping on an X display takes the input focus off
+# whichever window held it. `live_controllers.ml`'s focus block sees that as a
+# `focus-leave` arriving before the `grab_focus` that is supposed to cause it,
+# and reports it as a golden diff that looks exactly like a regression in the
+# focus controller, which is the expensive part.
+#
+# Measured, because the failure is rare enough to be dismissed as noise: 1 fail
+# in 10 parallel runs of this alias, 0 in 15 serial ones, 0 in 15 solo runs of
+# `live_controllers.exe` alone, and 2 in 8 when other toplevels are deliberately
+# mapped on the display throughout the test. (Note for anyone re-measuring:
+# `--force` does NOT re-run these rules, because each declares a target --
+# delete `_build/default/test/live/output_*.txt` between runs instead, or a loop
+# of "passes" will be measuring nothing at all.)
+#
+# Serialising costs 2 s of 29 (28.6 s -> 30.8 s), since one test dominates the
+# section either way. The alternative -- an `xvfb-run` per rule, eleven displays
+# -- buys back those 2 s and adds `xvfb-run -a`'s own race for a free display
+# number, so it is not obviously better; it is on the backlog.
+BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest -j 1
 
 echo "== example smoke"
 # Built first, and run out of `_build` rather than through `dune exec`: the
