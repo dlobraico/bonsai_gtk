@@ -10,6 +10,7 @@ module Policy = Policy
 module Reveal_transition = Reveal_transition
 module Stack_transition = Stack_transition
 module Tab_position = Tab_position
+module Wrap_mode = Wrap_mode
 module Selection_mode = Selection_mode
 module Grid_cell = Grid_cell
 module Phase = Phase

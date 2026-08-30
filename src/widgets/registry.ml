@@ -10,6 +10,7 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Entry _ -> W_entry.impl
   | Password_entry _ -> W_password_entry.impl
   | Search_entry _ -> W_search_entry.impl
+  | Text_view _ -> W_text_view.impl
   | Spin_button _ -> W_spin_button.impl
   | Scale _ -> W_scale.impl
   | Progress_bar _ -> W_progress_bar.impl

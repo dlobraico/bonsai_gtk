@@ -76,6 +76,23 @@ type search_entry_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [text] carries no [@sexp_drop_if] for the reason the entries' does not: it is a
+   required labelled argument and a controlled prop, so its value is always something the
+   caller asked for. The other nine are GTK's own. *)
+type text_view_props =
+  { text : string
+  ; wrap : Wrap_mode.t [@sexp_drop_if Wrap_mode.equal Defaults.Text_view.wrap]
+  ; editable : bool [@sexp_drop_if Bool.equal Defaults.Text_view.editable]
+  ; monospace : bool [@sexp_drop_if Bool.equal Defaults.Text_view.monospace]
+  ; cursor_visible : bool [@sexp_drop_if Bool.equal Defaults.Text_view.cursor_visible]
+  ; accepts_tab : bool [@sexp_drop_if Bool.equal Defaults.Text_view.accepts_tab]
+  ; left_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.left_margin]
+  ; right_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.right_margin]
+  ; top_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.top_margin]
+  ; bottom_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.bottom_margin]
+  }
+[@@deriving sexp_of, equal]
+
 (* The numeric family. [value], [min] and [max] are required labelled arguments, so like
    the entries' [text] they carry no [@sexp_drop_if]: a range widget with an implicit
    0-100 is a bug generator. [digits] differs per class -- GTK's [GtkSpinButton] shows
@@ -329,6 +346,7 @@ type t =
   | Entry of entry_props
   | Password_entry of password_entry_props
   | Search_entry of search_entry_props
+  | Text_view of text_view_props
   | Spin_button of spin_button_props
   | Scale of scale_props
   | Progress_bar of progress_bar_props

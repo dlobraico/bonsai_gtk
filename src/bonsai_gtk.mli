@@ -30,6 +30,7 @@ module Policy = Bonsai_gtk_vtree.Policy
 module Reveal_transition = Bonsai_gtk_vtree.Reveal_transition
 module Stack_transition = Bonsai_gtk_vtree.Stack_transition
 module Tab_position = Bonsai_gtk_vtree.Tab_position
+module Wrap_mode = Bonsai_gtk_vtree.Wrap_mode
 module Selection_mode = Bonsai_gtk_vtree.Selection_mode
 module Grid_cell = Bonsai_gtk_vtree.Grid_cell
 module Orientation = Bonsai_gtk_vtree.Orientation
@@ -138,5 +139,6 @@ module Private : sig
   module W_list_box = W_list_box
   module W_flow_box = W_flow_box
   module W_notebook = W_notebook
+  module W_text_view = W_text_view
   module Widget_impl = Widget_impl
 end

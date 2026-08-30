@@ -40,6 +40,7 @@ let controls (graph @ local) =
   let switched, set_switched = Bonsai.state false graph in
   let text, set_text = Bonsai.state "" graph in
   let search, set_search = Bonsai.state "" graph in
+  let note, set_note = Bonsai.state "" graph in
   let%arr toggled
   and set_toggled
   and checked
@@ -49,7 +50,9 @@ let controls (graph @ local) =
   and text
   and set_text
   and search
-  and set_search in
+  and set_search
+  and note
+  and set_note in
   Node.grid
     ~row_spacing:8
     ~column_spacing:12
@@ -101,10 +104,46 @@ let controls (graph @ local) =
         ~text:search
         ()
     ; Node.label
-        ~attrs:[ Attr.grid_cell ~column:0 ~row:6 ~width:2 () ]
+        ~attrs:[ Attr.grid_cell ~column:0 ~row:6 (); Attr.valign Start ]
+        ~xalign:0.
+        "Notes"
+      (* The multi-line editor, in the scrolled window a text view belongs in: a bare one
+         grows without limit and pushes the rest of the page off screen. Its text is
+         controlled exactly as the entry's above is. *)
+    ; Node.scrolled_window
+        ~attrs:
+          [ Attr.grid_cell ~column:1 ~row:6 ()
+          ; Attr.hexpand true
+          ; Attr.height_request 90
+          ]
+        ~has_frame:true
+        (Node.text_view
+           ~attrs:[ Attr.on_changed set_note ]
+           ~wrap:Word_char
+           ~left_margin:6
+           ~right_margin:6
+           ~top_margin:6
+           ~bottom_margin:6
+           ~text:note
+           ())
+      (* The caret policy, demonstrated rather than described: type a few words, put the
+         caret in the middle of one of them, and press this. The model rewrites the whole
+         text to something of the same length, the buffer is written, and the caret is
+         still where it was -- which is the case the offset policy is exactly right about
+         and the one that makes a model that rewrites as you type usable at all. *)
+    ; Node.button
+        ~attrs:
+          [ Attr.grid_cell ~column:1 ~row:7 ()
+          ; Attr.halign Start
+          ; Attr.on_clicked (set_note (String.uppercase note))
+          ]
+        ~label:"Shout the note (the caret stays put)"
+        ()
+    ; Node.label
+        ~attrs:[ Attr.grid_cell ~column:0 ~row:8 ~width:2 () ]
         ~xalign:0.
         ~ellipsize:End
-        (sprintf "text=%S search=%S" text search)
+        (sprintf "text=%S search=%S note=%d characters" text search (String.length note))
     ]
 ;;
 

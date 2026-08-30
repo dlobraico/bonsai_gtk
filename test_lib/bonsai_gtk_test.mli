@@ -10,12 +10,13 @@ module Action : sig
         node currently renders — what clicking the real widget would produce. Fails if the
         node is not one of those three, or carries no handler. *)
     | Set_text of string * string
-    (** test_id of a node carrying [Attr.on_changed], and the text the user typed. Fires
-        that handler with exactly that string — the node's own [text] prop is never
-        consulted, because "the user made the text be this" is what a real edit produces
-        whatever the widget was showing. What the model does with it (echo, uppercase,
-        reject) then shows up as the next render's [text] prop, which is the whole of what
-        a controlled text widget guarantees. *)
+    (** test_id of a node carrying [Attr.on_changed] — any of the three entries or a
+        [text_view] — and the text the user typed. Fires that handler with exactly that
+        string — the node's own [text] prop is never consulted, because "the user made the
+        text be this" is what a real edit produces whatever the widget was showing. What
+        the model does with it (echo, uppercase, reject) then shows up as the next
+        render's [text] prop, which is the whole of what a controlled text widget
+        guarantees. *)
     | Activate of string
     (** test_id of a node carrying [Attr.on_activate] — the user pressed Enter in it. *)
     | Set_value of string * float

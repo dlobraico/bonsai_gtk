@@ -82,6 +82,23 @@ type search_entry_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [text] carries no [@sexp_drop_if] for the reason the entries' does not: it is a
+   required labelled argument and a controlled prop, so its value is always something the
+   caller asked for. The other nine are GTK's own. *)
+type text_view_props =
+  { text : string
+  ; wrap : Wrap_mode.t [@sexp_drop_if Wrap_mode.equal Defaults.Text_view.wrap]
+  ; editable : bool [@sexp_drop_if Bool.equal Defaults.Text_view.editable]
+  ; monospace : bool [@sexp_drop_if Bool.equal Defaults.Text_view.monospace]
+  ; cursor_visible : bool [@sexp_drop_if Bool.equal Defaults.Text_view.cursor_visible]
+  ; accepts_tab : bool [@sexp_drop_if Bool.equal Defaults.Text_view.accepts_tab]
+  ; left_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.left_margin]
+  ; right_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.right_margin]
+  ; top_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.top_margin]
+  ; bottom_margin : int [@sexp_drop_if Int.equal Defaults.Text_view.bottom_margin]
+  }
+[@@deriving sexp_of, equal]
+
 (* The numeric family. [value], [min] and [max] are required labelled arguments, so like
    the entries' [text] they carry no [@sexp_drop_if]: a range widget with an implicit
    0-100 is a bug generator. [digits] differs per class -- GTK's [GtkSpinButton] shows
@@ -335,6 +352,7 @@ type t =
   | Entry of entry_props
   | Password_entry of password_entry_props
   | Search_entry of search_entry_props
+  | Text_view of text_view_props
   | Spin_button of spin_button_props
   | Scale of scale_props
   | Progress_bar of progress_bar_props
@@ -370,6 +388,7 @@ let name = function
   | Entry _ -> "Entry"
   | Password_entry _ -> "PasswordEntry"
   | Search_entry _ -> "SearchEntry"
+  | Text_view _ -> "TextView"
   | Spin_button _ -> "SpinButton"
   | Scale _ -> "Scale"
   | Progress_bar _ -> "ProgressBar"
@@ -406,6 +425,7 @@ let same_kind a b =
   | Entry _, Entry _
   | Password_entry _, Password_entry _
   | Search_entry _, Search_entry _
+  | Text_view _, Text_view _
   | Spin_button _, Spin_button _
   | Scale _, Scale _
   | Progress_bar _, Progress_bar _
@@ -443,6 +463,7 @@ let equal_props a b =
   | Entry a, Entry b -> equal_entry_props a b
   | Password_entry a, Password_entry b -> equal_password_entry_props a b
   | Search_entry a, Search_entry b -> equal_search_entry_props a b
+  | Text_view a, Text_view b -> equal_text_view_props a b
   | Spin_button a, Spin_button b -> equal_spin_button_props a b
   | Scale a, Scale b -> equal_scale_props a b
   | Progress_bar a, Progress_bar b -> equal_progress_bar_props a b

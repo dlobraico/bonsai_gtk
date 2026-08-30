@@ -1526,9 +1526,17 @@ let () =
    The branch is kept (see the comment there for why an [assert] was rejected), so it is
    exercised here directly instead: [Registry] hands back the impl, and its
    [list_ops.move] is called by hand with an [~after] that sits {i after} the page being
-   moved, which is the shape a forward [Move] would produce. Four pages rather than three,
-   because [reorder_child] clamps a position past the end -- with only three, the wrong
-   index and the right one both land on the same order and the test would pass either way.
+   moved, which is the shape a forward [Move] would produce. [~after] is deliberately not
+   the last page: [reorder_child] clamps a position past the end, so a move that lands
+   last cannot tell the right index from an over-large one. Four pages rather than three
+   only so that there is a page behind the destination as well as in front of it.
+
+   (The first wording of this paragraph blamed the page count -- "with only three, the
+   wrong index and the right one land on the same order" -- and that is false. GTK
+   computes [max_pos = g_list_length (children) - 1] over the list that still contains the
+   child, so with three pages [max_pos = 2] and [position = 2] is not clamped; the
+   reviewer mounted a three-page notebook and got B,A,C against B,C,A. The constraint is
+   [~after]'s position, for any [n]. task-8-review.md N9.)
 
    A,B,C,D with A moved to sit after B must give B,A,C,D. The shipped conditional computes
    [from=0 < a=1], so [position = 1]. The unconditional [a + 1] a reader might "simplify"

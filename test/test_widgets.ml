@@ -860,3 +860,74 @@ let%expect_test "tab_label rides on the page node" =
          (children No_children))))))
     |}]
 ;;
+
+(* [~text] is a labelled {i non-optional} argument, exactly as on the three entries: a
+   text view whose text nothing feeds back into the model is an uncontrolled widget that
+   snaps back to the model's value the next time anything re-renders, and making the
+   argument required is what stops that being written by accident. There is no runtime
+   assertion to make here -- [Node.text_view ()] is a type error -- so what this pins is
+   the other half: every optional prop is GTK's own default and drops out of the sexp. *)
+let%expect_test "text view constructor and defaults" =
+  print_s [%sexp (Node.text_view ~text:"note" () : Node.t)];
+  [%expect {| ((kind (Text_view ((text note)))) (attrs ()) (children No_children)) |}];
+  print_s
+    [%sexp
+      (Node.text_view
+         ~wrap:Word_char
+         ~editable:false
+         ~monospace:true
+         ~cursor_visible:false
+         ~accepts_tab:false
+         ~left_margin:6
+         ~right_margin:7
+         ~top_margin:8
+         ~bottom_margin:9
+         ~text:"styled"
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Text_view
+       ((text styled) (wrap Word_char) (editable false) (monospace true)
+        (cursor_visible false) (accepts_tab false) (left_margin 6)
+        (right_margin 7) (top_margin 8) (bottom_margin 9))))
+     (attrs ()) (children No_children))
+    |}];
+  (* Every default written out explicitly is GTK's own, so the sexp drops all nine. Read
+     off a fresh [GtkTextView] rather than out of the docs: [accepts_tab] and
+     [cursor_visible] are [true], which is not what a reader guesses for either. *)
+  print_s
+    [%sexp
+      (Node.text_view
+         ~wrap:None_
+         ~editable:true
+         ~monospace:false
+         ~cursor_visible:true
+         ~accepts_tab:true
+         ~left_margin:0
+         ~right_margin:0
+         ~top_margin:0
+         ~bottom_margin:0
+         ~text:"note"
+         ()
+       : Node.t)];
+  [%expect {| ((kind (Text_view ((text note)))) (attrs ()) (children No_children)) |}]
+;;
+
+let%expect_test "text view props take part in equal_props" =
+  let props ?wrap ?monospace ?left_margin () =
+    (Node.text_view ?wrap ?monospace ?left_margin ~text:"a" ()).kind
+  in
+  print_s
+    [%sexp
+      (( Kind.equal_props (props ()) (props ())
+       , Kind.equal_props (props ()) (props ~wrap:Word ())
+       , Kind.equal_props (props ()) (props ~monospace:true ())
+       , Kind.equal_props (props ()) (props ~left_margin:4 ()) )
+       : bool * bool * bool * bool)];
+  [%expect {| (true false false false) |}];
+  (* Same constructor, different props: the patcher's [update] runs, [create] does not. *)
+  print_s [%sexp (Kind.same_kind (props ()) (props ~wrap:Word ()) : bool)];
+  [%expect {| true |}]
+;;

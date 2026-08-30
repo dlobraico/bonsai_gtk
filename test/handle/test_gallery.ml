@@ -78,6 +78,14 @@ let every_widget (graph @ local) =
                        ~search_delay:200
                        ~text:""
                        ()
+                   ; Node.text_view
+                       ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+                       ~wrap:Word_char
+                       ~monospace:true
+                       ~accepts_tab:false
+                       ~left_margin:6
+                       ~text:"note"
+                       ()
                    ; Node.spin_button
                        ~attrs:[ Attr.on_value_changed (fun _ -> Ui_effect.Ignore) ]
                        ~digits:2
@@ -283,6 +291,11 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                         ((kind (Search_entry ((text "") (search_delay (200)))))
                          (attrs ((On_search_changed <handler>)))
                          (children No_children))
+                        ((kind
+                          (Text_view
+                           ((text note) (wrap Word_char) (monospace true)
+                            (accepts_tab false) (left_margin 6))))
+                         (attrs ((On_changed <handler>))) (children No_children))
                         ((kind
                           (Spin_button ((value 0) (min 0) (max 10) (digits 2))))
                          (attrs ((On_value_changed <handler>)))

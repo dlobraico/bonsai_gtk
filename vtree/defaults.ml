@@ -144,6 +144,23 @@ module Notebook = struct
   let tab_pos = Tab_position.Top
 end
 
+(* GTK's own, read off a fresh [GtkTextView] rather than out of the docs, and two of the
+   six are not the value a reader guesses: [cursor-visible] and [accepts-tab] are both
+   [true], so a bare text view draws a caret even when it is not focused and swallows Tab
+   rather than moving the focus on. The margins are GTK's [0] and are padding rather than
+   margin, whatever their names say. *)
+module Text_view = struct
+  let wrap = Wrap_mode.None_
+  let editable = true
+  let monospace = false
+  let cursor_visible = true
+  let accepts_tab = true
+  let left_margin = 0
+  let right_margin = 0
+  let top_margin = 0
+  let bottom_margin = 0
+end
+
 (* GTK's own, and two of the three are worth stating out loud because they are not the
    value a reader guesses: a bare [GtkListBox] has [selection-mode] [SINGLE] (not [NONE])
    and [activate-on-single-click] [true]. *)

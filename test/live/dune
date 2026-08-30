@@ -8,7 +8,8 @@
   live_events
   live_controllers
   live_keyvals
-  live_lists)
+  live_lists
+  live_text)
  (libraries
   core
   bonsai
@@ -133,3 +134,15 @@
     output_lists.txt
     (run %{exe:live_lists.exe}))
    (diff expected_lists.txt output_lists.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_text.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_text.txt
+    (run %{exe:live_text.exe}))
+   (diff expected_text.txt output_text.txt))))

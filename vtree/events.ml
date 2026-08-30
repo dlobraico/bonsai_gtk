@@ -21,6 +21,12 @@ let for_kind : Kind.t -> Attr.Name.t list = function
   | Toggle_button _ | Check_button _ | Switch _ -> [ On_toggled ]
   | Entry _ | Password_entry _ -> [ On_changed; On_activate ]
   | Search_entry _ -> [ On_changed; On_activate; On_search_changed ]
+  (* No [On_activate]: Enter inserts a newline in a text view rather than submitting, and
+     GTK emits nothing for it. The line a reader copies across from an entry is therefore
+     rejected here rather than accepted and never firing. [On_changed] is the buffer's
+     signal rather than the view's, which is invisible from this table and is
+     [w_text_view.ml]'s business. *)
+  | Text_view _ -> [ On_changed ]
   | Spin_button _ | Scale _ -> [ On_value_changed ]
   | Expander _ -> [ On_expanded_changed ]
   | Revealer _ -> [ On_revealed ]

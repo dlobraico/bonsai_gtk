@@ -388,6 +388,38 @@ Do not "fix" these when an expected file surprises you:
   `get_object` is transfer-full too, so both are balanced) — but Task 7's `FlowBox` and
   anything reaching for `Gesture.get_sequences`, `Widget.list_mnemonic_labels` or
   `TreeView.get_columns` walks straight into it. Generator fix > four hand patches.
+- **No transfer-full string return is freed anywhere in the generated stubs** — a memory
+  leak in every one of them, and the one M2 actually walks into is
+  `gtk_text_buffer_get_text`. `ml_text_buffer_gen.c:243-249` does
+  `char* result = gtk_text_buffer_get_text (...); CAMLreturn (caml_copy_string (result));`
+  with no `g_free (result)`, while the method is `transfer-ownership="full"`: the caller
+  owns the string. Reproduced (task-9): 200 whole-buffer reads of a 1 MB `GtkTextBuffer`
+  grow RSS by 201 MB, and a `Gc.full_major` reclaims none of it — the OCaml copy is
+  collected, the C original is not. `gtk_text_buffer_get_slice`, `gtk_text_iter_get_text`
+  and `gtk_text_iter_get_slice` are the same shape, so there is **no** way to read a text
+  buffer through the pinned binding without leaking it.
+
+  **The generator already knows how to do this** — it emits `g_free (result)` after
+  copying a transfer-full *array* (`ml_text_child_anchor_gen.c:63`,
+  `ml_widget_gen.c:1160`, and 40-odd more) — so the miss is specifically the
+  single-`char*` return path. `grep -n 'char\* result = ' ml_*.c` finds every site;
+  none of them frees. Generator fix, like the `Val_GList_with` one above, not a hand
+  patch.
+
+  `w_text_view.ml` works around it by never reading the buffer on a frame path: it caches
+  what it last wrote and invalidates the cache from `GtkTextBuffer::changed`, so a read
+  happens once per burst of user edits rather than sixty times a second. Without that, a
+  megabyte of notes open on screen would leak a megabyte a frame — 60 MB/s with the
+  application doing nothing. `Live_tree.dump`'s `GtkTextView` arm does read the buffer,
+  and is a test-only path.
+- **Handler ids come from one global counter, not a per-instance one** (measured on this
+  GLib: two handlers on two different `GtkTextBuffer`s and one on a `GtkTextView` got
+  118/119/120). So `signals.mli`'s worse case for disconnecting a handler id from the
+  wrong object — "at worst disconnects an unrelated handler that happens to share the
+  number" — cannot happen here: the wrong disconnect logs
+  `instance '0x...' has no handler with id 'N'` and leaves the real handler connected.
+  Still a bug, and still the one `Signals.connection` exists to prevent; the doc's second
+  clause is the theoretical half and should say so if it is ever rewritten.
 - **Rule of thumb this established, for any new binding call that returns objects:** read
   the *stub*, not the GIR. A `Val_GList_with` site without `g_object_ref_sink`, or any
   `Val_*` wrapping a transfer-none pointer, is an unbalanced unref that GC turns into a

@@ -214,6 +214,76 @@ val search_entry
   -> unit
   -> t
 
+(** A [GtkTextView]: the multi-line editor, with its text held in a [GtkTextBuffer] the
+    view creates and owns.
+
+    [text] is controlled on the same rule as {!entry}'s (spec §6.5): on every patch the
+    buffer is written only when what it currently holds differs from the model's text --
+    not from the previous node's, which is stale the moment the user types. A model that
+    echoes what was typed causes no write; a model that rewrites or refuses it pulls the
+    buffer back. It is required for the reason {!entry}'s is: a text view whose text no
+    {!Attr.on_changed} feeds back into the model resets to the model's value the next time
+    anything re-renders.
+
+    {b The caret is preserved as a character offset, and that is a policy rather than an
+      accident.}
+    Writing a buffer replaces all of it, which leaves the caret at the end; the offset it
+    had is saved across the write and put back. That is exactly right when the model
+    echoed what was typed (nothing is written, so nothing moves) and when the model
+    rewrote the text in place -- uppercasing it, trimming a trailing space -- because the
+    offset still means what it meant. It is {i approximate} when the model changed the
+    text's length {i before} the caret: an autocompleter that inserts six characters at
+    the start leaves the caret six characters early. When the model shortened the text
+    past the old offset GTK clamps to the end, which is the right answer there.
+
+    The alternatives are both worse. Preserving the caret by diffing the old text against
+    the new would be a general text diff inside a widget implementation, for a guess that
+    is still a guess; preserving nothing would put the caret at the end of the document on
+    every write, which makes a note field that echoes as you type unusable. An application
+    that needs better owns the caret itself, which M2 does not expose --
+    [notify::cursor-position] is the hook, and it is on the backlog.
+
+    {b The selection is not preserved.} Writing the buffer collapses it, and restoring it
+    would mean restoring an anchor the model may have invalidated. An application that
+    programmatically rewrites text out from under a selection is doing something the user
+    will notice however this behaves.
+
+    [wrap] is how lines too wide for the view are broken: {!Wrap_mode.Word_char} is what a
+    notes field usually wants and {!Wrap_mode.None_} -- GTK's own default -- is what a
+    code field wants. [editable:false] leaves the text selectable and copyable but
+    read-only. [monospace:true] asks for the system's fixed-width font. [cursor_visible]
+    and [accepts_tab] are both GTK's own [true]; [accepts_tab:false] makes Tab move the
+    focus on instead of inserting a tab, which is what a text view inside a form wants.
+    The four margins are GTK's, and are padding inside the view rather than margin outside
+    it -- {!Attr.margin} is the outside one.
+
+    There is no [Attr.on_activate]: Enter inserts a newline in a text view rather than
+    submitting, and GTK emits nothing for it. {!Attr.on_changed} is the only signal, and
+    it is emitted by the {i buffer} rather than by the view -- which is invisible from
+    here and is the whole of what a handler receives: the buffer's full text, as of the
+    edit.
+
+    Not exposed: the buffer itself (an application that wants to hold one across renders
+    is asking for a widget this library does not model), tags and marks, [set_buffer]
+    (swapping the buffer would strand the [changed] connection on the old one), and the
+    scrolling API -- put a text view in a {!scrolled_window}, which is where a multi-line
+    editor belongs. *)
+val text_view
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?wrap:Wrap_mode.t
+  -> ?editable:bool
+  -> ?monospace:bool
+  -> ?cursor_visible:bool
+  -> ?accepts_tab:bool
+  -> ?left_margin:int
+  -> ?right_margin:int
+  -> ?top_margin:int
+  -> ?bottom_margin:int
+  -> text:string
+  -> unit
+  -> t
+
 (** A [GtkSpinButton]: a numeric field with a pair of steppers.
 
     [value] is {i controlled}, on the identical rule to {!entry}'s [text] (spec §6.5, and

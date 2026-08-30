@@ -1950,3 +1950,98 @@ let%expect_test "tab_label is rejected outside a notebook, and page_title inside
              (children No_children))))))))))
     |}]
 ;;
+
+(* The controlled buffer, headlessly. A model that refuses anything over ten characters:
+   the state does not change, so the view does not change, so the {i only} thing that puts
+   the widget back is [Widget_impl.reassert] -- which is what makes the second half of
+   this the interesting test and not a formality. Headless there is no widget to put back,
+   so what this pins is the node: a refused edit leaves it exactly where it was, and
+   [test/live/live_text.ml] is where the same refusal is shown correcting a real
+   [GtkTextBuffer].
+
+   [Set_text] needs no new action for a text view. It means "the user made the text be
+   this" and fires whatever [Attr.on_changed] the node carries, which is the same attr the
+   entries use and the same one a [GtkTextBuffer]'s [changed] fills in live. *)
+let notes (graph @ local) =
+  let text, set_text = Bonsai.state "" graph in
+  let%arr text and set_text in
+  Node.window
+    ~title:"Notes"
+    (Node.text_view
+       ~attrs:
+         [ Attr.test_id "body"
+         ; Attr.on_changed (fun s ->
+             if String.length s <= 10 then set_text s else Ui_effect.Ignore)
+         ]
+       ~wrap:Word_char
+       ~text
+       ())
+;;
+
+let%expect_test "a text view's model accepts one edit and refuses the next" =
+  let handle = Bonsai_gtk_test.create notes in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Notes))))) (attrs ())
+     (children
+      (Single
+       (((kind (Text_view ((text "") (wrap Word_char))))
+         (attrs ((Test_id body) (On_changed <handler>))) (children No_children))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("body", "a note") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Notes))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Text_view ((text "") (wrap Word_char))))
+    +|   (((kind (Text_view ((text "a note") (wrap Word_char))))
+           (attrs ((Test_id body) (On_changed <handler>))) (children No_children))))))
+    |}];
+  (* Eleven characters: the model declines, its state does not move, and the node it
+     renders is the one it rendered last frame -- no diff at all. Live, this is the frame
+     on which the buffer still holds the eleven the user typed and only [reassert] takes
+     them out. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("body", "far too long") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| |}];
+  (* And the model is still live afterwards: a decline is not a wedge. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("body", "ok") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Notes))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Text_view ((text "a note") (wrap Word_char))))
+    +|   (((kind (Text_view ((text ok) (wrap Word_char))))
+           (attrs ((Test_id body) (On_changed <handler>))) (children No_children))))))
+    |}]
+;;
+
+(* The other event attrs a text view cannot emit. [On_activate] is the one worth naming:
+   an entry has it and a text view does not -- Enter inserts a newline rather than
+   submitting -- so it is exactly the line a reader copies across from an entry. *)
+let%expect_test "a text view rejects the entry attrs it does not have" =
+  List.iter
+    [ Attr.on_activate Ui_effect.Ignore
+    ; Attr.on_search_changed (fun _ -> Ui_effect.Ignore)
+    ; Attr.on_toggled (fun _ -> Ui_effect.Ignore)
+    ]
+    ~f:(fun attr ->
+      Expect_test_helpers_core.require_does_raise (fun () ->
+        let handle =
+          Bonsai_gtk_test.create (fun (_graph @ local) ->
+            Bonsai.return
+              (Node.window ~title:"n" (Node.text_view ~attrs:[ attr ] ~text:"" ())))
+        in
+        Bonsai_gtk_test.Handle.show handle));
+  [%expect
+    {|
+    (Invalid_argument "root/0: TextView does not emit On_activate")
+    (Invalid_argument "root/0: TextView does not emit On_search_changed")
+    (Invalid_argument "root/0: TextView does not emit On_toggled")
+    |}]
+;;

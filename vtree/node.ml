@@ -168,6 +168,42 @@ let search_entry ?key ?attrs ?placeholder ?search_delay ~text () =
   make ?key ?attrs (Search_entry { text; placeholder; search_delay }) No_children
 ;;
 
+(* [~text] is required for the reason the entries' is, and the caret policy the impl
+   implements is documented on this constructor in [node.mli] rather than only in
+   [w_text_view.ml]: it is a promise to the application, not an implementation note. *)
+let text_view
+  ?key
+  ?attrs
+  ?(wrap = Defaults.Text_view.wrap)
+  ?(editable = Defaults.Text_view.editable)
+  ?(monospace = Defaults.Text_view.monospace)
+  ?(cursor_visible = Defaults.Text_view.cursor_visible)
+  ?(accepts_tab = Defaults.Text_view.accepts_tab)
+  ?(left_margin = Defaults.Text_view.left_margin)
+  ?(right_margin = Defaults.Text_view.right_margin)
+  ?(top_margin = Defaults.Text_view.top_margin)
+  ?(bottom_margin = Defaults.Text_view.bottom_margin)
+  ~text
+  ()
+  =
+  make
+    ?key
+    ?attrs
+    (Text_view
+       { text
+       ; wrap
+       ; editable
+       ; monospace
+       ; cursor_visible
+       ; accepts_tab
+       ; left_margin
+       ; right_margin
+       ; top_margin
+       ; bottom_margin
+       })
+    No_children
+;;
+
 (* [min], [max] and [value] are required on both range widgets for the reason [text] is
    required on the entries: a widget whose value nothing feeds back is uncontrolled, and
    an implicit 0-100 range is a bug generator. *)

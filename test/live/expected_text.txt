@@ -1,0 +1,47 @@
+(GtkWindow (title (text)) (css (background)) hidden
+ (children
+  (GtkTextView (text "a styled note") (wrap word-char) read-only monospace
+   no-cursor tab-moves-focus (left-margin 6) (right-margin 7) (top-margin 8)
+   (bottom-margin 9) (css (view monospace)) (cursor text))))
+(GtkWindow (title (text)) (css (background)) hidden
+ (children (GtkTextView (text "a styled note") (css (view)) (cursor text))))
+after typing: text="aXY styled note" cursor=3
+model wins: text="a styled note" cursor=3 (the patch wrote: true, reached Bonsai: 0)
+same-length rewrite: text="A STYLED NOTE" cursor=5 (the patch wrote: true, reached Bonsai: 0)
+shorter rewrite: text="short" cursor=5 (the patch wrote: true, reached Bonsai: 0)
+echo is a no-op: text="short" cursor=2 (the patch wrote: false, reached Bonsai: 0)
+ten idle frames wrote: 0 (text="short" cursor=2)
+model rewrites: text="rewritten from the model" cursor=2 (the patch wrote: true, reached Bonsai: 0)
+reached Bonsai across every patch above: 0
+a changed emitted outside a patch reaches Bonsai: 1
+a changed emitted on the destroyed view's buffer reaches Bonsai: 0
+slots re-armed after the destroy: (On_changed)
+with the slot re-armed, an emission on that buffer reaches Bonsai: 0
+rejected: root/0: TextView does not emit On_activate
+rejected: root/0: TextView does not emit On_search_changed
+gc: after 100 get_buffer wrappers + full_major, same buffer true, text "kept"
+gc: after 200 get_buffer wrappers + full_major, same buffer true, text "kept"
+gc: after 300 get_buffer wrappers + full_major, same buffer true, text "kept"
+gc: after 400 get_buffer wrappers + full_major, same buffer true, text "kept"
+gc: after 500 get_buffer wrappers + full_major, same buffer true, text "kept"
+(GtkWindow (title (gc)) (css (background)) hidden
+ (children (GtkTextView (text "still patchable") (css (view)) (cursor text))))
+bench: buffer holds 16 characters
+bench: buffer holds 1000000 characters
+bench: 20000 idle frames over 16 and over 1000000 characters, cost ratio under 5: true
+long text length: 129
+dump truncates:
+(GtkWindow (title (long)) (css (background)) hidden
+ (children
+  (GtkTextView
+   (text "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 ...")
+   (wrap word) (css (view)) (cursor text))))
+the buffer holds it in full: true
+accented: bytes=16 characters=13 round-trips: true
+accented rewrite: text="H\195\137LLO W\195\150RLD \195\132" cursor=7
+driver, after mount: "" (handler saw 0)
+driver, user typed, before the frame: "ok"
+driver, after the frame the edit armed: "ok"
+driver, user typed too much, before the frame: "ok far too long"
+driver, after the frame the refusal armed: "ok" (handler saw (ok"ok far too long"))
+driver, one more frame: "ok" (handler saw 0 more)

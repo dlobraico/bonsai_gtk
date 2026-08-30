@@ -29,6 +29,13 @@ let policy_name : Gtk_enums.policytype -> string = function
   | `EXTERNAL -> "external"
 ;;
 
+let wrap_mode_name : Gtk_enums.wrapmode -> string = function
+  | `NONE -> "none"
+  | `CHAR -> "char"
+  | `WORD -> "word"
+  | `WORD_CHAR -> "word-char"
+;;
+
 let content_fit_name : Gtk_enums.contentfit -> string = function
   | `FILL -> "fill"
   | `CONTAIN -> "contain"
@@ -230,6 +237,38 @@ let rec dump (w : Widget.t) : Sexp.t =
            else [ Sexp.Atom "no-peek-icon" ]
          | _ ->
            int_prop "search-delay" (W.Search_entry.get_search_delay (cast w)) ~default:150)
+     (* A [GtkTextView]'s text lives in its buffer, and there is no whole-buffer getter:
+        reading it is [get_bounds] followed by [get_text], the same two calls
+        [w_text_view.ml] makes.
+
+        {b The text is truncated at 60 characters.} A golden with a paragraph in it is
+        unreadable and would churn on every wording change -- and the truncation means
+        this dump cannot pin a long text at all. That is deliberate rather than a gap:
+        [test/live/live_text.ml] prints the text itself, in full, for the claims that are
+        about the text. What the dump is for is the props beside it.
+
+        The buffer read is not cheap (it copies, and the binding leaks the copy), so this
+        is a dump-time cost only -- nothing on a frame path reads a buffer this way. *)
+     | "GtkTextView" ->
+       let v : W.Text_view.t = cast w in
+       let b = W.Text_view.get_buffer v in
+       let start_, end_ = W.Text_buffer.get_bounds b in
+       let text = W.Text_buffer.get_text b start_ end_ true in
+       let shown =
+         if String.length text <= 60 then text else String.prefix text 60 ^ "..."
+       in
+       [ [%sexp `text (shown : string)] ]
+       @ (match W.Text_view.get_wrap_mode v with
+          | `NONE -> []
+          | w -> [ Sexp.List [ Atom "wrap"; Atom (wrap_mode_name w) ] ])
+       @ (if W.Text_view.get_editable v then [] else [ Sexp.Atom "read-only" ])
+       @ flag_prop "monospace" (W.Text_view.get_monospace v)
+       @ (if W.Text_view.get_cursor_visible v then [] else [ Sexp.Atom "no-cursor" ])
+       @ (if W.Text_view.get_accepts_tab v then [] else [ Sexp.Atom "tab-moves-focus" ])
+       @ int_prop "left-margin" (W.Text_view.get_left_margin v) ~default:0
+       @ int_prop "right-margin" (W.Text_view.get_right_margin v) ~default:0
+       @ int_prop "top-margin" (W.Text_view.get_top_margin v) ~default:0
+       @ int_prop "bottom-margin" (W.Text_view.get_bottom_margin v) ~default:0
      (* [GtkSpinButton] is *not* a [GtkRange] -- it owns its own adjustment and its own
         getters -- so these two arms share their shape and none of their calls. *)
      | "GtkScale" ->

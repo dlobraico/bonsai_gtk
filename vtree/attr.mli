@@ -342,10 +342,13 @@ val on_toggled : (bool -> unit Ui_effect.t) -> t
 (** Fires on every edit of a text widget — each keystroke, a paste, an undo — carrying the
     widget's full text afterwards, not the characters that were inserted.
 
-    This is [GtkEditable::changed], which GTK also emits for the library's own writes; the
-    patcher's reentrancy guard is what keeps a re-render from feeding itself. Pair it with
-    the widget's [~text] argument or the entry is uncontrolled: the model never learns
-    what was typed, and the next unrelated re-render puts the old text back.
+    This is [GtkEditable::changed] on the three entries and [GtkTextBuffer::changed] on a
+    {!Bonsai_gtk_vtree.Node.text_view} -- the buffer rather than the view, which is
+    invisible from here and makes no difference to a handler. GTK emits both for the
+    library's own writes as well as the user's; the patcher's reentrancy guard is what
+    keeps a re-render from feeding itself. Pair it with the widget's [~text] argument or
+    the widget is uncontrolled: the model never learns what was typed, and the next
+    unrelated re-render puts the old text back.
 
     Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
     node is mounted or patched, rather than being silently inert. *)

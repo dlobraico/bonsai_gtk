@@ -168,6 +168,7 @@ let interest_of_kind (kind : Kind.t) =
   | Entry _
   | Password_entry _
   | Search_entry _
+  | Text_view _
   | Spin_button _
   | Scale _
   | Progress_bar _
@@ -457,6 +458,7 @@ and destroy ctx (live : live) =
   | Entry _
   | Password_entry _
   | Search_entry _
+  | Text_view _
   | Spin_button _
   | Scale _
   | Progress_bar _

@@ -34,6 +34,7 @@ let all_kinds : Kind.t list =
   ; (Node.entry ~text:"" ()).kind
   ; (Node.password_entry ~text:"" ()).kind
   ; (Node.search_entry ~text:"" ()).kind
+  ; (Node.text_view ~text:"" ()).kind
   ; (Node.spin_button ~min:0. ~max:1. ~value:0. ()).kind
   ; (Node.scale ~orientation:Horizontal ~min:0. ~max:1. ~value:0. ()).kind
   ; (Node.progress_bar ~fraction:0. ()).kind
