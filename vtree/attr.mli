@@ -71,16 +71,22 @@ module Private : sig
       one. Build attrs with the smart constructors below; if you find yourself needing to
       take one apart, that is a missing accessor and worth an issue.
 
-      This is the {i same} type as {!t} — [Attr.Private.Css_class "x"] and
-      [Attr.css_class "x"] are the same value — so nothing converts and nothing allocates,
-      and library code that matches on the variant needs an annotation, not a rewrite.
+      This is the underlying type of {!t}, which is a {i private} abbreviation of it, so
+      nothing converts and nothing allocates: [(Attr.css_class "x" :> Attr.Private.t)] is
+      [Css_class "x"], the same value, and the coercion is erased.
 
-      One honest caveat: because {!t} is an alias rather than an abstract type, OCaml's
-      type-directed disambiguation will still resolve an unqualified [Css_class] against a
-      scrutinee annotated [Attr.t]. OCaml offers no way to make one type abstract to some
-      clients and concrete to others, so the promise this module carries is a documented
-      one. An application that leans on the alias anyway is choosing to break on the next
-      milestone. *)
+      What [private] buys, and it is compiler-enforced rather than promised:
+
+      - [Test_id "x"] does not typecheck as an {!t} — the only way to build one is the
+        smart constructors below, so [Attr.t] values are always well-formed.
+      - [match (a : Attr.t) with Test_id _ -> …] does not typecheck either, whether the
+        constructor is spelled bare or qualified. Taking an attr apart requires writing
+        [(a :> Attr.Private.t)] — which is legal for anyone, deliberately: the library
+        does it in 20-odd places, and an application that does it has named [Private] at
+        the site and cannot claim to have stumbled in. What it {i cannot} do is match by
+        accident, which is what a bare alias allowed.
+
+      So a milestone that adds a constructor breaks only code that spelled the coercion. *)
   type t =
     | Css_class of string
     | Margin_start of int
@@ -116,14 +122,24 @@ module Private : sig
     | On_position_changed of int Handler.t
     | On_visible_child_changed of string Handler.t
     | Many of t list
+
+  val sexp_of_t : t -> Sexp.t
 end
 
 (** One attribute: a widget-wide property, a container-placement setting the parent reads,
-    or an event handler. Build them with the smart constructors below; the variant itself
-    is in {!Private} and carries no stability promise. *)
-type t = Private.t
+    or an event handler. Build them with the smart constructors below; taking one apart
+    means coercing to {!Private}, which carries no stability promise. *)
+type t = private Private.t
 
 val sexp_of_t : t -> Sexp.t
+
+(** Every leaf attr of [ts], with {!many} flattened away, depth-first and left to right.
+
+    Exposed for [Attrs.of_list], which is the one caller that has to walk {i into} a
+    [Many] and get {!t}s back out: {!t} is a private abbreviation, so the coercion to
+    {!Private.t} only runs one way and a [Many]'s payload cannot be injected back.
+    Applications have no reason to call this. *)
+val flatten : t list -> t list
 
 (** [None] for [Css_class] (accumulates, not keyed) and [Many]. *)
 val name : t -> Name.t option

@@ -34,7 +34,7 @@ let page_name (node : Node.t) =
 ;;
 
 let page_title (node : Node.t) =
-  match Attrs.find node.attrs Page_title with
+  match (Attrs.find node.attrs Page_title :> Attr.Private.t option) with
   | Some (Page_title t) -> Some t
   | Some _ | None -> None
 ;;
@@ -64,8 +64,8 @@ let visible_child_changed : Signals.spec =
   { attr = Attr.Name.On_visible_child_changed
   ; connect = Signals.notify ~prop:"visible-child-name"
   ; fire =
-      (fun w (attr : Attr.Private.t) ->
-        match attr with
+      (fun w attr ->
+        match (attr :> Attr.Private.t) with
         | On_visible_child_changed handler ->
           (* [None] only while the stack is empty, which the user cannot click their way
              into; nothing to report then. *)

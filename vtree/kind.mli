@@ -288,7 +288,11 @@ type t =
   | Overlay of overlay_props
   | Window of window_props
   | Native of Native.t
-[@@deriving sexp_of]
+(* [variants] is here for exactly one thing: [Kind.Variants.descriptions] is a
+   compiler-derived list of every constructor, so a test that must cover them all can
+   assert its own list is complete rather than hoping someone bumped a literal. See
+   [test/test_events.ml] and [test/live/live_events.ml]. *)
+[@@deriving sexp_of, variants]
 
 (** Same constructor (and, for [Native], same [name]). Props ignored. *)
 val same_kind : t -> t -> bool

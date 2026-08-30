@@ -294,7 +294,7 @@ type t =
   | Overlay of overlay_props
   | Window of window_props
   | Native of Native.t
-[@@deriving sexp_of]
+[@@deriving sexp_of, variants]
 
 let name = function
   | Label _ -> "Label"

@@ -48,5 +48,25 @@ let () =
      when GTK is about to emit during teardown. *)
   Signals.clear_slots slots;
   Gobject.Signal.emit_by_name button ~name:"clicked";
-  printf "after clear: %d\n" !scheduled
+  printf "after clear: %d\n" !scheduled;
+  (* [require_slots] is the mount-time backstop for [Events.for_kind] and a widget impl's
+     [signals] drifting apart. There is no way to make a *real* impl disagree with the
+     table without editing one -- [live_events.ml] proves none of them does -- so the
+     drift is simulated at the level the assertion actually works on: slots built from an
+     empty spec list are exactly what an impl that forgot a spec would produce, and the
+     attrs carry the event the table would have said it emits. *)
+  let no_slots, _ = Signals.connect_all ctx ~node_path:"root/1" button [] in
+  let clicked_attrs = Attrs.of_list [ Attr.on_clicked Ui_effect.Ignore ] in
+  (match
+     Signals.require_slots ~node_path:"root/1" ~impl_name:"Button" no_slots clicked_attrs
+   with
+   | () -> printf "missing slot: ACCEPTED (wrong)\n"
+   | exception Invalid_argument m -> printf "missing slot: %s\n" m);
+  (* And the impl that does declare the spec is not disturbed -- including after
+     [clear_slots], which empties the cells but keeps the names. *)
+  match
+    Signals.require_slots ~node_path:"root/0" ~impl_name:"Button" slots clicked_attrs
+  with
+  | () -> printf "present slot: accepted\n"
+  | exception Invalid_argument m -> printf "present slot: %s (wrong)\n" m
 ;;

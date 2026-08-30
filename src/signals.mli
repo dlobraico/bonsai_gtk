@@ -104,11 +104,26 @@ val spec_attr : spec -> Attr.Name.t
     trees headlessly. The impl's own [spec list] is the second statement of that fact, and
     [test/live/live_events.ml] is what holds the two together.
 
+    The widget is named in the message by [Kind.name], not by the impl's own [name]: that
+    is what makes this message and {!Bonsai_gtk_test}'s identical by construction rather
+    than by convention, since the test harness has no impl to ask.
+
     Called by the patcher at mount, and again on any patch that changed the node's attrs —
     an event attr a later render adds conditionally lands on a widget mounted without it,
     and only the patch is in a position to see it (handlers are connected once, at mount,
     so no slot exists for a name no spec claims). *)
-val require_specs : node_path:string -> impl_name:string -> Kind.t -> Attrs.t -> unit
+val require_specs : node_path:string -> Kind.t -> Attrs.t -> unit
+
+(** Raises [Invalid_argument] if [attrs] carries an event attr for which [slots] holds no
+    slot — that is, if {!Bonsai_gtk_vtree.Events} says this kind emits the signal but the
+    widget impl declared no {!spec} for it.
+
+    That combination cannot happen while the two agree, and [test/live/live_events.ml]
+    checks that they do — but only under [BONSAI_GTK_LIVE_TESTS=1]. This runs on every
+    mount, so a drift that slipped past the live gate raises here instead of leaving a
+    handler silently unconnected, which is the failure {!require_specs} exists to prevent.
+    [impl_name] rather than [Kind.name] here, because the impl is the thing at fault. *)
+val require_slots : node_path:string -> impl_name:string -> slots -> Attrs.t -> unit
 
 (** Disconnects each handler from the object it was connected to. *)
 val disconnect : connection list -> unit

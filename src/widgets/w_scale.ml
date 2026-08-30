@@ -17,8 +17,8 @@ let value_changed : Signals.spec =
       (fun w ~callback ->
         Signals.connected w (W.Range.on_value_changed (cast w) ~callback))
   ; fire =
-      (fun w (attr : Attr.Private.t) ->
-        match attr with
+      (fun w attr ->
+        match (attr :> Attr.Private.t) with
         (* Read back off the widget for the same reason as [w_spin_button.ml]'s. *)
         | On_value_changed handler -> Some (handler (W.Range.get_value (cast w)))
         | _ -> None)

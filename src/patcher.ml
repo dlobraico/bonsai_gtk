@@ -206,10 +206,14 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   Attr_apply.apply_all widget node.attrs;
   (* Before anything is connected: an event attr no spec claims would create no slot, so
      the handler would never run and nothing would say why (spec §11). *)
-  Signals.require_specs ~node_path:path ~impl_name:impl.name node.kind node.attrs;
+  Signals.require_specs ~node_path:path node.kind node.attrs;
   let slots, connections =
     Signals.connect_all ctx.signals ~node_path:path widget impl.signals
   in
+  (* [require_specs] above asked [Events]; this asks the slots that were actually built.
+     The two can only disagree if the table and this impl's [signals] have drifted, and
+     that drift would otherwise be a handler that silently never fires. *)
+  Signals.require_slots ~node_path:path ~impl_name:impl.name slots node.attrs;
   Signals.update_slots slots node.attrs;
   let children =
     mount_children ctx ~path ~impl_name:impl.name widget node.children impl.children
@@ -383,8 +387,7 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
        node carrying an [on_*] attr at all has a non-empty diff on every frame, and it is
        the attr-free subtrees rather than the interesting ones that get skipped. *)
     if not (List.is_empty attr_ops)
-    then
-      Signals.require_specs ~node_path:path ~impl_name:live.impl.name node.kind node.attrs;
+    then Signals.require_specs ~node_path:path node.kind node.attrs;
     if not (Kind.equal_props live.node.kind node.kind)
     then live.impl.update live.widget ~old:live.node.kind node.kind;
     (* Unconditionally, and after [update]: a controlled prop is compared against the

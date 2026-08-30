@@ -8,7 +8,7 @@ open Gtk_import
    ([GtkOverlayLayoutChild:measure]): an overlay child does not grow the overlay unless it
    is asked to. *)
 let measure (node : Node.t) =
-  match Attrs.find node.attrs Measure_overlay with
+  match (Attrs.find node.attrs Measure_overlay :> Attr.Private.t option) with
   | Some (Measure_overlay b) -> b
   | Some _ | None -> false
 ;;

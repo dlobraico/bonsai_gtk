@@ -10,7 +10,7 @@ open Gtk_import
    The message carries no path -- the ops know nothing about where in the tree they are --
    so the patcher's list helpers prefix one (spec §11). *)
 let cell (node : Node.t) =
-  match Attrs.find node.attrs Grid_cell with
+  match (Attrs.find node.attrs Grid_cell :> Attr.Private.t option) with
   | Some (Grid_cell c) -> c
   | Some _ | None ->
     invalid_arg "Grid child has no Attr.grid_cell (every child of a Node.grid needs one)"

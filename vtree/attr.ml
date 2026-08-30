@@ -91,14 +91,11 @@ end
    [Attr.Private.t] are the same type, so nothing converts and nothing allocates, and
    there is no duplicated list to drift.
 
-   Note for anyone auditing the seal: OCaml's type-directed disambiguation still resolves
-   an unqualified [Css_class] against a scrutinee annotated [Attr.t], because [Attr.t]
-   expands to [Attr.Private.t]. The seal is therefore a statement about what is
-   {i documented and promised}, not a barrier the compiler enforces -- there is no way in
-   OCaml to make one type abstract to some clients and concrete to others. What it does
-   buy is real: the constructors are no longer part of [Attr]'s published surface, so an
-   application that reaches them has spelled [Private] somewhere, or has leaned on an
-   alias it was told not to lean on. *)
+   [private] lives in the mli only ([type t = private Private.t]); in here [t] is the
+   plain variant, so this file constructs and matches freely. Outside, neither is possible
+   without spelling the coercion [(a :> Attr.Private.t)] -- which is what makes the seal
+   compiler-enforced rather than merely documented. The coercion runs one way, which is
+   why [flatten] below exists. *)
 module Private = struct
   type t =
     | Css_class of string
@@ -139,6 +136,18 @@ module Private = struct
 end
 
 include Private
+
+(* [Many] flattened away, so that [Attrs.of_list] -- the one caller that has to
+   look *inside* a [Many] -- never needs to turn a [Private.t] back into a [t], which the
+   private abbreviation forbids. Depth-first and left to right, so "last one wins" in
+   [Attrs.of_list] still means what it says. *)
+let flatten ts =
+  let rec go acc = function
+    | Many l -> List.fold l ~init:acc ~f:go
+    | attr -> attr :: acc
+  in
+  List.rev (List.fold ts ~init:[] ~f:go)
+;;
 
 let name = function
   | Css_class _ | Many _ -> None

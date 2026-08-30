@@ -44,6 +44,12 @@ let all_kinds : Kind.t list =
   ]
 ;;
 
+(* The list above is hand-maintained; [Kind.Variants.descriptions] is not. A kind added to
+   [Kind.t] without a row here fails this assertion rather than quietly going unchecked --
+   which matters because [Events.for_kind]'s missing wildcard forces a *decision* for a
+   new kind but nothing forces that decision to be *tested*. *)
+let () = assert (List.length all_kinds = List.length Kind.Variants.descriptions)
+
 let%expect_test "every kind's event attrs" =
   List.iter all_kinds ~f:(fun kind ->
     print_s [%sexp (Kind.name kind : string), (Events.for_kind kind : Attr.Name.t list)]);
@@ -95,6 +101,21 @@ let%expect_test "unsupported finds the offending name, and only event names" =
     [%sexp
       (Events.unsupported (Node.switch ~active:false ()).kind attrs : Attr.Name.t option)];
   [%expect {| () |}]
+;;
+
+(* The mli promises "the first ... in [Attr.Name] order", which a single offending attr
+   cannot pin -- any answer would look the same. [On_clicked] is declared before
+   [On_toggled] in [Attr.Name.t], and the attrs are passed in the other order. *)
+let%expect_test "unsupported answers in Attr.Name order, not argument order" =
+  let attrs =
+    Attrs.of_list
+      [ Attr.on_toggled (fun _ -> Ui_effect.Ignore); Attr.on_clicked Ui_effect.Ignore ]
+  in
+  print_s [%sexp (Events.unsupported (Node.label "x").kind attrs : Attr.Name.t option)];
+  [%expect {| (On_clicked) |}];
+  (* On a button [On_clicked] is fine, so the answer moves to the next offender. *)
+  print_s [%sexp (Events.unsupported (Node.button ()).kind attrs : Attr.Name.t option)];
+  [%expect {| (On_toggled) |}]
 ;;
 
 (* A non-event name is supported everywhere -- [is_supported] answers "may this attr be

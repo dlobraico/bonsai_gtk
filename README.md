@@ -220,9 +220,16 @@ case. What is deliberately still out:
   `SearchEntry.set_key_capture_widget`, no `Frame.set_label_widget`.
 - **`Paned`'s position is uncontrolled** — writing it every frame would fight the drag
   handle. `Attr.on_position_changed` reports where the user left it.
-- **`Attr.t` and `Bonsai_gtk_test.Action.t` are unsealed public variants**, so every
-  attribute or action a later milestone adds is a breaking change for a downstream
-  exhaustive match. Sealing them is on the backlog (`docs/m1-backlog.md`).
+- **`Bonsai_gtk_test.Action.t` is an unsealed public variant**, so every action a later
+  milestone adds is a breaking change for a downstream exhaustive match. Sealing it is on
+  the backlog (`docs/m1-backlog.md`). `Attr.t` no longer is: its constructors moved to
+  `Attr.Private` and `Attr.t` is a private abbreviation of it, so an application can
+  neither build one from a raw constructor nor match on one without writing
+  `(a :> Attr.Private.t)` — which is supported, carries no stability promise, and is
+  where a milestone's new constructors will land. Build attrs with `Attr.css_class` and
+  friends. `Attr.Name.t` stays a concrete variant, deliberately: `Attr_apply.unset`'s
+  exhaustive match over it is what makes "unset restores the creation-time default"
+  impossible to forget.
 - **Structural mistakes are caught at mount, not by `Bonsai_gtk_test`** — a non-window
   root, a `Node.window` below the root, duplicate keys among siblings, an event attribute
   on a widget with no such signal, a `grid` child with no `Attr.grid_cell`, a `stack` page

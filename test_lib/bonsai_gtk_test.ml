@@ -61,12 +61,12 @@ module Result_spec = struct
     match action with
     | Click id ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_clicked : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_clicked :> Attr.Private.t option) with
        | Some (On_clicked h) -> h ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_clicked handler" id ())
     | Toggle id ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_toggled : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_toggled :> Attr.Private.t option) with
        | Some (On_toggled h) -> h (not (current_active n id))
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_toggled handler" id ())
     (* Deliberately does not consult the node's [text] prop: the action means "the user
@@ -74,12 +74,12 @@ module Result_spec = struct
        widget was showing before. *)
     | Set_text (id, text) ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_changed : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_changed :> Attr.Private.t option) with
        | Some (On_changed h) -> h text
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_changed handler" id ())
     | Activate id ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_activate : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_activate :> Attr.Private.t option) with
        | Some (On_activate h) -> h ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_activate handler" id ())
     (* Like [Set_text], and unlike [Toggle]: the node's own [value] is never consulted,
@@ -89,7 +89,7 @@ module Result_spec = struct
        the point, since clamping is the model's job to demonstrate. *)
     | Set_value (id, value) ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_value_changed : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_value_changed :> Attr.Private.t option) with
        | Some (On_value_changed h) -> h value
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_value_changed handler" id ())
     (* Like [Set_text] and for the same reason, the node's own [text] is not consulted.
@@ -97,7 +97,7 @@ module Result_spec = struct
        different signals on the real widget. *)
     | Search_changed (id, text) ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_search_changed : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_search_changed :> Attr.Private.t option) with
        | Some (On_search_changed h) -> h text
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_search_changed handler" id ())
     (* The node's own [expanded] prop is not consulted, so a test can show a model that
@@ -105,7 +105,7 @@ module Result_spec = struct
        "the user clicked it" has no other meaning, an expander is dragged to a state. *)
     | Set_expanded (id, expanded) ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_expanded_changed : Attr.Private.t option) with
+      (match (Attrs.find n.attrs On_expanded_changed :> Attr.Private.t option) with
        | Some (On_expanded_changed h) -> h expanded
        | _ ->
          failwithf "Bonsai_gtk_test: node %s has no on_expanded_changed handler" id ())

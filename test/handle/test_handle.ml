@@ -474,3 +474,23 @@ let%expect_test "a supported event attr passes validation at every depth" =
              (children No_children))))))))))
     |}]
 ;;
+
+(* [Events.for_kind (Native _) = []] is load-bearing (spec §6.6): a native impl declares
+   no signal specs, so a native widget that wants to reach Bonsai connects its own GTK
+   handler in [create] rather than carrying an event attr. Pinned here because the
+   rejection tests above are all [Label], and a wildcard slipping into the table would not
+   move them. *)
+let%expect_test "a Node.native carrying any event attr is rejected by the handle" =
+  let native (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"native"
+         (Node.native
+            ~attrs:[ Attr.on_clicked Ui_effect.Ignore ]
+            { Native.name = "thing"; payload = Native.Unit }))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create native in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: Native:thing does not emit On_clicked") |}]
+;;

@@ -16,8 +16,8 @@ let position_changed : Signals.spec =
   { attr = Attr.Name.On_position_changed
   ; connect = Signals.notify ~prop:"position"
   ; fire =
-      (fun w (attr : Attr.Private.t) ->
-        match attr with
+      (fun w attr ->
+        match (attr :> Attr.Private.t) with
         | On_position_changed handler -> Some (handler (W.Paned.get_position (cast w)))
         | _ -> None)
   }

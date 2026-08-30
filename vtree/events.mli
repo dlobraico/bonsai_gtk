@@ -11,7 +11,11 @@ open! Core
 
     This table and each widget impl's [Widget_impl.signals] are two statements of one
     fact. [test/live/live_events.ml] compares them for every kind and fails the build if
-    they disagree; that test is the only thing keeping them honest, so do not weaken it. *)
+    they disagree — "every kind" being enforced by an assertion against
+    [Kind.Variants.descriptions], so a kind nobody added to that test's list is a failure
+    rather than a gap. That test runs only under [BONSAI_GTK_LIVE_TESTS=1], because it
+    links ocgtk; [Signals.require_slots] is the unconditional backstop under it, raising
+    at mount if the two ever do drift. Do not weaken either. *)
 val for_kind : Kind.t -> Attr.Name.t list
 
 (** [is_supported kind name] is [true] if [name] is not an event name, or is one this kind

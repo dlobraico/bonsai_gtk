@@ -63,8 +63,8 @@ let search_changed : Signals.spec =
       (fun w ~callback ->
         Signals.connected w (W.Search_entry.on_search_changed (cast w) ~callback))
   ; fire =
-      (fun w (attr : Attr.Private.t) ->
-        match attr with
+      (fun w attr ->
+        match (attr :> Attr.Private.t) with
         | On_search_changed handler ->
           let text = W.Editable.get_text (W_entry.editable w) in
           (* The one case this cannot tell apart is a user who edits the box back to

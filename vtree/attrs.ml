@@ -23,26 +23,30 @@ let sexp_of_t t =
   Sexp.List (css @ List.map (Map.data t.by_name) ~f:Attr.sexp_of_t)
 ;;
 
+(* [Attr.flatten] does the [Many] walk, because [Attr.t] is a private abbreviation: this
+   module can coerce an attr *to* [Attr.Private.t] to look at it, but a [Many]'s payload
+   comes back as [Attr.Private.t list] and cannot be injected back. *)
 let of_list attrs =
-  let rec add t = function
-    | Attr.Private.Many l -> List.fold l ~init:t ~f:add
+  List.fold (Attr.flatten attrs) ~init:empty ~f:(fun t attr ->
+    match (attr :> Attr.Private.t) with
     | Css_class c ->
       if List.mem t.css_classes c ~equal:String.equal
       then t
       else { t with css_classes = t.css_classes @ [ c ] }
-    | attr ->
+    | Many _ ->
+      (* [Attr.flatten] removed them. *)
+      t
+    | _ ->
       (match Attr.name attr with
        | None -> t
-       | Some name -> { t with by_name = Map.set t.by_name ~key:name ~data:attr })
-  in
-  List.fold attrs ~init:empty ~f:add
+       | Some name -> { t with by_name = Map.set t.by_name ~key:name ~data:attr }))
 ;;
 
 let find t name = Map.find t.by_name name
 let css_classes t = t.css_classes
 
 let test_id t =
-  match find t Test_id with
+  match (find t Test_id :> Attr.Private.t option) with
   | Some (Test_id s) -> Some s
   | _ -> None
 ;;

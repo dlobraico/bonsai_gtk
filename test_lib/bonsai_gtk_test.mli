@@ -61,9 +61,12 @@ module Handle = Bonsai_test.Handle
     consults, so an event attr the kind cannot emit ([Attr.on_toggled] on a [Node.label],
     any event attr on a [Node.native]) raises [Invalid_argument] here as well, on the
     first [Handle.show]/[Handle.recompute_view], with the message and the node path the
-    patcher would have produced. [test/live/live_events.ml] is what keeps that table and
-    the widget impls in agreement, so "the handle accepted it" really does mean "the
-    runtime will connect it".
+    patcher would have produced — the widget is named by [Kind.name] on both sides, so the
+    two messages are identical by construction. When the handle accepts an event attr, the
+    runtime will connect {i that attr}: [test/live/live_events.ml] checks the table
+    against every widget impl's own signal list, and [Signals.require_slots] raises at
+    mount if the two ever drift. (That live test runs only under
+    [BONSAI_GTK_LIVE_TESTS=1]; the mount assertion is unconditional.)
 
     What is still only checked at mount is the {i structural} half, which needs the widget
     implementations: a [Node.grid] child with no [Attr.grid_cell], a [Node.stack] page

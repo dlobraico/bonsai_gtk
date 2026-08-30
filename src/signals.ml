@@ -88,18 +88,49 @@ let notify ~prop w ~callback =
    rejection and [Bonsai_gtk_test]'s are the same function of the same data -- a headless
    suite that goes green now means the runtime will accept the tree too.
    [test/live/live_events.ml] is what keeps [Events] and the impls in agreement. *)
-let require_specs ~node_path ~impl_name kind attrs =
+let require_specs ~node_path kind attrs =
   match Events.unsupported kind attrs with
   | None -> ()
   | Some name ->
     (* Message shape unchanged from M1, deliberately: [Attr.Name.to_string] is
-       [Sexp.to_string (sexp_of_t _)], so the existing expected files do not churn. *)
+       [Sexp.to_string (sexp_of_t _)], so the existing expected files do not churn.
+
+       The widget is named by [Kind.name] rather than by the impl's own [name], which the
+       patcher used to pass in. The two agree for every kind today, but only by
+       convention, and [Bonsai_gtk_test] has no impl to ask -- taking the name from the
+       kind is what makes the two messages identical by construction instead of by
+       inspection. *)
     invalid_argf
       "%s: %s does not emit %s"
       node_path
-      impl_name
+      (Kind.name kind)
       (Attr.Name.to_string name)
       ()
+;;
+
+(* The backstop for [Events.for_kind] and a widget impl's [signals] drifting apart.
+   [require_specs] now asks the table, not the impl, so an impl that omits a spec the
+   table lists would let the attr through with no slot behind it -- and [update_slots]
+   iterates the *slots*, so it would never notice the orphan and the handler would
+   silently never fire, which is the exact failure [require_specs] exists to prevent.
+
+   [test/live/live_events.ml] compares the two lists for every kind, but it is behind the
+   live gate; this runs on every mount, unconditionally, and turns a silent no-op into a
+   loud [Invalid_argument]. It is a handful of assoc lookups over lists of length <= 3. *)
+let require_slots ~node_path ~impl_name (slots : slots) attrs =
+  List.iter (Attrs.to_list attrs) ~f:(fun attr ->
+    match Attr.name attr with
+    | Some name when Attr.Name.is_event name ->
+      if not (List.Assoc.mem !slots name ~equal:Attr.Name.equal)
+      then
+        invalid_argf
+          "%s: %s connected no signal for %s, which Events says it emits (the widget \
+           impl and the table disagree)"
+          node_path
+          impl_name
+          (Attr.Name.to_string name)
+          ()
+    | Some _ | None -> ())
 ;;
 
 let disconnect connections =

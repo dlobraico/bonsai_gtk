@@ -4,3 +4,5 @@ during patch: 1
 after patch: 2
 after raising handler: 3
 after clear: 3
+missing slot: root/1: Button connected no signal for On_clicked, which Events says it emits (the widget impl and the table disagree)
+present slot: accepted
