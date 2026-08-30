@@ -154,6 +154,14 @@ All thirteen, in the tasks the plan put them in.
   routing at all, and filtering this one case would be the only routing it implements — was
   accepted. Recorded because the decision should be revisited once, deliberately, for all
   three, and `bonsai_gtk_test.mli` should gain a sentence if it stands. task-6 review M5.
+- **Should `entry`/`search_entry`/`password_entry` refuse a NUL the way `text_view` does?**
+  Today they validate nothing at all: `gtk_editable_set_text` takes a NUL-terminated string, so
+  a NUL in `~text` truncates silently, the read-back never equals the model, and the widget is
+  rewritten on *every* idle frame for the life of the tree with nothing on stderr. `text_view`
+  and `editable_label` both refuse-record-report it; these three are the odd ones out, and the
+  same `unwritable`/`already_refused` machinery is right there. The counter-argument is that a
+  NUL is a caller bug and three more per-widget caches are a cost. Weigh it in the final review.
+  task-16 review I1.
 
 ## API shape decisions before they become breaking
 
@@ -487,10 +495,15 @@ Do not "fix" these when an expected file surprises you:
   a documented quirk that it does not; that was stale. Task 7.
 - **The live suite has two stderr producers**, not one — the "the one stderr line is …"
   convention three M2 reports used no longer holds. task-7 re-review N2.
-- **`test/live/expected_controllers.txt` has been seen to flake under Xvfb**, with
-  `focus-enter,focus-leave` arriving one frame early. Observed once, on a `ci.sh` run against a
-  restored pin; it is a timing flake in the controllers focus test, not a regression — recorded
-  here so a future pin bump is not blamed for it. task-14 M11.
+- ~~**`test/live/expected_controllers.txt` has been seen to flake under Xvfb**, with
+  `focus-enter,focus-leave` arriving one frame early — a timing flake, not a regression.~~
+  **Diagnosed and fixed in M2's Task 16, and no longer a quirk to accept.** It was not timing
+  and nothing arrived "one frame early": the eleven live executables shared one X display, and
+  a neighbour's toplevel mapping took the input focus away before the `grab_focus` that was
+  meant to move it. `-j 1` on the live alias is the fix. **If you see this diff again, the
+  serialisation has been lost** — check `scripts/ci.sh` and how you invoked the alias before
+  you touch the golden. See *Plumbing / hygiene*, "The live tests share one X display".
+  task-14 M11, closed by task-16.
 - `expected_controllers.txt`'s `gtk=` name lists follow attach order, so reordering
   `Events.Family.t` for tidiness reorders them even though every `armed=` assertion holds.
 
@@ -498,7 +511,8 @@ Do not "fix" these when an expected file surprises you:
 
 - **The live tests share one X display, and one of them cares who has the focus.** M2's
   clean-tree pass caught `live_controllers.ml`'s focus block failing once in ten runs of
-  `@test/live/runtest`: another live executable presenting its toplevel takes the input focus
+  `@test/live/runtest` — and the reviewer, on the same host under a heavier load, at three in
+  seven, so treat one-in-ten as a floor: another live executable presenting its toplevel takes the input focus
   away, so a `focus-leave` arrives before the `grab_focus` meant to cause it and the golden
   diff reads as a regression in the focus controller. Fixed for now by `-j 1` in `scripts/ci.sh`
   (2 s of 29). Two better fixes, neither taken because both are more than a CI pass should
@@ -506,8 +520,13 @@ Do not "fix" these when an expected file surprises you:
   `xvfb-run -a`'s own race for a free display number — or **making the block not depend on
   toplevel focus**, which is the honest one, since what it wants to assert is that
   `Widget.grab_focus` drives the controller, not that nothing else on the display ever takes
-  the focus.
-- **`live_text.exe` is 25 s of the live section's 29** (the other ten are 88–563 ms each,
+  the focus. A third, cheaper than either and verified on this toolchain by task-16's reviewer:
+  **`(locks x-display)` on the eleven rules**, which is dune's own answer to "these must not run
+  at once" and which binds the constraint to the rules instead of to one flag on one call site —
+  so the alias races again for nobody, however it is invoked. This entry is the same phenomenon
+  as the struck one under *Known-and-accepted dump quirks*, which is where a maintainer hitting
+  the diff is most likely to land first.
+- **`live_text.exe` is 25 s of the live section's 29** (the other ten are 24–563 ms each,
   measured 2026-08-30). It is the 100 000-character editable-label bench and the 1 MB text-view
   ones. Nothing is wrong with it, but the whole gate is now shaped by one file, and `-j 1`
   costs nothing precisely because of that; if the section ever needs to be faster, that is the
@@ -525,7 +544,6 @@ Do not "fix" these when an expected file surprises you:
   rather than "the card". The alternative is to move the gesture onto the `Node.frame`, which
   would make the whole card live and would demonstrate "legal on any node" better than a label
   does; which of the two the page should show is a choice, so it is here rather than done.
-
 - ~~`scripts/ci.sh`'s generated-opam check is `git diff --exit-code -- '*.opam'`; add `HEAD` so
   *staged* drift is caught too.~~ **Done** in the M2 clean-tree pass (Task 16).
 - `scripts/setup-switch.sh`: the reinstall stamp keys on `rev`, so a dirty `.ocgtk-src` at the

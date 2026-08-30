@@ -92,7 +92,7 @@ repository can reach (see [Limitations](#limitations)).
 | **Display** | `label` (wrap, xalign, ellipsize, max-width-chars, markup), `image`, `picture`, `separator`, `progress_bar`, `spinner`, `level_bar` (continuous or discrete, `Level_bar_mode`) |
 | **Controls** | `button` (label / icon / arbitrary child / frameless), `toggle_button`, `check_button`, `switch`, `spin_button`, `scale` |
 | **Lists** | `list_box` (keyed rows, controlled selection, per-row `Attr.row_selectable`/`row_activatable`, `?placeholder`), `flow_box` (keyed children, controlled selection, geometry as props), `notebook` (keyed pages, `Attr.tab_label`, controlled `~current_page`, real reordering — with `box`, one of the two containers whose children move in place, since it has `gtk_notebook_reorder_child`). Every child needs a `~key`, and every handler speaks in keys |
-| **Text** | `entry`, `password_entry`, `search_entry`, `text_view` (controlled buffer, `Wrap_mode`, caret preserved as a character offset), `editable_label` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret (and text GTK cannot hold — invalid UTF-8, an embedded NUL — is refused rather than written; see Limitations). `on_search_changed` reports only searches the *user* produced: GTK arms its debounce from any text change, so the library filters out the emission carrying back a write it made itself |
+| **Text** | `entry`, `password_entry`, `search_entry`, `text_view` (controlled buffer, `Wrap_mode`, caret preserved as a character offset), `editable_label` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret. Text GTK cannot hold is handled differently by each of the five — see Limitations. `on_search_changed` reports only searches the *user* produced: GTK arms its debounce from any text change, so the library filters out the emission carrying back a write it made itself |
 | **Pickers** | `drop_down` (string list, controlled `~selected`), `calendar` (controlled `Core.Date.t`, marked days) |
 | **Layout** | `box`, `grid` (`Attr.grid_cell`), `center_box`, `paned`, `overlay` (`Attr.measure_overlay`), `frame`, `expander`, `revealer`, `scrolled_window` |
 | **Navigation** | `stack` + `stack_switcher` + `stack_sidebar` (pages keyed by `Key.t`, switchers name their stack) |
@@ -333,7 +333,7 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   (`test/live/live_controllers.ml`, which prints `armed=` on every line for exactly this
   reason); and that a middle click with Shift reaches the application's closure with the
   right `Click_event.t`, and that a key handler consumes Escape and lets `x` through
-  (`test/handle/test_handle.ml`, headlessly). What is **not** covered is GTK routing a real
+  (`test/handle/test_handle.ml`, headlessly). What no *test* covers is GTK routing a real
   press to the controller in between — and for keys specifically, **that propagation
   works**: nothing here shows that a `Handled` Escape failed to reach a sibling, or that a
   `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The
@@ -342,9 +342,9 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   X button presses and keystrokes, delivered by the X server rather than synthesised in
   process, with screenshots of the readouts. That run moved all four readouts and showed
   the button number, the press count, the widget-local coordinates and the modifiers all
-  arriving, an Escape consumed in the capture phase while the entry below kept its text,
-  and focus moving on Tab. It is a hand-run demonstration, not a test: nothing re-runs it
-  and nothing fails if it stops working. Closing it needs a fork patch
+  arriving, an Escape reaching a capture-phase handler and incrementing its counter, and
+  focus arriving on the second entry after a Tab. It is a hand-run demonstration, not a test:
+  nothing re-runs it and nothing fails if it stops working. Closing it needs a fork patch
   exposing a `GdkEvent` constructor or `gtk_test_widget_click`, or driving the X server the
   live tests already run on (`xdotool` under the same `xvfb`); both are on the backlog.
   Focus is the exception and *is* covered end to end — `Widget.grab_focus` on a presented
@@ -376,14 +376,23 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   length before the caret, approximate for one that does (an autocompleter inserting six
   characters at the start leaves the caret six characters early). `notify::cursor-position`
   is the hook for an app that wants to own the caret; it is on the backlog.
-- **A `TextView` or `EditableLabel` write that GTK cannot hold is refused, not truncated.**
-  Text that is not valid UTF-8, or that carries an embedded NUL (which GTK would silently
-  truncate at), is rejected *before* the write: the buffer and the library's cache of it are
-  left exactly as they were, and the refusal is reported once per distinct text through the
-  patcher's channel. Unlike the two states above this is not a state a later frame makes
-  valid, so the widget and the model stay diverged until the model offers text GTK can hold
-  — which is the honest failure, but it does mean the controlled guarantee in the Widgets
-  table has this one exception.
+- **Text GTK cannot hold: three different rules across the five text widgets.** Where a
+  write *is* refused it is refused *before* it happens — the widget keeps what it had, the
+  refusal is reported once per distinct text through the patcher's channel, and, unlike the
+  two states above, no later frame makes the value valid, so the widget and the model stay
+  diverged until the model offers text GTK will take.
+  - **`TextView` refuses both** an embedded NUL (GTK would silently truncate at it) and
+    invalid UTF-8 (a `GtkTextBuffer` empties itself and *then* declines the insert). Its
+    cached copy of the buffer text is left untouched along with the buffer.
+  - **`EditableLabel` refuses a NUL only.** Invalid UTF-8 is written, deliberately: a
+    `GtkEditable` stores the bytes and reads them back unchanged (measured — `"caf\xe9 latte"`
+    round-trips), so there is nothing to refuse and the controlled comparison settles on the
+    first frame. Refusing it would be refusing a write GTK takes.
+  - **`Entry`, `PasswordEntry` and `SearchEntry` validate nothing.** A NUL in `~text` is
+    truncated at by `gtk_editable_set_text`, the read-back never equals the model, and the
+    widget is therefore rewritten on every idle frame, silently. Strip NULs before they reach
+    a text prop. Whether these three should refuse a NUL the way `TextView` does is an open
+    question on the backlog.
 - **`Calendar` has no date range and no "no date selected"** — `~date` is always a real
   `Core.Date.t`. GTK's own year range is 1–9999, so a `Date.t` in year 0 is refused,
   reported once, and written on the first later frame that offers a date GTK will hold.

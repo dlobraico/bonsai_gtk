@@ -34,7 +34,15 @@
 ; starting up mid-test is indistinguishable, to `live_controllers.ml`'s focus
 ; block, from the focus controller losing focus on its own -- an intermittent
 ; golden diff that reads as a regression in the controller. Without it, 1 run in
-; 10 fails; with it, 0 in 15. scripts/ci.sh carries the rest of the measurements.
+; 10 fails (3 in 7 on a loaded machine); with it, 0 in 15. scripts/ci.sh carries
+; the rest of the measurements.
+;
+; Note that `-j 1` limits the whole invocation, so its measured 2 s cost is
+; against a tree whose executables are already built -- which is true inside
+; ci.sh and need not be true here. On a cold tree this serialises compiling and
+; linking eleven executables as well as running them; `dune build @test/live` (or
+; @all) first, then the line above. `(locks)` on the rules would not have that
+; property, and is the fix on the backlog.
 
 (rule
  (alias runtest)

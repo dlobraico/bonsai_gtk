@@ -75,10 +75,16 @@ echo "== live tests (xvfb)"
 # delete `_build/default/test/live/output_*.txt` between runs instead, or a loop
 # of "passes" will be measuring nothing at all.)
 #
-# Serialising costs 2 s of 29 (28.6 s -> 30.8 s), since one test dominates the
-# section either way. The alternative -- an `xvfb-run` per rule, eleven displays
-# -- buys back those 2 s and adds `xvfb-run -a`'s own race for a free display
-# number, so it is not obviously better; it is on the backlog.
+# Serialising costs 2 s of 29 (28.6 s -> 30.8 s) on a warm tree -- which this
+# is, since `dune build @all` above has already built the executables -- because
+# one test dominates the section either way. Two alternatives are on the backlog
+# rather than here: an `xvfb-run` per rule (eleven displays, but it adds
+# `xvfb-run -a`'s own race for a free display number), and `(locks x-display)` on
+# the eleven rules, which is dune's own answer to "these must not run at once"
+# and binds the constraint to the rules rather than to this one flag on this one
+# call site. The second is probably the right end state; it is a change to eleven
+# rules with no review round behind it, which is not a thing a CI pass should
+# decide on its own.
 BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest -j 1
 
 echo "== example smoke"
