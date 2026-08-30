@@ -113,7 +113,12 @@ let impl : Widget_impl.t =
       Some
         (fun w (kind : Kind.t) ->
           match kind with
-          | Search_entry p -> Widget_impl.batch w (fun () -> set_text w p.text)
+          | Search_entry p ->
+            (* [set_text] compares again and records an echo only if it really wrote; what
+               is hoisted here is the same comparison, so that the bracket is outside the
+               decision. See [Widget_impl.batch_if]. *)
+            let writes = W_entry.needs_text (W_entry.editable w) p.text in
+            Widget_impl.batch_if writes w (fun () -> if writes then set_text w p.text)
           | k -> Widget_impl.wrong_kind "SearchEntry" k)
   ; signals =
       [ W_entry.changed

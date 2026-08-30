@@ -29,6 +29,13 @@ val create
 (** One turn of the loop: advance the clock (unless the caller owns the time source),
     apply queued actions, and patch the GTK tree to the new result, then run lifecycles.
 
+    A frame on which the computation returns the physically same node as the previous
+    frame does not diff: it re-asserts the tree's controlled props and re-runs its fixups,
+    which is the whole of what a no-change frame ever did. This is what makes an idle tick
+    nearly free. It is not the same as skipping the frame, and must not become that: the
+    frame on which a model declines a user's edit is exactly the frame whose view did not
+    change, so it is the one that has to put the widget back. See [Patcher.reassert_only].
+
     Raises whatever the computation or the patcher raises — in particular
     [Invalid_argument] if the root node is not a [Node.window], or if a [Node.window]
     appears anywhere below the root. Under {!Bonsai_gtk.start} frames are driven by the

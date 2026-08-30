@@ -41,9 +41,12 @@ let impl : Widget_impl.t =
         { insert =
             (fun parent ~after ~node:_ child ->
               W.Box.insert_child_after (cast parent) child after)
-        ; move =
-            (fun parent ~child ~after ->
-              W.Box.reorder_child_after (cast parent) child after)
+        ; (* A box is one of the two containers that can really reorder (the other is M2's
+             notebook), so it is [Some]: see [Widget_impl.list_ops.move]. *)
+          move =
+            Some
+              (fun parent ~child ~after ->
+                W.Box.reorder_child_after (cast parent) child after)
         ; remove = (fun parent child -> W.Box.remove (cast parent) child)
         ; updated = Widget_impl.no_list_update
         }

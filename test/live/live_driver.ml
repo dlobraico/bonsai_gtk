@@ -120,6 +120,33 @@ let declining_app (graph @ local) =
        ])
 ;;
 
+(* The same claim again, for the frame that does not diff at all.
+
+   [declining_app] above happens to render the physically same node too (its [let%arr]
+   depends on a [count] nothing changes), but it does so incidentally. This one is
+   explicit: the view is built *once*, outside the computation, and handed back by
+   reference on every frame -- which is what a Bonsai computation whose state did not move
+   does, and is the frame [Driver.frame_body] now skips the diff on.
+
+   Both halves of the controlled rule are exercised, because a walk that only re-asserted
+   would pass the switch and fail the stack: the switch is [Widget_impl.reassert] and the
+   stack's page is a fixup [Patcher.enqueue_fixups] has to re-enqueue. *)
+let phys_view =
+  Node.window
+    ~title:"phys"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.switch ~active:false ()
+       ; Node.stack
+           ~name:"phys-nav"
+           ~transition:None_
+           ~visible_child:"a"
+           [ Node.label ~key:"a" "a"; Node.label ~key:"b" "b" ]
+       ])
+;;
+
+let phys_app (_graph @ local) = Bonsai.return phys_view
+
 let () =
   ignore (Ocgtk_gtk.GMain.init () : string array);
   (* A caller-owned time source: with none, every frame would advance the clock to
@@ -271,5 +298,39 @@ let () =
     "declined page: visible %s, Bonsai saw %d\n"
     (Option.value (W.Stack.get_visible_child_name (cast (child 1))) ~default:"?")
     !declined_pages;
-  Expert.Driver.stop declining
+  Expert.Driver.stop declining;
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let phys =
+    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) phys_app
+  in
+  let phys_child i =
+    let root = Option.value_exn (Expert.Driver.root_widget phys) in
+    List.nth_exn (widget_children (List.hd_exn (widget_children root))) i
+  in
+  let switch_active () = W.Switch.get_active (cast (phys_child 0)) in
+  let visible_page () =
+    Option.value (W.Stack.get_visible_child_name (cast (phys_child 1))) ~default:"?"
+  in
+  Expert.Driver.frame phys;
+  printf "after mount: switch %b, page %s\n" (switch_active ()) (visible_page ());
+  (* The user flips the switch and clicks through to the other page. *)
+  W.Switch.set_active (cast (phys_child 0)) true;
+  W.Stack.set_visible_child_name (cast (phys_child 1)) "b";
+  printf
+    "after the user changed them: switch %b, page %s\n"
+    (switch_active ())
+    (visible_page ());
+  (* One frame, on which Bonsai hands back the identical node value. Nothing is diffed --
+     and both edits are still put back. *)
+  Expert.Driver.frame phys;
+  printf
+    "after the declining frame: switch %b, page %s\n"
+    (switch_active ())
+    (visible_page ());
+  (* The tree is still patchable afterwards: the no-diff walk left [live.node] alone, so a
+     later frame that *does* change something diffs against the node that was really
+     rendered rather than against nothing. There is no such frame for this app -- it is a
+     constant -- so the check is that the shadow tree still describes GTK. *)
+  print_s (Private.Live_tree.dump (Option.value_exn (Expert.Driver.root_widget phys)));
+  Expert.Driver.stop phys
 ;;

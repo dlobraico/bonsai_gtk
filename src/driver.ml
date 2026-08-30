@@ -42,28 +42,29 @@ let frame_body t =
     Bonsai.Time_source.Private.flush t.time_source);
   Bonsai_driver.flush t.bonsai;
   let node = Bonsai_driver.result t.bonsai in
-  (* Every frame patches, including the frames on which Bonsai hands back the physically
-     same node.
+  (* Skipping the frames on which Bonsai hands back the physically same node looks like a
+     free optimisation and is not. A model that *declines* a user's edit -- the
+     digits-only field handed a letter, the switch the model refuses to flip, the stack
+     page it will not navigate to -- leaves its state exactly as it was, so its view is
+     the same value it was last frame. The work that would put the widget back is
+     therefore precisely the work a physical-equality guard throws away, and the declined
+     edit stands on screen. That is the bug spec §6.5 exists to prevent.
 
-     Skipping those looks like a free optimisation and is not. A model that *declines* a
-     user's edit -- the digits-only field handed a letter, the switch the model refuses to
-     flip, the stack page it will not navigate to -- leaves its state exactly as it was,
-     so its view is the same value it was last frame. The patch that would put the widget
-     back is therefore precisely the patch a physical-equality guard throws away, and the
-     declined edit stands on screen. That is the bug spec §6.5 exists to prevent, and both
-     halves of the cure -- [Widget_impl.reassert] and the stack-selection fixup -- live
-     inside the patch being skipped.
-
-     The cost is bounded rather than free: a frame that changed nothing still walks the
-     shadow tree, but [Kind.equal_props] skips every impl [update] and [Attrs.diff] writes
-     nothing, so no GTK call is made. Frames only happen on an event or on the tick. *)
+     What that argument rules out is skipping the frame, not diffing it. Both halves of
+     the cure -- [Widget_impl.reassert] and the deferred selections -- are exactly what
+     [Patcher.reassert_only] does, and they are the whole of what a no-change frame ever
+     accomplished: with the node physically identical there is nothing for [Attrs.diff] to
+     find and nothing for [Kind.equal_props] to admit, so a full patch would walk the same
+     tree to reach the same two calls. Frames only happen on an event or on the tick, and
+     an idle tick is now nearly free. *)
   check_root node;
   Scheduler.with_patch_guard t.scheduler (fun () ->
-    t.root
-    <- Some
-         (match t.root with
-          | None -> Patcher.mount t.ctx ~path:"root" ~is_root:true node
-          | Some live -> Patcher.patch t.ctx ~path:"root" ~is_root:true live node);
+    (match t.root with
+     | Some live when phys_equal node live.Patcher.node ->
+       Patcher.reassert_only t.ctx ~path:"root" live
+     | Some live ->
+       t.root <- Some (Patcher.patch t.ctx ~path:"root" ~is_root:true live node)
+     | None -> t.root <- Some (Patcher.mount t.ctx ~path:"root" ~is_root:true node));
     (* Inside the guard, and after the whole tree exists: this is where a [stack_switcher]
        finds the stack it names and a stack selects its page, and both write properties
        GTK notifies about. *)

@@ -60,7 +60,7 @@ let matches ~key ~same_kind ~old ~new_ =
       else None)
 ;;
 
-let diff ~key ~same_kind ~old ~new_ =
+let diff ?(ordered = true) ~key ~same_kind ~old ~new_ () =
   check_unique_keys ~key old;
   check_unique_keys ~key new_;
   let matched = matches ~key ~same_kind ~old ~new_ in
@@ -88,15 +88,19 @@ let diff ~key ~same_kind ~old ~new_ =
         [ Insert { index = i; item } ]
       | Some old_idx ->
         let from = List.findi_exn !current ~f:(fun _ x -> x = old_idx) |> fst in
-        let move =
-          if from = i
-          then []
-          else (
-            let without = List.filteri !current ~f:(fun j _ -> j <> from) in
-            current := List.take without i @ [ old_idx ] @ List.drop without i;
-            [ Move { from; to_ = i } ])
-        in
-        move @ [ Update { index = i; old = old_arr.(old_idx); item } ])
+        (* The [Update]'s index is where this item lives once whatever this branch does to
+           [current] is done. In the ordered case a [Move] puts it at [i]; in the
+           unordered case nothing moves it, so it stays at [from] -- and the [Update] must
+           say so, or it would patch whichever child happens to sit at [i] instead. Note
+           that [from = i] takes the same branch for the same reason, which is why the
+           ordered path's ops are byte-identical to what they were before [ordered]
+           existed. *)
+        if from = i || not ordered
+        then [ Update { index = from; old = old_arr.(old_idx); item } ]
+        else (
+          let without = List.filteri !current ~f:(fun j _ -> j <> from) in
+          current := List.take without i @ [ old_idx ] @ List.drop without i;
+          [ Move { from; to_ = i }; Update { index = i; old = old_arr.(old_idx); item } ]))
   in
   removes @ ops
 ;;

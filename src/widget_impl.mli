@@ -19,14 +19,22 @@ type list_ops =
       {i own} — an overlay's measure flag, a grid cell, a stack page's title — which are
       not properties of the child widget and so are read from the child node's attrs here
       rather than applied by [Attr_apply]. *)
-  ; move : Widget.t -> child:Widget.t -> after:Widget.t option -> unit
+  ; move : (Widget.t -> child:Widget.t -> after:Widget.t option -> unit) option
   (** Move a child already in the container to sit directly after [after] ([None] =
       first). [after] is computed over the sibling list with [child] already taken out of
       it, which is the order GTK's [reorder_child_after] expects.
 
-      A container GTK gives no reordering primitive for — [Overlay] is the M1 case — makes
-      this a documented no-op: identity is preserved by keys, and only the paint or tab
-      order goes unreconciled. *)
+      [None] means this container has no reorder primitive — [GtkOverlay], [GtkStack] and
+      [GtkGrid] have none — and is not a no-op but a {i marker}: the patcher passes
+      [~ordered:false] to [Reconcile.diff], which then emits no [Move] at all. Keys still
+      preserve identity; children stay in the order they were first added, and for a stack
+      or a grid that order is invisible anyway (a grid's placement is its
+      {!Bonsai_gtk_vtree.Attr.grid_cell}).
+
+      An [option] rather than a [bool] beside the function because the two facts — "this
+      container can reorder" and "here is how" — have to stay in step, and a pair of
+      fields lets them disagree. This way the patcher cannot call a [move] a container
+      does not have, and cannot record in its own bookkeeping a move that did not happen. *)
   ; remove : Widget.t -> Widget.t -> unit
   ; updated : Widget.t -> old:Node.t -> node:Node.t -> Widget.t -> unit
   (** Called after a child that stayed in place was patched, with its previous and new
@@ -95,6 +103,23 @@ type t =
     guard has to swallow. Thawing emits one round of notifications for whatever actually
     changed. *)
 val batch : Widget.t -> (unit -> unit) -> unit
+
+(** [batch_if writes w f] is {!batch} when [writes], and [f ()] otherwise.
+
+    For {!t.reassert}, which runs on every patch of every node of its kind — including the
+    overwhelming majority that write nothing — and which was paying a
+    [freeze_notify]/[thaw_notify] pair each time. (Measured, so that the abstraction is
+    answering a real cost: ~79.5 ns per bracket on a [GtkLabel].) The caller decides
+    [writes] by the same comparison it was about to make anyway: a [reassert] for a
+    single-prop kind computes "does the widget already hold this" first, and brackets only
+    when the answer is no.
+
+    A [reassert] that writes two or more props still has to bracket before the first
+    write, so its [writes] is the disjunction of its per-prop comparisons. Getting that
+    wrong is a correctness bug (an unbracketed multi-prop write emits a [notify::] per
+    setter), so a kind with several controlled props should prefer plain {!batch} unless
+    the saving was measured. *)
+val batch_if : bool -> Widget.t -> (unit -> unit) -> unit
 
 (** Raises [Invalid_argument]: impl [name] was handed a kind it does not own. *)
 val wrong_kind : string -> Kind.t -> 'a

@@ -381,6 +381,58 @@ let () =
      There is nothing here that can provoke it: every [Slots] node comes from a
      constructor whose slot list is written beside the impl's. *)
   P.destroy ctx live;
+  (* An overlay is *unordered*: [Widget_impl.list_ops.move] is [None] for it, so the
+     patcher passes [~ordered:false] to [Reconcile.diff] and no [Move] is emitted at all.
+     What that must not cost is identity. Rendering the same three keyed overlays in two
+     different orders has to leave GTK exactly as it was: the same three widgets, in the
+     same painting order, each still showing its own text -- which is the half a
+     positional match would break, since a mis-match would repaint child 0 with child 2's
+     text.
+
+     This is the claim [~ordered:false] is *for*, and until now nothing tested it: the
+     only overlay reorder in this file changes the child list's length as well. *)
+  let unordered ~overlays =
+    Node.window
+      ~title:"unordered"
+      (Node.overlay
+         ~overlays:(List.map overlays ~f:(fun k -> Node.label ~key:k ("item " ^ k)))
+         (Node.box
+            ~orientation:Vertical
+            ~attrs:[ Attr.width_request 40; Attr.height_request 20 ]
+            []))
+  in
+  let overlay_widgets (live : P.live) =
+    match live.children with
+    | Single (Some ov) ->
+      (match ov.P.children with
+       | Slots slots ->
+         (match List.Assoc.find_exn slots "overlays" ~equal:String.equal with
+          | Children.List cs -> List.map cs ~f:(fun (l : P.live) -> l.P.widget)
+          | No_children | Single _ | Slots _ -> assert false)
+       | No_children | Single _ | List _ -> assert false)
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let live =
+    P.mount ctx ~path:"root" ~is_root:true (unordered ~overlays:[ "a"; "b"; "c" ])
+  in
+  print_s (Live_tree.dump live.widget);
+  let mounted = overlay_widgets live in
+  let same_widgets live =
+    match List.for_all2 mounted (overlay_widgets live) ~f:Gobject.same with
+    | Ok b -> b
+    | Unequal_lengths -> false
+  in
+  let live =
+    P.patch ctx ~path:"root" ~is_root:true live (unordered ~overlays:[ "c"; "a"; "b" ])
+  in
+  print_s (Live_tree.dump live.widget);
+  printf "same overlay widgets after one reorder: %b\n" (same_widgets live);
+  let live =
+    P.patch ctx ~path:"root" ~is_root:true live (unordered ~overlays:[ "b"; "c"; "a" ])
+  in
+  print_s (Live_tree.dump live.widget);
+  printf "same overlay widgets after another: %b\n" (same_widgets live);
+  P.destroy ctx live;
   (* The layout skeleton, patched. [Window], [Box], [Grid], [Paned], [Center_box] and
      [Spinner] were all mounted and unmounted by these tests and never once patched with a
      property that changed, so their [update] functions had never executed a write:

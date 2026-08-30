@@ -21,9 +21,12 @@ let toggled : Signals.spec =
    which is why this is [reassert] rather than part of [update]. The patcher skips
    [update] entirely on the patch where the model declined, that being precisely the patch
    where the props did not move. *)
+let needs_active (b : W.Toggle_button.t) active =
+  not (Bool.equal (W.Toggle_button.get_active b) active)
+;;
+
 let set_active_if_needed (b : W.Toggle_button.t) active =
-  if not (Bool.equal (W.Toggle_button.get_active b) active)
-  then W.Toggle_button.set_active b active
+  if needs_active b active then W.Toggle_button.set_active b active
 ;;
 
 let impl : Widget_impl.t =
@@ -66,7 +69,12 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Toggle_button p ->
-            Widget_impl.batch w (fun () -> set_active_if_needed (cast w) p.active)
+            let b : W.Toggle_button.t = cast w in
+            (* The comparison is made before the bracket rather than inside it, so a patch
+               that has nothing to write pays neither. See [Widget_impl.batch_if]. *)
+            let writes = needs_active b p.active in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then W.Toggle_button.set_active b p.active)
           | k -> Widget_impl.wrong_kind "ToggleButton" k)
   ; signals =
       [ toggled ]

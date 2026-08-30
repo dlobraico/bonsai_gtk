@@ -38,11 +38,13 @@ let impl : Widget_impl.t =
                        order added, and [after] is unusable. Order among overlays is
                        therefore *not* reconciled -- a reorder in the node list leaves the
                        painting order alone. Keys still preserve identity, which is what
-                       matters; a stack whose paint order must change is a case for
-                       separate keys per layer. *)
+                       matters (and is what [test/live/live_containers.ml] pins); a stack
+                       whose paint order must change is a case for separate keys per
+                       layer. *)
                     W.Overlay.add_overlay (cast parent) child;
                     W.Overlay.set_measure_overlay (cast parent) child (measure node))
-              ; move = (fun _parent ~child:_ ~after:_ -> ())
+                  (* This container is unordered; see [Widget_impl.list_ops.move]. *)
+              ; move = None
               ; remove =
                   (fun parent child -> W.Overlay.remove_overlay (cast parent) child)
               ; updated =

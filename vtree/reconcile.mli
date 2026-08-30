@@ -41,13 +41,33 @@ type 'a op =
     doesn't invalidate later indices), followed by the [Move]/[Insert]/[Update] ops for
     [new_]'s items left to right.
 
+    [ordered] is [false] for a container GTK gives no reorder primitive for — an overlay,
+    a stack, a grid. Matching is unaffected (identity is by key either way, and state
+    still survives a reorder); what changes is that no [Move] is emitted, because the
+    patcher would have nothing to apply it with. Emitting one and discarding it is worse
+    than not emitting it: the discarded op is still counted in the patcher's index
+    bookkeeping, and it shows up in a test's [op list] as though something happened.
+
+    What that costs, and it is the whole cost: the result of applying the ops is [new_]'s
+    items in {i some} order rather than in [new_]'s order, so [apply ops old = new_] no
+    longer holds — only the set does. Each [Update] is therefore indexed by where its item
+    already is rather than by where [new_] would put it, which is what keeps every op's
+    index describing the list the caller really holds. The ops still come out in [new_]'s
+    order; only their indices are the un-reordered list's.
+
     Raises [Invalid_argument] if [old] or [new_] contains a duplicate [Some] key
-    ({!check_unique_keys}). *)
+    ({!check_unique_keys}).
+
+    The trailing [unit] is what makes [?ordered] erasable: every other argument is
+    labelled, so without it OCaml cannot tell a partial application from a defaulted one
+    (warning 16). *)
 val diff
-  :  key:('a -> Key.t option)
+  :  ?ordered:bool (** default [true] *)
+  -> key:('a -> Key.t option)
   -> same_kind:('a -> 'a -> bool)
   -> old:'a list
   -> new_:'a list
+  -> unit
   -> 'a op list
 
 (** [apply ops list] applies [ops] left to right to [list], per each op's documented

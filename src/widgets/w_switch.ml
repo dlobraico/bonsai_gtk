@@ -29,9 +29,18 @@ let set_both (s : W.Switch.t) active =
   W.Switch.set_state s active
 ;;
 
-(* Controlled, on the same rule (and for the same reason) as [w_toggle_button.ml]'s. *)
-let set_active_if_needed (s : W.Switch.t) active =
-  if not (Bool.equal (W.Switch.get_active s) active) then set_both s active
+(* Controlled, on the same rule (and for the same reason) as [w_toggle_button.ml]'s. The
+   comparison is separate from the write because [reassert] has to make it *before* it
+   decides whether to bracket: see [Widget_impl.batch_if]. *)
+let needs_active (s : W.Switch.t) active = not (Bool.equal (W.Switch.get_active s) active)
+
+let reassert w (kind : Kind.t) =
+  match kind with
+  | Switch { active } ->
+    let s : W.Switch.t = cast w in
+    let writes = needs_active s active in
+    Widget_impl.batch_if writes w (fun () -> if writes then set_both s active)
+  | k -> Widget_impl.wrong_kind "Switch" k
 ;;
 
 let impl : Widget_impl.t =
@@ -39,10 +48,19 @@ let impl : Widget_impl.t =
   ; create =
       (fun (kind : Kind.t) ->
         match kind with
-        | Switch { active } ->
+        | Switch _ ->
           let s = W.Switch.new_ () in
-          if active then Widget_impl.batch (s :> Widget.t) (fun () -> set_both s true);
-          (s :> Widget.t)
+          let w = (s :> Widget.t) in
+          (* Through [reassert] rather than a second [set_active] of its own, so the one
+             controlled prop this kind has has exactly one implementation. Two
+             consequences worth being explicit about. A switch whose node says
+             [~active:true] is created inactive and then written, which is one extra
+             property write on the create path -- the same write the next patch would have
+             made anyway. And that write emits [notify::active] for real, because [create]
+             runs *before* [Patcher.mount]'s [connect_all]: there is not merely an empty
+             slot at that point, there is no connection at all, so nothing can hear it. *)
+          reassert w kind;
+          w
         | k -> Widget_impl.wrong_kind "Switch" k)
   ; update =
       (* [active] is the only prop a switch has, and it is controlled — so every write
@@ -52,13 +70,7 @@ let impl : Widget_impl.t =
         match new_ with
         | Switch _ -> ()
         | k -> Widget_impl.wrong_kind "Switch" k)
-  ; reassert =
-      Some
-        (fun w (kind : Kind.t) ->
-          match kind with
-          | Switch { active } ->
-            Widget_impl.batch w (fun () -> set_active_if_needed (cast w) active)
-          | k -> Widget_impl.wrong_kind "Switch" k)
+  ; reassert = Some reassert
   ; signals = [ toggled ]
   ; children = Widget_impl.No_children
   }

@@ -128,7 +128,11 @@ let impl : Widget_impl.t =
               | None ->
                 ignore
                   (W.Stack.add_named (cast parent) child (Some name) : W.Stack_page.t))
-        ; move = (fun _parent ~child:_ ~after:_ -> ())
+            (* This container is unordered: GTK has no reorder primitive for stack pages,
+               so the reconciler is told not to emit [Move] at all. See
+               [Widget_impl.list_ops.move]. Page order is only switcher button order (M1
+               ruling 4). *)
+        ; move = None
         ; remove = (fun parent child -> W.Stack.remove (cast parent) child)
         ; updated =
             (fun parent ~old ~node child ->

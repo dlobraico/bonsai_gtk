@@ -47,3 +47,15 @@ rejected: Bonsai_gtk: the root node must be a Node.window, got Label
     (GtkLabel (text "on: true toggled: 1"))))))
 declined toggle: active false, Bonsai saw 1
 declined page: visible a, Bonsai saw 1
+after mount: switch false, page a
+after the user changed them: switch true, page b
+after the declining frame: switch false, page a
+(GtkWindow (title (phys)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkSwitch
+     (children (GtkImage (icon switch-on-symbolic) (opacity 0))
+      (GtkImage (icon switch-off-symbolic) (opacity 0)) (GtkGizmo)))
+    (GtkStack (visible (a))
+     (children (GtkLabel (text a)) (GtkLabel (text b))))))))

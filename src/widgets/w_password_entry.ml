@@ -42,8 +42,10 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Password_entry p ->
-            Widget_impl.batch w (fun () ->
-              ignore (W_entry.set_text_if_needed (W_entry.editable w) p.text : bool))
+            let e = W_entry.editable w in
+            let writes = W_entry.needs_text e p.text in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then ignore (W_entry.set_text_if_needed e p.text : bool))
           | k -> Widget_impl.wrong_kind "PasswordEntry" k)
   ; signals =
       [ W_entry.changed

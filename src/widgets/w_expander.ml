@@ -19,9 +19,12 @@ let expanded_changed : Signals.spec =
    shows rather than against the previous node, because the user may have opened or closed
    it since the last render and a model that declines must pin it back. That is a patch on
    which the props did not move, so [update] is skipped and this is all that runs. *)
+let needs_expanded (e : W.Expander.t) expanded =
+  not (Bool.equal (W.Expander.get_expanded e) expanded)
+;;
+
 let set_expanded_if_needed (e : W.Expander.t) expanded =
-  if not (Bool.equal (W.Expander.get_expanded e) expanded)
-  then W.Expander.set_expanded e expanded
+  if needs_expanded e expanded then W.Expander.set_expanded e expanded
 ;;
 
 let impl : Widget_impl.t =
@@ -55,7 +58,10 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Expander p ->
-            Widget_impl.batch w (fun () -> set_expanded_if_needed (cast w) p.expanded)
+            let e : W.Expander.t = cast w in
+            let writes = needs_expanded e p.expanded in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then W.Expander.set_expanded e p.expanded)
           | k -> Widget_impl.wrong_kind "Expander" k)
   ; signals = [ expanded_changed ]
   ; children =

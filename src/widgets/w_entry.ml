@@ -21,8 +21,10 @@ let editable (w : Widget.t) : W.Editable.t = W.Editable.from_gobject w
    Returns whether it wrote. Most callers do not care, but [w_search_entry.ml] does: a
    write there arms a debounce whose emission arrives long after the patch is over, and it
    has to know which writes armed one. *)
+let needs_text (e : W.Editable.t) text = not (String.equal (W.Editable.get_text e) text)
+
 let set_text_if_needed (e : W.Editable.t) text =
-  if String.equal (W.Editable.get_text e) text
+  if not (needs_text e text)
   then false
   else (
     let position = W.Editable.get_position e in
@@ -120,8 +122,14 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Entry p ->
-            Widget_impl.batch w (fun () ->
-              ignore (set_text_if_needed (editable w) p.text : bool))
+            (* The comparison comes first because the bracket has to be outside the
+               decision: an entry patched with the text it already shows -- which is every
+               patch of an entry the model echoes -- must pay neither the write nor the
+               freeze/thaw. See [Widget_impl.batch_if]. *)
+            let e = editable w in
+            let writes = needs_text e p.text in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then ignore (set_text_if_needed e p.text : bool))
           | k -> Widget_impl.wrong_kind "Entry" k)
   ; signals =
       [ changed

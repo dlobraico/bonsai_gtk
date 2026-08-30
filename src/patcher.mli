@@ -108,6 +108,27 @@ val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
     off-root (see {!mount}). *)
 val patch : ctx -> path:string -> is_root:bool -> live -> Node.t -> live
 
+(** Re-applies every controlled prop in [live]'s subtree and re-enqueues the fixups the
+    same tree would enqueue, without diffing anything.
+
+    For the frame on which the computation hands back the physically same {!Node.t} it
+    handed back last frame. Nothing in the tree can have changed — it is the same value —
+    so there is no [update] to run, no attr diff to compute and no child list to
+    reconcile. What is left, and what a full {!patch} of that frame was really doing, is
+    the two halves of the controlled-prop rule (spec §6.5): {!Widget_impl.reassert} and
+    the deferred selections. That matters because a model which {i declines} a user's edit
+    renders exactly what it rendered before, so the frame with nothing to diff is the very
+    frame on which the widget has to be put back.
+
+    The caller runs {!run_fixups} afterwards, exactly as it does after a {!mount} or a
+    {!patch}, and inside the same reentrancy guard. [live.node] is left alone (it is
+    already the node that was rendered), so a later frame that does change something still
+    diffs against what is really on screen. Raises whatever a [reassert] raises.
+
+    [path] identifies the root of the walk for exception reporting, the same as
+    {!mount}'s. *)
+val reassert_only : ctx -> path:string -> live -> unit
+
 (** Tears [live] and its subtree down: empties the signal slots (so a signal GTK emits
     during teardown cannot reach a handler), disconnects, and lets native implementations
     release what they allocated. On the paths where the patcher unparents a subtree before

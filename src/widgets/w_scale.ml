@@ -30,8 +30,10 @@ let value_changed : Signals.spec =
    drag the model declines is pulled back mid-gesture, which is jarring, and is still the
    right answer — the alternative is a slider and a model that disagree with nothing to
    say so. The plan's Open Question 2 rules on this. *)
+let needs_value (r : W.Range.t) value = Float.( <> ) (W.Range.get_value r) value
+
 let set_value_if_needed (r : W.Range.t) value =
-  if Float.( <> ) (W.Range.get_value r) value then W.Range.set_value r value
+  if needs_value r value then W.Range.set_value r value
 ;;
 
 (* As on the spin button, and for the same reason: GTK needs a page increment (Page
@@ -89,7 +91,10 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Scale p ->
-            Widget_impl.batch w (fun () -> set_value_if_needed (cast w) p.value)
+            let r : W.Range.t = cast w in
+            let writes = needs_value r p.value in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then W.Range.set_value r p.value)
           | k -> Widget_impl.wrong_kind "Scale" k)
   ; signals = [ value_changed ]
   ; children = Widget_impl.No_children

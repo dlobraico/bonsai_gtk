@@ -56,9 +56,11 @@ let impl : Widget_impl.t =
   ; children =
       Widget_impl.List
         { insert = (fun parent ~after:_ ~node child -> attach parent node child)
-        ; (* Order in the node list means nothing to a grid -- the cell is the placement
-             -- so a reorder that keeps the cells must not touch GTK (M1 ruling 4). *)
-          move = (fun _parent ~child:_ ~after:_ -> ())
+        ; (* This container is unordered: order in the node list means nothing to a grid
+             -- the cell is the placement -- and GTK has no reorder primitive for an
+             attached child, so the reconciler is told not to emit [Move] at all. See
+             [Widget_impl.list_ops.move] (M1 ruling 4). *)
+          move = None
         ; remove = (fun parent child -> W.Grid.remove (cast parent) child)
         ; updated =
             (fun parent ~old ~node child ->

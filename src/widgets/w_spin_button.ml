@@ -33,8 +33,12 @@ let value_changed : Signals.spec =
    emits nothing. An epsilon would trade that for the opposite and worse failure: a real
    divergence small enough to fall inside it would be left standing, which is precisely
    what §6.5 exists to prevent. *)
+let needs_value (s : W.Spin_button.t) value =
+  Float.( <> ) (W.Spin_button.get_value s) value
+;;
+
 let set_value_if_needed (s : W.Spin_button.t) value =
-  if Float.( <> ) (W.Spin_button.get_value s) value then W.Spin_button.set_value s value
+  if needs_value s value then W.Spin_button.set_value s value
 ;;
 
 (* GTK needs a page increment (Page Up/Down) as well as a step, and [new_with_range] picks
@@ -92,7 +96,10 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Spin_button p ->
-            Widget_impl.batch w (fun () -> set_value_if_needed (cast w) p.value)
+            let s : W.Spin_button.t = cast w in
+            let writes = needs_value s p.value in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then W.Spin_button.set_value s p.value)
           | k -> Widget_impl.wrong_kind "SpinButton" k)
   ; signals = [ value_changed ]
   ; children = Widget_impl.No_children

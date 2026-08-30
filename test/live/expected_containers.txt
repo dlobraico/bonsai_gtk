@@ -202,6 +202,32 @@ back: width 80..300, height 100..500
        (height-request 60))
       (GtkLabel (text 9))))))))
 paned notify reaching Bonsai: 1
+(GtkWindow (title (unordered)) (css (background)) hidden
+ (children
+  (GtkOverlay (unmeasured (1 2 3))
+   (children
+    (GtkBox (spacing 0) (css (vertical)) (width-request 40)
+     (height-request 20))
+    (GtkLabel (text "item a")) (GtkLabel (text "item b"))
+    (GtkLabel (text "item c"))))))
+(GtkWindow (title (unordered)) (css (background)) hidden
+ (children
+  (GtkOverlay (unmeasured (1 2 3))
+   (children
+    (GtkBox (spacing 0) (css (vertical)) (width-request 40)
+     (height-request 20))
+    (GtkLabel (text "item a")) (GtkLabel (text "item b"))
+    (GtkLabel (text "item c"))))))
+same overlay widgets after one reorder: true
+(GtkWindow (title (unordered)) (css (background)) hidden
+ (children
+  (GtkOverlay (unmeasured (1 2 3))
+   (children
+    (GtkBox (spacing 0) (css (vertical)) (width-request 40)
+     (height-request 20))
+    (GtkLabel (text "item a")) (GtkLabel (text "item b"))
+    (GtkLabel (text "item c"))))))
+same overlay widgets after another: true
 (GtkWindow (title (before)) (css (background)) hidden
  (children
   (GtkBox (spacing 4) (css (vertical))

@@ -132,47 +132,24 @@ let interest_of_kind (kind : Kind.t) =
   | Native _ -> Nothing
 ;;
 
-(* The deferred half of realizing a node: a window is presented, a stack registers its
-   name and asks for its selection to be applied once its pages exist, and a switcher or
-   sidebar asks for the stack it names to be looked up once the whole tree does. Shared by
-   [mount] and [patch], which differ only in [pass]. *)
-let note_interest
-  ctx
-  ~path
-  ~widget
-  ~(interest : interest)
-  ~(pass : [ `Mount | `Patch of Kind.t ])
-  =
+(* What a node of this kind wants done once the whole pass is over: a stack selecting a
+   page that does not exist while the stack is being built, a switcher resolving the stack
+   it names.
+
+   Called from [note_interest] -- so from [mount] and from [patch] -- and from
+   [reassert_only]. The last is why this is a function of its own rather than two lines
+   inside [note_interest]: a frame that skips the walk must still re-apply the selections,
+   since a selection is a controlled prop and the frame that declines a navigation is
+   exactly the frame on which nothing else moved. *)
+let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
   match interest with
-  | Nothing -> ()
-  | Window ->
-    (* Once per window, at mount: the runtime presents it and holds onto it. *)
-    (match pass with
-     | `Mount -> ctx.on_window_created widget
-     | `Patch _ -> ())
-  | Stack { name; visible_child; _ } ->
-    (match pass with
-     | `Mount -> register_stack ctx ~path ~name widget
-     | `Patch (Kind.Stack { name = old_name; _ }) when String.equal old_name name ->
-       (* The name did not move, so the entry already points here. [set] rather than
-          nothing so a registration lost to some earlier teardown heals itself. *)
-       Hashtbl.set ctx.stacks ~key:name ~data:widget
-     | `Patch (Kind.Stack { name = old_name; _ }) ->
-       (* A renamed stack drops its old entry, so a switcher still naming it fails loudly
-          rather than driving a stack the tree no longer calls that -- and claims the new
-          name through [register_stack], so renaming *onto* a name another stack already
-          holds raises exactly as declaring the collision outright would. *)
-       Hashtbl.remove ctx.stacks old_name;
-       register_stack ctx ~path ~name widget
-     | `Patch _ ->
-       (* Unreachable: [patch] only gets here when the kinds match. Registering rather
-          than assuming is what keeps it harmless if that ever changes. *)
-       register_stack ctx ~path ~name widget);
+  | Nothing | Window -> ()
+  | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected. *)
     Queue.enqueue ctx.fixups (fun () -> W_stack.select widget ~visible_child)
   | Stack_ref (which, name) ->
-    (* Re-enqueued on every patch rather than only when the name changed: it is one
+    (* Re-enqueued on every pass rather than only when the name changed: it is one
        hashtable lookup and one setter per switcher per frame, and it is the only thing
        that keeps a switcher pointing at a stack that was itself replaced. *)
     Queue.enqueue ctx.fixups (fun () ->
@@ -180,6 +157,45 @@ let note_interest
       match which with
       | `Switcher -> W_stack_switcher.attach widget stack
       | `Sidebar -> W_stack_sidebar.attach widget stack)
+;;
+
+(* The immediate half of realizing a node -- a window is presented, a stack registers its
+   name -- followed by {!enqueue_fixups} for the deferred half. Shared by [mount] and
+   [patch], which differ only in [pass]. *)
+let note_interest
+  ctx
+  ~path
+  ~widget
+  ~(interest : interest)
+  ~(pass : [ `Mount | `Patch of Kind.t ])
+  =
+  (match interest with
+   | Nothing -> ()
+   | Window ->
+     (* Once per window, at mount: the runtime presents it and holds onto it. *)
+     (match pass with
+      | `Mount -> ctx.on_window_created widget
+      | `Patch _ -> ())
+   | Stack { name; _ } ->
+     (match pass with
+      | `Mount -> register_stack ctx ~path ~name widget
+      | `Patch (Kind.Stack { name = old_name; _ }) when String.equal old_name name ->
+        (* The name did not move, so the entry already points here. [set] rather than
+           nothing so a registration lost to some earlier teardown heals itself. *)
+        Hashtbl.set ctx.stacks ~key:name ~data:widget
+      | `Patch (Kind.Stack { name = old_name; _ }) ->
+        (* A renamed stack drops its old entry, so a switcher still naming it fails loudly
+           rather than driving a stack the tree no longer calls that -- and claims the new
+           name through [register_stack], so renaming *onto* a name another stack already
+           holds raises exactly as declaring the collision outright would. *)
+        Hashtbl.remove ctx.stacks old_name;
+        register_stack ctx ~path ~name widget
+      | `Patch _ ->
+        (* Unreachable: [patch] only gets here when the kinds match. Registering rather
+           than assuming is what keeps it harmless if that ever changes. *)
+        register_stack ctx ~path ~name widget)
+   | Stack_ref _ -> ());
+  enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
 (* Spec §11: structural misuse is rejected loudly and early. A [GtkWindow] is a toplevel,
@@ -444,11 +460,17 @@ and patch_list
      used to reach the caller with no path on it at all. *)
   let edits =
     child_op ~path (fun () ->
+      (* [~ordered] is [false] exactly when this container has no reorder primitive, so
+         the ops the reconciler produces and the ops this function can apply are the same
+         set: no [Move] is emitted for such a container, rather than emitted here and
+         discarded there. See [Widget_impl.list_ops.move]. *)
       Reconcile.diff
+        ~ordered:(Option.is_some ops.move)
         ~key:(fun (n : Node.t) -> n.key)
         ~same_kind:(fun a b -> Kind.same_kind a.Node.kind b.Node.kind)
         ~old:(List.map olds ~f:(fun l -> l.node))
-        ~new_:news)
+        ~new_:news
+        ())
   in
   (* [cur] mirrors, over lives, exactly what [Reconcile.apply] would do over nodes, so the
      indices the reconciler computed stay valid — and so [cur] is also what every op reads
@@ -474,12 +496,26 @@ and patch_list
         ops.insert parent ~after:(after_of !cur index) ~node:item l.widget);
       cur := List.take !cur index @ (l :: List.drop !cur index)
     | Move { from; to_ } ->
+      (* Unreachable for an unordered container: [~ordered] above is
+         [Option.is_some ops.move], and [Reconcile.diff] emits no [Move] when it is false.
+         Stated as a raise rather than an ignored op because the two have to be kept in
+         step, and a silently dropped [Move] is exactly the bookkeeping bug the option
+         exists to prevent. *)
+      let move =
+        match ops.move with
+        | Some move -> move
+        | None ->
+          invalid_argf
+            "%s: a Move op reached a container that has no reorder primitive"
+            path
+            ()
+      in
       let l = List.nth_exn !cur from in
       (* [to_] indexes the list as it will be *after* the move, so the predecessor is
          computed with [l] already removed. *)
       let without = List.filteri !cur ~f:(fun i _ -> i <> from) in
       child_op ~path:(child_path path to_) (fun () ->
-        ops.move parent ~child:l.widget ~after:(after_of without to_));
+        move parent ~child:l.widget ~after:(after_of without to_));
       cur := List.take without to_ @ (l :: List.drop without to_)
     | Update { index; item; old = _ } ->
       let l = List.nth_exn !cur index in
@@ -562,4 +598,29 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
       path
       impl_name
       ()
+;;
+
+(* Re-applies every controlled prop in the tree and re-runs the pass's fixups, without
+   diffing anything.
+
+   For the frames on which Bonsai hands back the physically same node it handed back last
+   frame. Nothing in the tree can have changed -- it is the same value -- so there is no
+   [update] to run, no [Attrs.diff] to compute and no child list to reconcile. What there
+   still is, and what a full walk was really paying for, is the two halves of the
+   controlled-prop rule: [Widget_impl.reassert] and the selection fixups. A model
+   that *declines* a user's edit renders the same value it rendered last frame, so this is
+   precisely the frame on which the widget has to be put back. Skipping it entirely -- the
+   obvious optimisation, and the one [Driver.frame_body]'s comment used to refuse --
+   leaves the declined edit standing on screen.
+
+   Does not touch [live.node] (it is already the node), does not run [require_specs] (the
+   attrs are the same values), does not re-register stack names (nothing moved, so the
+   registrations are the ones this same tree made) and does not run lifecycles. The path
+   is threaded rather than stored on [live], because [enqueue_fixups] wants one for its
+   error messages and [Children.iteri] already spells it the way [mount] and [patch] do.
+   Raises whatever a [reassert] raises. *)
+let rec reassert_only ctx ~path (live : live) =
+  Option.iter live.impl.reassert ~f:(fun f -> f live.widget live.node.kind);
+  enqueue_fixups ctx ~path ~widget:live.widget ~interest:(interest_of_kind live.node.kind);
+  Children.iteri live.children ~path ~f:(fun path child -> reassert_only ctx ~path child)
 ;;

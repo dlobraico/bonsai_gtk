@@ -16,9 +16,12 @@ let toggled : Signals.spec =
 ;;
 
 (* Controlled, on the same rule (and for the same reason) as [w_toggle_button.ml]'s. *)
+let needs_active (c : W.Check_button.t) active =
+  not (Bool.equal (W.Check_button.get_active c) active)
+;;
+
 let set_active_if_needed (c : W.Check_button.t) active =
-  if not (Bool.equal (W.Check_button.get_active c) active)
-  then W.Check_button.set_active c active
+  if needs_active c active then W.Check_button.set_active c active
 ;;
 
 (* A [GtkCheckButton] is *not* a [GtkButton] — it derives straight from [GtkWidget] — so
@@ -56,7 +59,10 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Check_button p ->
-            Widget_impl.batch w (fun () -> set_active_if_needed (cast w) p.active)
+            let c : W.Check_button.t = cast w in
+            let writes = needs_active c p.active in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then W.Check_button.set_active c p.active)
           | k -> Widget_impl.wrong_kind "CheckButton" k)
   ; signals = [ toggled ]
   ; children = Widget_impl.No_children

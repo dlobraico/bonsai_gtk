@@ -31,9 +31,12 @@ let revealed : Signals.spec =
 (* Against the widget's own [reveal-child], which is the *input* property and so is not
    moved by the animation; [child-revealed] is the outcome and would read as "not yet" for
    the whole of a transition, making every frame write again. *)
+let needs_reveal (r : W.Revealer.t) reveal =
+  not (Bool.equal (W.Revealer.get_reveal_child r) reveal)
+;;
+
 let set_reveal_if_needed (r : W.Revealer.t) reveal =
-  if not (Bool.equal (W.Revealer.get_reveal_child r) reveal)
-  then W.Revealer.set_reveal_child r reveal
+  if needs_reveal r reveal then W.Revealer.set_reveal_child r reveal
 ;;
 
 let impl : Widget_impl.t =
@@ -71,7 +74,10 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Revealer p ->
-            Widget_impl.batch w (fun () -> set_reveal_if_needed (cast w) p.reveal)
+            let r : W.Revealer.t = cast w in
+            let writes = needs_reveal r p.reveal in
+            Widget_impl.batch_if writes w (fun () ->
+              if writes then W.Revealer.set_reveal_child r p.reveal)
           | k -> Widget_impl.wrong_kind "Revealer" k)
   ; signals = [ revealed ]
   ; children =
