@@ -176,5 +176,101 @@ fb driver, after mount: a
 fb driver, after the user clicked: b
 fb driver, after the frame the click armed: a (Bonsai saw 1)
 fb driver, after one more frame: a (Bonsai saw 1)
+nb gc: mounted, current b
+nb gc: after 50 frames + full_major, current b
+nb gc: after 100 frames + full_major, current b
+nb gc: after 150 frames + full_major, current b
+nb gc: after 200 frames + full_major, current b
+nb gc: after 250 frames + full_major, current b
+(GtkWindow (title (nbgc)) (css (background)) hidden
+ (children
+  (GtkNotebook (pages 3) (current-page 1) (css (frame))
+   (children
+    (GtkBox (spacing 0) (css (top horizontal))
+     (children
+      (GtkGizmo hexpand
+       (children (GtkGizmo (children (GtkLabel (text A))))
+        (GtkGizmo (children (GtkLabel (text B))))
+        (GtkGizmo (children (GtkLabel (text C))))))))
+    (GtkStack (visible ()) hexpand vexpand
+     (children (GtkLabel (text A)) (GtkLabel (text B)) (GtkLabel (text C))))))))
+handlers fired during the mount: 0
+(GtkWindow (title (tabs)) (css (background)) hidden
+ (children
+  (GtkNotebook (pages 3) (current-page 0) (css (frame))
+   (children
+    (GtkBox (spacing 0) (css (top horizontal))
+     (children
+      (GtkGizmo hexpand
+       (children (GtkGizmo (children (GtkLabel (text Score))))
+        (GtkGizmo (children (GtkLabel (text Parts))))
+        (GtkGizmo (children (GtkLabel (text Notes))))))))
+    (GtkStack (visible ()) hexpand vexpand
+     (children (GtkLabel (text SCORE)) (GtkLabel (text PARTS))
+      (GtkLabel (text NOTES))))))))
+pages: SCORE,PARTS,NOTES | tabs: Score,Parts,Notes | current: score
+same GObjects after the reorder: true
+the original pages are now at: 0,2,1
+pages: SCORE,NOTES,PARTS | tabs: Score,Notes,Parts
+(GtkWindow (title (tabs)) (css (background)) hidden
+ (children
+  (GtkNotebook (pages 3) (current-page 0) (css (frame))
+   (children
+    (GtkBox (spacing 0) (css (top horizontal))
+     (children
+      (GtkGizmo hexpand
+       (children (GtkGizmo (children (GtkLabel (text Score))))
+        (GtkGizmo (children (GtkLabel (text Notes))))
+        (GtkGizmo (children (GtkLabel (text Parts))))))))
+    (GtkStack (visible ()) hexpand vexpand
+     (children (GtkLabel (text SCORE)) (GtkLabel (text PARTS))
+      (GtkLabel (text NOTES))))))))
+after the head moved to the tail: NOTES,PARTS,SCORE
+after a middle page moved to index 0: PARTS,NOTES,SCORE
+after a rightward move with a page behind it: PARTS,SCORE,NOTES
+current survived every reorder: score
+after a middle insert: PARTS,SCORE,DRAFT,NOTES | tabs: Parts,Score,Draft,Notes
+after the middle page went away: PARTS,SCORE,NOTES
+after the user clicked a tab: notes
+after the declining frame: score
+add-and-select: draft (pages PARTS,SCORE,NOTES,DRAFT)
+kind change replaced the page widget: true
+kind change kept the tab and the current page: Parts,Score | parts
+after a tab rename and a tab dropped: Renamed,<none>
+(GtkWindow (title (tabs)) (css (background)) hidden
+ (children
+  (GtkNotebook (pages 2) (current-page 0) no-tabs no-border scrollable
+   (tab-pos left)
+   (children
+    (GtkBox (spacing 0) (css (vertical left)) vexpand hidden
+     (children
+      (GtkGizmo vexpand
+       (children (GtkGizmo (children (GtkLabel (text Parts))))
+        (GtkButton (label ()) (icon pan-start-symbolic)
+         (css (image-button down)) insensitive
+         (children (GtkImage (icon pan-start-symbolic) (valign center))))
+        (GtkGizmo (children (GtkLabel (text Score))))
+        (GtkButton (label ()) (icon pan-end-symbolic) (css (image-button up))
+         (children (GtkImage (icon pan-end-symbolic) (valign center))))))))
+    (GtkStack (visible ()) hexpand vexpand
+     (children (GtkLabel (text PARTS)) (GtkLabel (text SCORE))))))))
+props back to GTK's own: (GtkNotebook(pages 2)(current-page 0)(css(frame))(children(GtkBox(spacing 0)(css(top horizontal))hexpand(children(GtkGizmo hexpand(children(GtkGizmo(children(GtkLabel(text Parts))))(GtkGizmo(children(GtkLabel(text Score))))))))(GtkStack(visible())hexpand vexpand(children(GtkLabel(text PARTS))(GtkLabel(text SCORE))))))
+the page change delivered the key: score
+asking for a hidden page: parts
+and it is rewritten on every identical frame: 2
+back to a visible page: parts
+the page was removed: PARTS,NOTES
+the fixup raised: (Invalid_argument
+  "root/0: Node.notebook ~current_page:\"score\" names no page (a page's key is its ~key; this notebook has parts, notes)")
+GTK picked: notes
+after the model moved its selection: notes
+an empty notebook: pages=0 current=(none) (no raise)
+the first page arrived: notes
+handlers fired during teardown: 0
+nb driver, after mount: score (Bonsai saw 0)
+nb driver, after the user clicked a tab: parts
+nb driver, after the frame the click armed: score (Bonsai saw 1)
+nb driver, after one more frame: score (Bonsai saw 1)
+bench: n=1000, selected 1 of 1
 bench: n=1000, selected 200 of 200
-bench: 200 idle frames, under 2 ms each: true
+bench: 200 idle frames at 1 and at 200 selected, cost ratio under 5: true

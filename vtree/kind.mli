@@ -292,6 +292,24 @@ type flow_box_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [current_page] is the key of the page to show and carries no [@sexp_drop_if] for the
+   reason [stack_props]' [visible_child] does not: it is a required labelled argument. The
+   other four are GTK's own, and -- unlike both of this record's neighbours -- none of
+   them is a value a reader guesses wrong: a bare [GtkNotebook] draws its tabs and its
+   border, scrolls its tab area with neither, and puts the tabs at the top.
+
+   The one per-page setting lives on the page node's attrs ([Attr.tab_label]), on
+   [Attr.page_title]'s rule: the tab label is a widget the {i notebook} owns on the page's
+   behalf. *)
+type notebook_props =
+  { current_page : Key.t
+  ; scrollable : bool [@sexp_drop_if Bool.equal Defaults.Notebook.scrollable]
+  ; show_tabs : bool [@sexp_drop_if Bool.equal Defaults.Notebook.show_tabs]
+  ; show_border : bool [@sexp_drop_if Bool.equal Defaults.Notebook.show_border]
+  ; tab_pos : Tab_position.t [@sexp_drop_if Tab_position.equal Defaults.Notebook.tab_pos]
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -329,6 +347,7 @@ type t =
   | Stack_sidebar of stack_ref_props
   | List_box of list_box_props
   | Flow_box of flow_box_props
+  | Notebook of notebook_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props

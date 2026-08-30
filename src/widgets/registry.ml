@@ -28,6 +28,7 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Stack_sidebar _ -> W_stack_sidebar.impl
   | List_box _ -> W_list_box.impl
   | Flow_box _ -> W_flow_box.impl
+  | Notebook _ -> W_notebook.impl
   | Center_box _ -> W_center_box.impl
   | Paned _ -> W_paned.impl
   | Overlay _ -> W_overlay.impl

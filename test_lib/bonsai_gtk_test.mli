@@ -138,6 +138,21 @@ module Action : sig
         took one row would be modelling a signal that does not exist. [[]] is a state the
         widget can reach and so a state the action can deliver. As with [Activate_row],
         the node's own [~selected] is not consulted. *)
+    | Set_page of string * Key.t
+    (** test_id of a [notebook] carrying [Attr.on_page_changed], and the {!Key.t} of the
+        page the user switched to. Fires that handler with exactly that key.
+
+        Its own action rather than [Set_selection] reused: a notebook shows exactly one
+        page, so the question is "which page" rather than "which set", and an action
+        carrying a list would be modelling a signal that does not exist. Like the two
+        activate actions it checks the node's {i kind} and fails naming it.
+
+        Nothing else about the node is consulted, as ever: neither its page list nor its
+        [~current_page], so a key no page carries reaches the handler here. The real
+        widget would not emit that, and modelling it would hide the more useful failure --
+        a model that mishandles a key it did not expect. What a live test adds is the
+        other half: [test/live/live_lists.ml] drives the current page through the real
+        widget and reads the key back through the same table this handler is fed from. *)
   [@@deriving sexp_of]
 end
 

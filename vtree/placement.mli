@@ -21,8 +21,8 @@ open! Core
     convention can hold. *)
 
 (** The placement attrs this kind reads off its children. The empty list — every kind but
-    [Grid], [Stack] and [Overlay] — is deliberate and is what makes this a diagnostic: a
-    container that reads none of them rejects all of them. *)
+    [Grid], [Stack], [Overlay], [ListBox] and [Notebook] — is deliberate and is what makes
+    this a diagnostic: a container that reads none of them rejects all of them. *)
 val read_by : Kind.t -> Attr.Name.t list
 
 (** The container that reads [name], as [Kind.name] spells it; [None] for every attr that

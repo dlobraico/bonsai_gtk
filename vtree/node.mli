@@ -556,6 +556,12 @@ val grid
     driving the patcher by hand must call [Patcher.run_fixups] before reading the
     selection back. Pair it with {!Attr.on_visible_child_changed} or the control is inert.
 
+    {b The rule the three keyed containers share}:
+    {i a container that shows exactly one of its children raises when told to show one
+      that does not exist; a container with a plural selection ignores the keys it cannot
+      find.}
+    {!stack} and {!notebook} are the first half, {!list_box} and {!flow_box} the second.
+
     {b Naming a page this stack does not have is [Invalid_argument]}, raised from that
     same fixup pass and carrying the stack's node path and the page names it does have.
     This is deliberately {i unlike} the [~selected] of {!list_box} and {!flow_box}, where
@@ -625,6 +631,12 @@ val stack
     row and selects it -- so a test driving the patcher by hand must call
     [Patcher.run_fixups] before reading the selection back. Pair it with
     {!Attr.on_row_activated} or {!Attr.on_selected_rows_changed}, or the control is inert.
+
+    {b The rule the three keyed containers share}:
+    {i a container that shows exactly one of its children raises when told to show one
+      that does not exist; a container with a plural selection ignores the keys it cannot
+      find.}
+    {!stack} and {!notebook} are the first half, {!list_box} and {!flow_box} the second.
 
     {b A key in [~selected] that no row carries is inert}, not an error -- and inert in
     the strong sense: it is dropped before the model's selection is compared with the
@@ -755,6 +767,88 @@ val flow_box
   -> ?homogeneous:bool
   -> ?orientation:Orientation.t
   -> selected:Key.t list
+  -> t list
+  -> t
+
+(** A [GtkNotebook]: pages behind a row of tabs, one of which is showing.
+
+    The third keyed container, and
+    {b the only one in this library whose children really move}. [GtkNotebook] has
+    [gtk_notebook_reorder_child], so this node is {i ordered}: a page that changes
+    position in the child list is reordered in place, keeping its widgets, its GObject and
+    whatever state they hold. A {!stack}, a {!list_box} and a {!flow_box} either have no
+    reorder primitive at all or reach one by removing and re-inserting; this one has the
+    real thing.
+
+    Children are ordinary nodes and there is no wrapper: a notebook's pages {i are} its
+    children's widgets, which is why this is the one keyed container that interposes
+    nothing. What it does interpose is a tab label, and that is a widget GTK builds and
+    owns from {!Attr.tab_label} -- a [string] on the page node, not a node of its own; see
+    that attr for why.
+
+    {b Every page needs a [~key]}, and a page without one is [Invalid_argument] from this
+    constructor, naming the page's index. The key is the page's identity: it is what
+    [~current_page] names, it is what {!Attr.on_page_changed} hands back, and it is what
+    preserves a page's widgets across a re-render. GTK offers a page {i number} that moves
+    whenever a page is added, removed or dragged, and every operation on a notebook is by
+    that number -- which is why an application written against GTK directly keeps an array
+    beside it.
+
+    [~current_page] is {i controlled} (spec §6.5): it is compared against the page the
+    widget is actually showing rather than against the previous node, so a user who
+    clicked a tab the model then declined is put back. It is applied from the fixup pass
+    once the whole tree exists -- a page GTK does not have yet cannot be shown, which is
+    exactly the frame that adds a page and switches to it -- so a test driving the patcher
+    by hand must call [Patcher.run_fixups] before reading it back. Pair it with
+    {!Attr.on_page_changed} or the control is inert.
+
+    {b Naming a page this notebook does not have is [Invalid_argument]}, raised from that
+    same fixup pass and carrying the notebook's node path and the page keys it does have.
+
+    {b The rule the three keyed containers share}:
+    {i a container that shows exactly one of its children raises when told to show one
+      that does not exist; a container with a plural selection ignores the keys it cannot
+      find.}
+    {!stack} and {!notebook} are the first half, {!list_box} and {!flow_box} the second.
+
+    The case to watch for is a model that removes the current page without moving its
+    selection: GTK picks a neighbour, the model still names the page that left, and the
+    next fixup raises. That is deliberate -- the alternative is a notebook showing one
+    page while the model believes another, on every frame, with no diagnostic -- and the
+    fix is to render the two together, since a state that can lag the page list by a frame
+    is the same mistake {!stack} documents.
+
+    The one exception is a notebook with {b no pages at all}, which is left alone:
+    [~current_page] is a required argument, so a model rendering an empty page list has no
+    key it could pass that would be right, and the frame that adds the first page shows
+    it.
+
+    A page carrying [Attr.visible false] is the other way to make [~current_page] unable
+    to land: {b GTK refuses to switch to a page whose child is hidden} (measured -- it
+    emits [switch-page] and then leaves [get_current_page] where it was). Nothing is
+    clamped here, so the comparison differs on every frame and the write is repeated on
+    every frame; it is not a loop and not an error, but it is a model to bring into line
+    the way a [~selected] that its {!list_box}'s mode cannot hold is.
+
+    [~scrollable] ([false]), [~show_tabs] ([true]), [~show_border] ([true]) and [~tab_pos]
+    ([Top]) are GTK's own, and unlike the other keyed containers' none of them is a value
+    a reader guesses wrong. [~show_tabs:false] with a {!stack_switcher}-style header of
+    your own is how a notebook is usually dressed up; a notebook whose tabs need icons or
+    close buttons is a {!box} of buttons above a {!stack} instead, which is what modern
+    GTK applications use.
+
+    Tab reordering {i by the user} (drag and drop) is deliberately not exposed:
+    [set_tab_reorderable] would let GTK change the page order behind the model's back, and
+    the next render would put it straight back. Reordering is the model's, through the
+    child list. *)
+val notebook
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?scrollable:bool
+  -> ?show_tabs:bool
+  -> ?show_border:bool
+  -> ?tab_pos:Tab_position.t
+  -> current_page:Key.t
   -> t list
   -> t
 

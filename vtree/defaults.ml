@@ -133,6 +133,17 @@ module Stack = struct
   let vhomogeneous = true
 end
 
+(* GTK's own, read off a fresh [GtkNotebook]. Unlike the flow box's, none of these is a
+   surprise -- tabs and border are drawn, the scrolling arrows are not, and the tabs are
+   at the top -- which is worth saying out loud precisely because the two containers
+   either side of it in this file both have a default a reader guesses wrong. *)
+module Notebook = struct
+  let scrollable = false
+  let show_tabs = true
+  let show_border = true
+  let tab_pos = Tab_position.Top
+end
+
 (* GTK's own, and two of the three are worth stating out loud because they are not the
    value a reader guesses: a bare [GtkListBox] has [selection-mode] [SINGLE] (not [NONE])
    and [activate-on-single-click] [true]. *)

@@ -740,3 +740,123 @@ let%expect_test "a flow box's geometry numbers are checked at the constructor" =
      (children (List ())))
     |}]
 ;;
+
+(* The third keyed container, and the only one whose children really move: [GtkNotebook]
+   has [reorder_child], so [Node.notebook] is an {i ordered} container and the reconciler
+   emits [Move] for it. Every default below was read off a live [GtkNotebook] rather than
+   out of the docs -- and unlike the flow box's, none of them is a surprise: tabs and
+   border are on, scrolling arrows are off, and the tabs are at the top. *)
+let%expect_test "notebook constructors and defaults" =
+  print_s
+    [%sexp
+      (Node.notebook
+         ~current_page:"a"
+         [ Node.label ~key:"a" ~attrs:[ Attr.tab_label "Alpha" ] "Alpha"
+         ; Node.label ~key:"b" ~attrs:[ Attr.tab_label "Beta" ] "Beta"
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Notebook ((current_page a)))) (attrs ())
+     (children
+      (List
+       (((kind (Label ((text Alpha)))) (key a) (attrs ((Tab_label Alpha)))
+         (children No_children))
+        ((kind (Label ((text Beta)))) (key b) (attrs ((Tab_label Beta)))
+         (children No_children))))))
+    |}];
+  (* A page with no [Attr.tab_label] is legal: GTK draws an unnamed tab for it (measured
+     -- [get_tab_label] answers [None] and there is no label widget at all), which is what
+     [~show_tabs:false] wants and what dropping the attr restores. *)
+  print_s
+    [%sexp
+      (Node.notebook
+         ~scrollable:true
+         ~show_tabs:false
+         ~show_border:false
+         ~tab_pos:Left
+         ~current_page:"b"
+         [ Node.label ~key:"a" "Alpha"; Node.label ~key:"b" "Beta" ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Notebook
+       ((current_page b) (scrollable true) (show_tabs false) (show_border false)
+        (tab_pos Left))))
+     (attrs ())
+     (children
+      (List
+       (((kind (Label ((text Alpha)))) (key a) (attrs ()) (children No_children))
+        ((kind (Label ((text Beta)))) (key b) (attrs ()) (children No_children))))))
+    |}]
+;;
+
+(* GTK's own defaults drop from the sexp; [current_page] never does, because it is a
+   required labelled argument and so always something the caller asked for. *)
+let%expect_test "a notebook's props take part in equal_props, and GTK's defaults drop" =
+  print_s
+    [%sexp
+      (Node.notebook
+         ~scrollable:false
+         ~show_tabs:true
+         ~show_border:true
+         ~tab_pos:Top
+         ~current_page:"a"
+         []
+       : Node.t)];
+  [%expect {| ((kind (Notebook ((current_page a)))) (attrs ()) (children (List ()))) |}];
+  let a = (Node.notebook ~current_page:"a" []).kind in
+  let b = (Node.notebook ~current_page:"b" []).kind in
+  let c = (Node.notebook ~scrollable:true ~current_page:"a" []).kind in
+  let d = (Node.stack ~name:"s" ~visible_child:"a" []).kind in
+  print_s
+    [%sexp
+      (( Kind.same_kind a b
+       , Kind.equal_props a b
+       , Kind.equal_props a c
+       , Kind.equal_props a a
+       , Kind.same_kind a d )
+       : bool * bool * bool * bool * bool)];
+  [%expect {| (true false false true false) |}]
+;;
+
+(* The same rule as the other three keyed containers, with the notebook's own reason: a
+   page's key is what [~current_page] names and what [Attr.on_page_changed] hands back. *)
+let%expect_test "a notebook page without a key is rejected at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.notebook ~current_page:"a" [ Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.notebook: child 0 has no ~key (a page's key is what ~current_page names and every handler receives)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.notebook ~current_page:"a" [ Node.label ~key:"a" "keyed"; Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.notebook: child 1 has no ~key (a page's key is what ~current_page names and every handler receives)")
+    |}]
+;;
+
+(* [Attr.tab_label] is a [string] rather than a node, and that is a decision rather than a
+   limitation: the tab label is a widget GTK owns and rebuilds, so a node there would mean
+   a second child list, a second patch path and a second lifetime for something that is
+   always a label. A tab that needs an icon is a [Node.native]. *)
+let%expect_test "tab_label rides on the page node" =
+  print_s
+    [%sexp
+      (Node.notebook
+         ~current_page:"a"
+         [ Node.label ~key:"a" ~attrs:[ Attr.tab_label "Alpha" ] "A" ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Notebook ((current_page a)))) (attrs ())
+     (children
+      (List
+       (((kind (Label ((text A)))) (key a) (attrs ((Tab_label Alpha)))
+         (children No_children))))))
+    |}]
+;;

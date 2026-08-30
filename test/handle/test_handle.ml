@@ -1710,3 +1710,243 @@ let%expect_test "the row attrs are rejected on a flow box child" =
      "root/0/0: Attr.row_activatable is not read by FlowBox (a placement attribute is read by the container, and this one holds children for ListBox)")
     |}]
 ;;
+
+(* The third keyed container, headless: a notebook whose current page is model state.
+   [Set_page] is the user clicking a tab, and the model is free to decline it -- which is
+   the whole of what "controlled" means and is what the live test then checks against the
+   real widget. *)
+let tabbed (graph @ local) =
+  let page, set_page = Bonsai.state "score" graph in
+  let%arr page and set_page in
+  Node.window
+    ~title:"Editor"
+    (Node.notebook
+       ~attrs:[ Attr.test_id "tabs"; Attr.on_page_changed set_page ]
+       ~current_page:page
+       [ Node.label ~key:"score" ~attrs:[ Attr.tab_label "Score" ] page
+       ; Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Parts" ] page
+       ])
+;;
+
+let%expect_test "switching a notebook page hands the model the page's key" =
+  let handle = Bonsai_gtk_test.create tabbed in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Editor))))) (attrs ())
+     (children
+      (Single
+       (((kind (Notebook ((current_page score))))
+         (attrs ((Test_id tabs) (On_page_changed <handler>)))
+         (children
+          (List
+           (((kind (Label ((text score)))) (key score)
+             (attrs ((Tab_label Score))) (children No_children))
+            ((kind (Label ((text score)))) (key parts)
+             (attrs ((Tab_label Parts))) (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("tabs", "parts") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Editor))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Notebook ((current_page score))))
+    +|   (((kind (Notebook ((current_page parts))))
+           (attrs ((Test_id tabs) (On_page_changed <handler>)))
+           (children
+            (List
+    -|       (((kind (Label ((text score)))) (key score)
+    +|       (((kind (Label ((text parts)))) (key score)
+               (attrs ((Tab_label Score))) (children No_children))
+    -|        ((kind (Label ((text score)))) (key parts)
+    +|        ((kind (Label ((text parts)))) (key parts)
+               (attrs ((Tab_label Parts))) (children No_children))))))))))
+    |}]
+;;
+
+(* A model that {i declines} the change renders the page it was already rendering, so the
+   node is unchanged -- which headless is the whole of the claim, and live is the frame on
+   which the notebook is put back. *)
+let%expect_test "a declined page change leaves the node where it was" =
+  let declining (graph @ local) =
+    let page, _set_page = Bonsai.state "score" graph in
+    let%arr page in
+    Node.window
+      ~title:"Editor"
+      (Node.notebook
+         ~attrs:[ Attr.test_id "tabs"; Attr.on_page_changed (fun _ -> Ui_effect.Ignore) ]
+         ~current_page:page
+         [ Node.label ~key:"score" ~attrs:[ Attr.tab_label "Score" ] "S"
+         ; Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Parts" ] "P"
+         ])
+  in
+  let handle = Bonsai_gtk_test.create declining in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Editor))))) (attrs ())
+     (children
+      (Single
+       (((kind (Notebook ((current_page score))))
+         (attrs ((Test_id tabs) (On_page_changed <handler>)))
+         (children
+          (List
+           (((kind (Label ((text S)))) (key score) (attrs ((Tab_label Score)))
+             (children No_children))
+            ((kind (Label ((text P)))) (key parts) (attrs ((Tab_label Parts)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("tabs", "parts") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| |}]
+;;
+
+(* [Set_page] names a kind, like the two activate actions and unlike [Set_selection]: a
+   notebook shows exactly one page, so there is no shared question to fold into
+   [Set_selection] and a copied line should fail loudly. *)
+let%expect_test "a notebook action on the wrong kind, and on a node with no handler" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"kinds"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.list_box
+                ~attrs:
+                  [ Attr.test_id "rail"
+                  ; Attr.on_row_activated (fun _ -> Ui_effect.Ignore)
+                  ]
+                ~selected:[]
+                [ Node.label ~key:"a" "A" ]
+            ; Node.notebook
+                ~attrs:[ Attr.test_id "plain" ]
+                ~current_page:"a"
+                [ Node.label ~key:"a" "A" ]
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("rail", "a") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node rail is a ListBox, not a Notebook") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("plain", "a") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_page_changed handler") |}]
+;;
+
+(* The [Events] negative: [switch-page] is the notebook's own signal, so the attr is
+   rejected everywhere else -- including on a {!Node.stack}, which is the near miss worth
+   pinning, since a stack is the other container that shows exactly one child and emits
+   [on_visible_child_changed] instead. *)
+let%expect_test "the notebook's event attr is rejected on other kinds" =
+  let bad node (_graph @ local) = Bonsai.return (Node.window ~title:"bad" node) in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad
+           (Node.label
+              ~attrs:[ Attr.on_page_changed (fun _ -> Ui_effect.Ignore) ]
+              "not a notebook"))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: Label does not emit On_page_changed") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad
+           (Node.stack
+              ~attrs:[ Attr.on_page_changed (fun _ -> Ui_effect.Ignore) ]
+              ~name:"s"
+              ~visible_child:"a"
+              [ Node.label ~key:"a" "A" ]))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: Stack does not emit On_page_changed") |}];
+  (* And the stack's own on a notebook, which is the same mistake the other way. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad
+           (Node.notebook
+              ~attrs:[ Attr.on_visible_child_changed (fun _ -> Ui_effect.Ignore) ]
+              ~current_page:"a"
+              [ Node.label ~key:"a" "A" ]))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {| (Invalid_argument "root/0: Notebook does not emit On_visible_child_changed") |}]
+;;
+
+(* The [Placement] negative, which is the sharper one: nothing applies [Attr.tab_label] to
+   the page, so outside a notebook it is read by nobody and would have no diagnostic at
+   all. The pair with {!Attr.page_title} is worth pinning in both directions -- the two
+   attrs mean nearly the same thing to a reader and belong to two different containers. *)
+let%expect_test "tab_label is rejected outside a notebook, and page_title inside one" =
+  let bad node (_graph @ local) = Bonsai.return (Node.window ~title:"bad" node) in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad
+           (Node.box
+              ~orientation:Vertical
+              [ Node.label ~attrs:[ Attr.tab_label "Score" ] "not a page" ]))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.tab_label is not read by Box (a placement attribute is read by the container, and this one holds children for Notebook)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad
+           (Node.stack
+              ~name:"s"
+              ~visible_child:"a"
+              [ Node.label ~key:"a" ~attrs:[ Attr.tab_label "Score" ] "A" ]))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.tab_label is not read by Stack (a placement attribute is read by the container, and this one holds children for Notebook)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad
+           (Node.notebook
+              ~current_page:"a"
+              [ Node.label ~key:"a" ~attrs:[ Attr.page_title "Score" ] "A" ]))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.page_title is not read by Notebook (a placement attribute is read by the container, and this one holds children for Stack)")
+    |}];
+  (* ... and a notebook's own page carries it happily, which is what stops the checks
+     above from being a name nothing satisfies. *)
+  let handle =
+    Bonsai_gtk_test.create
+      (bad
+         (Node.notebook
+            ~current_page:"a"
+            [ Node.label ~key:"a" ~attrs:[ Attr.tab_label "Score" ] "A" ]))
+  in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (bad))))) (attrs ())
+     (children
+      (Single
+       (((kind (Notebook ((current_page a)))) (attrs ())
+         (children
+          (List
+           (((kind (Label ((text A)))) (key a) (attrs ((Tab_label Score)))
+             (children No_children))))))))))
+    |}]
+;;

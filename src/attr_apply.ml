@@ -119,6 +119,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | Page_title _
   | Row_selectable _
   | Row_activatable _
+  | Tab_label _
   | On_click _
   | On_focus_enter _
   | On_focus_leave _
@@ -138,6 +139,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_selected_rows_changed _
   | On_child_activated _
   | On_selected_children_changed _
+  | On_page_changed _
   | Many _ -> ()
 ;;
 
@@ -168,6 +170,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Page_title
   | Row_selectable
   | Row_activatable
+  | Tab_label
   (* The controller attrs are [Controllers]' business, not a property of the widget:
      unsetting one removes a controller, which [Controllers.update] does from the attrs
      themselves rather than from an op. *)
@@ -189,7 +192,8 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_row_activated
   | On_selected_rows_changed
   | On_child_activated
-  | On_selected_children_changed -> ()
+  | On_selected_children_changed
+  | On_page_changed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

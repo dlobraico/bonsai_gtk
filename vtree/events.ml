@@ -31,6 +31,10 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      line copied from a list box to a flow box is rejected here rather than being accepted
      and never firing. *)
   | Flow_box _ -> [ On_child_activated; On_selected_children_changed ]
+  (* One signal, and again its own: [switch-page] is the notebook's, and a line copied
+     from a stack ([On_visible_child_changed]) is rejected here rather than accepted and
+     never firing. *)
+  | Notebook _ -> [ On_page_changed ]
   | Window _ | Box _ | Grid _ | Center_box _ | Overlay _ | Frame _ | Scrolled_window _ ->
     []
 ;;
@@ -104,8 +108,10 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_selected_rows_changed
   | On_child_activated
   | On_selected_children_changed
+  | On_page_changed
   | Row_selectable
-  | Row_activatable -> None
+  | Row_activatable
+  | Tab_label -> None
 ;;
 
 (* One [GtkEventControllerKey] serves both key attrs, so there is exactly one propagation

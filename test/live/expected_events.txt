@@ -1,3 +1,3 @@
-kinds checked: 31
+kinds checked: 32
 agreed
 no impl declares a controller attr

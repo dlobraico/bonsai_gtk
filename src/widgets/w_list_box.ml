@@ -145,9 +145,10 @@ let selected_keys (w : Widget.t) =
   |> List.filter_map ~f:key_of_row
 ;;
 
-(* One key, resolved by walking the list box. The selection fixup builds a table from its
-   own walk instead; see [apply_selection], and see [W_flow_box.child_by_key] for why
-   neither may be cached into a table that outlives the call. *)
+(* One key, resolved by walking the list box. For [test/live/live_lists.ml]; the selection
+   fixup builds a table from its own walk instead -- see [apply_selection], and see
+   [W_flow_box.child_by_key] for why neither may be cached into a table that outlives the
+   call. *)
 let row_by_key (w : Widget.t) key =
   List.find
     (rows (cast w))

@@ -258,7 +258,67 @@ let grid (graph @ local) =
     ]
 ;;
 
-(* Page 5: the containers, including the overlay-over-a-spacer trick that caps a picture's
+(* Page 5: the one container whose children really move. A [GtkNotebook] has
+   [reorder_child], so the page order is reconciled with real [Move] ops -- and the two
+   buttons here are what that is for: they change the model's page {i list}, and the
+   notebook reorders the pages in place rather than rebuilding them. The pages hold state
+   (an entry each) so that the reorder visibly keeps it. *)
+let tabs (graph @ local) =
+  let current, set_current = Bonsai.state "score" graph in
+  let order, set_order = Bonsai.state [ "score"; "parts"; "notes" ] graph in
+  let notes, set_notes = Bonsai.state "" graph in
+  let%arr current and set_current and order and set_order and notes and set_notes in
+  let title = function
+    | "score" -> "Score"
+    | "parts" -> "Parts"
+    | _ -> "Notes"
+  in
+  let page key =
+    Node.box
+      ~key
+      ~attrs:[ Attr.tab_label (title key) ]
+      ~orientation:Vertical
+      ~spacing:8
+      [ Node.label ~attrs:[ Attr.margin 12 ] (sprintf "This is the %s page." (title key))
+      ; Node.entry
+          ~attrs:[ Attr.margin 12; Attr.on_changed set_notes ]
+          ~placeholder:"type here, then move the tab"
+          ~text:notes
+          ()
+      ]
+  in
+  (* Move the current page one place in the list. The notebook does the rest: the page
+     keeps its widgets, its entry and whatever the user typed into it. *)
+  let move delta =
+    match List.findi order ~f:(fun _ k -> String.equal k current) with
+    | None -> Ui_effect.Ignore
+    | Some (i, _) ->
+      let j = i + delta in
+      if j < 0 || j >= List.length order
+      then Ui_effect.Ignore
+      else (
+        let without = List.filteri order ~f:(fun k _ -> k <> i) in
+        set_order (List.take without j @ [ current ] @ List.drop without j))
+  in
+  Node.box
+    ~orientation:Vertical
+    ~spacing:12
+    ~attrs:[ Attr.margin 12 ]
+    [ Node.box
+        ~orientation:Horizontal
+        ~spacing:8
+        [ Node.button ~label:"Move left" ~attrs:[ Attr.on_clicked (move (-1)) ] ()
+        ; Node.button ~label:"Move right" ~attrs:[ Attr.on_clicked (move 1) ] ()
+        ; Node.label (sprintf "order: %s" (String.concat ~sep:", " order))
+        ]
+    ; Node.notebook
+        ~attrs:[ Attr.on_page_changed set_current; Attr.vexpand true ]
+        ~current_page:current
+        (List.map order ~f:page)
+    ]
+;;
+
+(* Page 6: the containers, including the overlay-over-a-spacer trick that caps a picture's
    allocated size. *)
 let layout (graph @ local) =
   let expanded, set_expanded = Bonsai.state false graph in
@@ -328,8 +388,16 @@ let app (graph @ local) =
   let numbers = numbers graph in
   let lists = lists graph in
   let grid = grid graph in
+  let tabs = tabs graph in
   let layout = layout graph in
-  let%arr page and set_page and controls and numbers and lists and grid and layout in
+  let%arr page
+  and set_page
+  and controls
+  and numbers
+  and lists
+  and grid
+  and tabs
+  and layout in
   Node.window
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
@@ -373,6 +441,11 @@ let app (graph @ local) =
                    ~attrs:[ Attr.page_title "Grid" ]
                    ~orientation:Vertical
                    [ grid ]
+               ; Node.box
+                   ~key:"tabs"
+                   ~attrs:[ Attr.page_title "Tabs" ]
+                   ~orientation:Vertical
+                   [ tabs ]
                ; Node.box
                    ~key:"layout"
                    ~attrs:[ Attr.page_title "Layout" ]

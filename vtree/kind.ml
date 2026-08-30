@@ -297,6 +297,25 @@ type flow_box_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [current_page] is the key of the page to show and carries no [@sexp_drop_if] for the
+   reason [stack_props]' [visible_child] does not: it is a required labelled argument, so
+   its value is always something the caller asked for. The other four are GTK's own, and
+   none of them is a surprise -- which is worth saying because both of this notebook's
+   neighbours in this file have one that is.
+
+   There is one per-page setting beside this record and it lives on the page node's attrs
+   ([Attr.tab_label]), on the rule [Attr.page_title] and [Attr.grid_cell] follow: the tab
+   label is a widget the {i notebook} owns on the page's behalf rather than a property of
+   either widget. *)
+type notebook_props =
+  { current_page : Key.t
+  ; scrollable : bool [@sexp_drop_if Bool.equal Defaults.Notebook.scrollable]
+  ; show_tabs : bool [@sexp_drop_if Bool.equal Defaults.Notebook.show_tabs]
+  ; show_border : bool [@sexp_drop_if Bool.equal Defaults.Notebook.show_border]
+  ; tab_pos : Tab_position.t [@sexp_drop_if Tab_position.equal Defaults.Notebook.tab_pos]
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -334,6 +353,7 @@ type t =
   | Stack_sidebar of stack_ref_props
   | List_box of list_box_props
   | Flow_box of flow_box_props
+  | Notebook of notebook_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
@@ -368,6 +388,7 @@ let name = function
   | Stack_sidebar _ -> "StackSidebar"
   | List_box _ -> "ListBox"
   | Flow_box _ -> "FlowBox"
+  | Notebook _ -> "Notebook"
   | Center_box _ -> "CenterBox"
   | Paned _ -> "Paned"
   | Overlay _ -> "Overlay"
@@ -403,6 +424,7 @@ let same_kind a b =
   | Stack_sidebar _, Stack_sidebar _
   | List_box _, List_box _
   | Flow_box _, Flow_box _
+  | Notebook _, Notebook _
   | Center_box _, Center_box _
   | Paned _, Paned _
   | Overlay _, Overlay _
@@ -439,6 +461,7 @@ let equal_props a b =
     equal_stack_ref_props a b
   | List_box a, List_box b -> equal_list_box_props a b
   | Flow_box a, Flow_box b -> equal_flow_box_props a b
+  | Notebook a, Notebook b -> equal_notebook_props a b
   | Center_box a, Center_box b -> equal_center_box_props a b
   | Paned a, Paned b -> equal_paned_props a b
   | Overlay a, Overlay b -> equal_overlay_props a b

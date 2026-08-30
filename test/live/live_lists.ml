@@ -8,6 +8,7 @@ module Scheduler = Bonsai_gtk.Private.Scheduler
 module W = Bonsai_gtk.Private.Gtk_import.W
 module W_flow_box = Bonsai_gtk.Private.W_flow_box
 module W_list_box = Bonsai_gtk.Private.W_list_box
+module W_notebook = Bonsai_gtk.Private.W_notebook
 module Widget = Bonsai_gtk.Private.Gtk_import.Widget
 
 let cast = Bonsai_gtk.Private.Gtk_import.cast
@@ -986,31 +987,535 @@ let () =
   Bonsai_gtk.Expert.Driver.stop d
 ;;
 
-(* The selection fixup's cost per idle frame, at the scale the flow box is the container
-   for. This is a regression rather than a benchmark: it asserts a bound with five times
-   the headroom, and its job is to fail if the shape of [apply_selection] ever goes back
-   to being quadratic in the selection.
+(* ------------------------------------------------------------------------------------ *)
+(* [GtkNotebook]: the same keyed machinery again, over the one container in this library
+   whose children really move. *)
+(* ------------------------------------------------------------------------------------ *)
 
-   The shape it guards against, and why the bound is where it is ([task-7-review.md]'s
-   I1): [apply_selection] runs from the fixup queue on every mount, every patch {i and}
-   every no-change frame through [reassert_only], so its cost is paid sixty times a second
-   by an application doing nothing. Resolving each key with a linear walk of the children
-   made that O(|selected| x n): measured on the shipped-then-fixed code at n=1000 with 200
-   selected, an {i idle} frame cost 16.5 ms -- the whole 16.7 ms budget, spent deciding
-   that nothing had changed -- and 500-of-500 cost 24 ms, at which point the driver cannot
-   reach 60 fps at all while the selection is held. With the per-call map the same frame
-   is 0.39 ms.
+let notebook (live : P.live) =
+  match live.children with
+  | Single (Some nb) -> nb.P.widget
+  | No_children | Single None | List _ | Slots _ -> assert false
+;;
+
+(* The pages, in GTK's own order. Not [widget_children]: a [GtkNotebook]'s two children
+   are an internal [GtkBox] of tabs and an internal [GtkStack] of pages, and the stack's
+   child order does {i not} follow the page order (measured). [get_nth_page] is the only
+   thing that answers the question this file keeps asking. *)
+let page_widgets (live : P.live) = W_notebook.pages (cast (notebook live))
+
+(* The pages in GTK's order, named by the label each one is. The dump says the tab order
+   at length (the header box's labels are in page order); this is for the cases whose
+   whole claim is the {i page} order, which the dump cannot show. *)
+let page_labels (live : P.live) =
+  String.concat
+    ~sep:","
+    (List.map (page_widgets live) ~f:(fun p ->
+       if String.equal (Bonsai_gtk.Private.Gtk_import.type_name p) "GtkLabel"
+       then W.Label.get_text (cast p)
+       else "?"))
+;;
+
+let tab_texts (live : P.live) =
+  let nb : W.Notebook.t = cast (notebook live) in
+  String.concat
+    ~sep:","
+    (List.map (page_widgets live) ~f:(fun p ->
+       Option.value (W.Notebook.get_tab_label_text nb p) ~default:"<none>"))
+;;
+
+(* The page GTK is showing, as the key the node carried -- read back through the same
+   [Child_keys] table every handler answers in, so this line is an assertion about the
+   mapping and not only about the index. *)
+let current_key (live : P.live) =
+  match W_notebook.current_key (cast (notebook live)) with
+  | Some key -> key
+  | None -> "(none)"
+;;
+
+let page_positions pages nb =
+  String.concat
+    ~sep:","
+    (List.map pages ~f:(fun p -> Int.to_string (W.Notebook.page_num nb p)))
+;;
+
+let same_pages before after =
+  List.length before = List.length after
+  && List.for_all after ~f:(fun a -> List.exists before ~f:(fun b -> Gobject.same a b))
+;;
+
+(* The user clicking a tab, as far as a test can get: there is no synthetic click in the
+   pinned binding, so the page is switched with the same setter GTK's own tab handler
+   calls. What matters for the claim is that the widget's page differs from the model's
+   when the next frame runs. *)
+let switch_page_by_hand (live : P.live) key =
+  let nb : W.Notebook.t = cast (notebook live) in
+  match W_notebook.page_index_by_key nb key with
+  | Some i -> W.Notebook.set_current_page nb i
+  | None -> printf "BUG: no page for key %s\n" key
+;;
+
+(* The [Child_keys] lifetime regression for the notebook, first among its blocks for the
+   reason the other two containers' run first: every line below reads the current page
+   {i through} that table, so a table that empties itself under GC would leave the whole
+   golden measuring nothing.
+
+   This container is the one where [child_keys.mli]'s invariant is satisfied by
+   {i construction} rather than by care -- a notebook interposes no wrapper, so the widget
+   the table is keyed on is the widget the patcher retains, and there is no second
+   candidate to get wrong. The regression still earns its place, because there is a
+   plausible way to break it: keying on the value [get_nth_page] hands back (a fresh OCaml
+   wrapper around the same GObject, unreachable the moment the walk moves on) rather than
+   on the [child] the list op is given. That is one word's difference in [insert], it
+   type-checks, it works perfectly until the first major collection, and then every
+   [current_key] answers "(none)" and [~current_page] raises with a message listing
+   [<unkeyed>] pages.
+
+   The frames are the real thing: [reassert_only] + [run_fixups] inside the patch guard is
+   what [Driver.frame] runs on a physically-same-node frame. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  let live =
+    P.mount
+      ctx
+      ~path:"nbgc"
+      ~is_root:true
+      (Node.window
+         ~title:"nbgc"
+         (Node.notebook
+            ~current_page:"b"
+            [ Node.label ~key:"a" ~attrs:[ Attr.tab_label "A" ] "A"
+            ; Node.label ~key:"b" ~attrs:[ Attr.tab_label "B" ] "B"
+            ; Node.label ~key:"c" ~attrs:[ Attr.tab_label "C" ] "C"
+            ]))
+  in
+  P.run_fixups ctx;
+  printf "nb gc: mounted, current %s\n" (current_key live);
+  Out_channel.flush stdout;
+  for batch = 1 to 5 do
+    for _ = 1 to 50 do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:"nbgc" live;
+        P.run_fixups ctx)
+    done;
+    Gc.full_major ();
+    printf
+      "nb gc: after %d frames + full_major, current %s\n"
+      (batch * 50)
+      (current_key live);
+    Out_channel.flush stdout
+  done;
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live
+;;
+
+let () =
+  let scheduled = ref 0 in
+  let switched = ref [] in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  let page ?tab key =
+    let attrs =
+      match tab with
+      | Some t -> [ Attr.tab_label t ]
+      | None -> []
+    in
+    Node.label ~key ~attrs (String.uppercase key)
+  in
+  let view
+    ?(scrollable = false)
+    ?(show_tabs = true)
+    ?(show_border = true)
+    ?(tab_pos = Tab_position.Top)
+    ~current
+    ~pages
+    ()
+    =
+    Node.window
+      ~title:"tabs"
+      (Node.notebook
+         ~attrs:
+           [ Attr.on_page_changed (fun key ->
+               switched := key :: !switched;
+               Ui_effect.Ignore)
+           ]
+         ~scrollable
+         ~show_tabs
+         ~show_border
+         ~tab_pos
+         ~current_page:current
+         (List.map pages ~f:(fun key -> page ~tab:(String.capitalize key) key)))
+  in
+  let patch live node =
+    let live = P.patch ctx ~path:"root" ~is_root:true live node in
+    P.run_fixups ctx;
+    live
+  in
+  (* 6, taken first because it is a claim about the {i mount}: GTK emits [switch-page]
+     while the first page is being inserted -- measured on a bare [GtkNotebook], and it
+     survives [freeze_notify], so [Widget_impl.batch] is not what stops it. What stops it
+     is the [in_patch] guard, and this mount is inside one because that is what
+     [Driver.frame] does. [scheduled] unchanged across the mount is the whole assertion,
+     and it fails (reading 1) if the guard is taken away. *)
+  let before_mount = !scheduled in
+  let live = ref None in
+  Scheduler.with_patch_guard scheduler (fun () ->
+    live
+    := Some
+         (P.mount
+            ctx
+            ~path:"root"
+            ~is_root:true
+            (view ~current:"score" ~pages:[ "score"; "parts"; "notes" ] ()));
+    P.run_fixups ctx);
+  let live = Option.value_exn !live in
+  printf "handlers fired during the mount: %d\n" (!scheduled - before_mount);
+  (* 1. The pages, their tab labels, and which one is current. The dump shows the tab
+        order (the header box's labels are in page order) and the two counters; the page
+        order itself comes from [page_labels], because a notebook's internal stack does
+        not hold its children in page order. *)
+  print_s (Live_tree.dump live.widget);
+  printf
+    "pages: %s | tabs: %s | current: %s\n"
+    (page_labels live)
+    (tab_texts live)
+    (current_key live);
+  (* 2. A real reorder. [GtkNotebook] has [reorder_child], so this is the one container in
+     the library for which [Reconcile.diff] emits [Move] at all -- [list_ops.move] is
+     [Some], which is what [~ordered] is derived from. The mirror image is
+     [live_containers.ml]'s overlay case: same GObjects, order unchanged, because that
+     container's [move] is [None]. Between them they say what the marker means.
+
+     Both halves are asserted, and neither is enough alone: identity alone is satisfied by
+     a patch that moved nothing, and an order alone is satisfied by a patch that destroyed
+     and rebuilt every page (which is what an unkeyed list would do, and which loses
+     scroll positions, focus and any state the page's widgets hold). *)
+  let before = page_widgets live in
+  let nb : W.Notebook.t = cast (notebook live) in
+  (* A tail page to the middle: [score;parts;notes] -> [score;notes;parts]. *)
+  let live = patch live (view ~current:"score" ~pages:[ "score"; "notes"; "parts" ] ()) in
+  printf "same GObjects after the reorder: %b\n" (same_pages before (page_widgets live));
+  printf "the original pages are now at: %s\n" (page_positions before nb);
+  printf "pages: %s | tabs: %s\n" (page_labels live) (tab_texts live);
+  (* The tab order moved with them, which is what the dump is here to show -- and is the
+     half [page_labels] cannot claim, since the tabs are widgets GTK owns. *)
+  print_s (Live_tree.dump live.widget);
+  (* The head page to the tail, which is the move [reorder_child]'s clamp would hide if
+     the index were computed one too high: GTK clamps a position past the end to last, so
+     a move that lands last cannot tell a correct index from an over-large one. This one
+     is checked by the two moves either side of it rather than by itself. *)
+  let live = patch live (view ~current:"score" ~pages:[ "notes"; "parts"; "score" ] ()) in
+  printf "after the head moved to the tail: %s\n" (page_labels live);
+  (* A middle page to the head -- destination index 0, which is the [after = None] arm. *)
+  let live = patch live (view ~current:"score" ~pages:[ "parts"; "notes"; "score" ] ()) in
+  printf "after a middle page moved to index 0: %s\n" (page_labels live);
+  (* And one that leaves a page behind the moved one, so that an index one place out in
+     either direction is visible rather than clamped away. *)
+  let live = patch live (view ~current:"score" ~pages:[ "parts"; "score"; "notes" ] ()) in
+  printf "after a rightward move with a page behind it: %s\n" (page_labels live);
+  printf "current survived every reorder: %s\n" (current_key live);
+  (* A page inserted in the middle, which is the same arithmetic from the other side: the
+     index comes from the predecessor's own [page_num], not from the reconciler's. *)
+  let live =
+    patch live (view ~current:"score" ~pages:[ "parts"; "score"; "draft"; "notes" ] ())
+  in
+  printf "after a middle insert: %s | tabs: %s\n" (page_labels live) (tab_texts live);
+  let live = patch live (view ~current:"score" ~pages:[ "parts"; "score"; "notes" ] ()) in
+  printf "after the middle page went away: %s\n" (page_labels live);
+  (* 3. The declined page change. The user clicks the "notes" tab; the model renders the
+     same node; the frame that renders it must put the notebook back. This is spec §6.5
+     for a container, and it is the reason [~current_page] is a fixup rather than an
+     [update]. *)
+  switch_page_by_hand live "notes";
+  printf "after the user clicked a tab: %s\n" (current_key live);
+  let live = patch live (view ~current:"score" ~pages:[ "parts"; "score"; "notes" ] ()) in
+  printf "after the declining frame: %s\n" (current_key live);
+  (* 4. Add a page and make it current in one frame. The page does not exist when
+     [reassert] would have run, which is why this is a fixup; without the fixup this shows
+     the old page. *)
+  let live =
+    patch live (view ~current:"draft" ~pages:[ "parts"; "score"; "notes"; "draft" ] ())
+  in
+  printf "add-and-select: %s (pages %s)\n" (current_key live) (page_labels live);
+  (* A page whose kind changes is a different page to the reconciler: a fresh widget in
+     the same position, keeping its key and its tab. *)
+  let kinded live ~button =
+    let node =
+      Node.window
+        ~title:"tabs"
+        (Node.notebook
+           ~current_page:"parts"
+           [ Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Parts" ] "PARTS"
+           ; (if button
+              then
+                Node.button
+                  ~key:"score"
+                  ~attrs:[ Attr.tab_label "Score" ]
+                  ~label:"SCORE"
+                  ()
+              else Node.label ~key:"score" ~attrs:[ Attr.tab_label "Score" ] "SCORE")
+           ])
+    in
+    patch live node
+  in
+  let live = kinded live ~button:false in
+  let before_kind_change = page_widgets live in
+  let live = kinded live ~button:true in
+  printf
+    "kind change replaced the page widget: %b\n"
+    (not (same_pages before_kind_change (page_widgets live)));
+  printf
+    "kind change kept the tab and the current page: %s | %s\n"
+    (tab_texts live)
+    (current_key live);
+  (* The tab label is re-read when it changes, and -- the half an [Option.iter] over the
+     new attrs would miss -- dropping the attr puts GTK's unnamed tab back rather than
+     leaving the old text or drawing a blank one. *)
+  let live =
+    patch
+      live
+      (Node.window
+         ~title:"tabs"
+         (Node.notebook
+            ~current_page:"parts"
+            [ Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Renamed" ] "PARTS"
+            ; Node.label ~key:"score" "SCORE"
+            ]))
+  in
+  printf "after a tab rename and a tab dropped: %s\n" (tab_texts live);
+  (* The four props, as one diff in one batch, read back off the widget. *)
+  let live =
+    patch
+      live
+      (view
+         ~scrollable:true
+         ~show_tabs:false
+         ~show_border:false
+         ~tab_pos:Left
+         ~current:"parts"
+         ~pages:[ "parts"; "score" ]
+         ())
+  in
+  print_s (Live_tree.dump live.widget);
+  let live = patch live (view ~current:"parts" ~pages:[ "parts"; "score" ] ()) in
+  printf "props back to GTK's own: %s\n" (Sexp.to_string (Live_tree.dump (notebook live)));
+  (* The page-change handler, end to end through GTK's own emission chain: switching the
+     page really does emit [switch-page], which reaches this library's trampoline, which
+     looks the page widget up in [Child_keys] and hands the attr's handler a key. This
+     patch is not inside a patch guard, so the emission is not swallowed. *)
+  switched := [];
+  switch_page_by_hand live "score";
+  printf "the page change delivered the key: %s\n" (String.concat ~sep:"," !switched);
+  (* A page carrying [Attr.visible false] cannot be made current: GTK emits [switch-page]
+     and then leaves [get_current_page] where it was (measured). Nothing is clamped here,
+     so the model's key is written on every frame and the widget keeps answering with the
+     page it can show -- documented on [Node.notebook], and the only way [~current_page]
+     can name a page that exists and still not land. *)
+  let hidden ~current =
+    Node.window
+      ~title:"tabs"
+      (Node.notebook
+       (* The handler is what makes the write count below observable: a [set_current_page]
+          that does not land still emits [switch-page], and these patches are not inside a
+          patch guard, so every attempt reaches [scheduled]. *)
+         ~attrs:
+           [ Attr.on_page_changed (fun key ->
+               switched := key :: !switched;
+               Ui_effect.Ignore)
+           ]
+         ~current_page:current
+         [ Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Parts" ] "PARTS"
+         ; Node.label
+             ~key:"score"
+             ~attrs:[ Attr.tab_label "Score"; Attr.visible false ]
+             "SCORE"
+         ])
+  in
+  let live = patch live (hidden ~current:"parts") in
+  let live = patch live (hidden ~current:"score") in
+  printf "asking for a hidden page: %s\n" (current_key live);
+  (* Two more identical frames, each of which rewrites: the comparison is against
+     [get_current_page], which never moves, so it never comes out equal. That is the cost
+     the constructor documents -- a model to bring into line, not a loop and not an error
+     -- and it is the only way [~current_page] can name a page that exists and still not
+     land. A comparison against the {i key} would read [false] here and report success. *)
+  let before = !scheduled in
+  let live = patch live (hidden ~current:"score") in
+  let live = patch live (hidden ~current:"score") in
+  printf "and it is rewritten on every identical frame: %d\n" (!scheduled - before);
+  let live = patch live (hidden ~current:"parts") in
+  printf "back to a visible page: %s\n" (current_key live);
+  (* 5. Removing the current page. GTK picks a neighbour; the model still names the page
+     that left; the fixup then {b raises}, because [~current_page] names no page.
+
+     This is the documented behaviour and it is the {i application's} bug: a model that
+     removes the page it is showing without moving its selection has rendered a view it
+     does not have, and it will render the same inconsistency on every frame afterwards
+     while the notebook shows whatever GTK picked. Raising says so once and loudly; the
+     alternative -- clamp to GTK's choice and let the model hear about it through
+     [Attr.on_page_changed] -- would leave the divergence spec §6.5 exists to prevent
+     sitting in the tree, and would do it silently.
+
+     Note the shape of the assertion: [P.patch] itself succeeds (the page really is gone
+     and the tree really is patched), and it is [P.run_fixups] that raises. The queue is
+     emptied on the way out, so the frames after this one are unaffected. *)
+  let live = patch live (view ~current:"score" ~pages:[ "parts"; "score"; "notes" ] ()) in
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (view ~current:"score" ~pages:[ "parts"; "notes" ] ())
+  in
+  printf "the page was removed: %s\n" (page_labels live);
+  (match P.run_fixups ctx with
+   | () -> printf "BUG: no raise\n"
+   | exception exn -> printf "the fixup raised: %s\n" (Exn.to_string exn));
+  printf "GTK picked: %s\n" (current_key live);
+  (* And the model bringing itself into line is an ordinary frame again. *)
+  let live = patch live (view ~current:"notes" ~pages:[ "parts"; "notes" ] ()) in
+  printf "after the model moved its selection: %s\n" (current_key live);
+  (* An empty notebook is the one frame on which a [~current_page] that resolves to
+     nothing is not a mistake: the argument is required, so a model rendering no pages has
+     no key it could pass that would be right. Left inert, and the frame that adds the
+     first page shows it -- which is the same-frame rule from the other direction. *)
+  let live = patch live (view ~current:"notes" ~pages:[] ()) in
+  printf
+    "an empty notebook: pages=%d current=%s (no raise)\n"
+    (List.length (page_widgets live))
+    (current_key live);
+  let live = patch live (view ~current:"notes" ~pages:[ "parts"; "notes" ] ()) in
+  printf "the first page arrived: %s\n" (current_key live);
+  (* 7. Teardown does not fire a handler. GTK emits [switch-page] as pages go away;
+     [scheduled] must not move across the destroy, because [Patcher.destroy] empties the
+     slots before anything is unparented. *)
+  let before = !scheduled in
+  P.destroy ctx live;
+  printf "handlers fired during teardown: %d\n" (!scheduled - before)
+;;
+
+(* The declined page change through a real [Driver.frame], which is the claim the
+   hand-driven patch above cannot make: a frame that hands back the physically same node
+   is not diffed at all, so the fixups are the only thing that runs -- and a driver that
+   skipped them would lose the correction. [live_driver.ml] makes this claim for a toggle
+   ([Widget_impl.reassert]) and for a stack page; this is the notebook's. *)
+let () =
+  let page_seen = ref 0 in
+  let declining_view =
+    Node.window
+      ~title:"declined"
+      (Node.notebook
+         ~attrs:
+           [ Attr.on_page_changed
+               (Bonsai_gtk.Effect.of_sync_fun (fun (_ : Key.t) -> incr page_seen))
+           ]
+         ~current_page:"score"
+         [ Node.label ~key:"score" ~attrs:[ Attr.tab_label "Score" ] "SCORE"
+         ; Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Parts" ] "PARTS"
+         ])
+  in
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let d =
+    Bonsai_gtk.Expert.Driver.create
+      ~time_source
+      ~on_window_created:(fun _ -> ())
+      (fun (_graph @ local) -> Bonsai.return declining_view)
+  in
+  Bonsai_gtk.Expert.Driver.frame d;
+  let driven_notebook () =
+    let root = Option.value_exn (Bonsai_gtk.Expert.Driver.root_widget d) in
+    List.hd_exn (Bonsai_gtk.Private.Gtk_import.widget_children root)
+  in
+  let driven_key () =
+    match W_notebook.current_key (cast (driven_notebook ())) with
+    | Some key -> key
+    | None -> "(none)"
+  in
+  (* The mount happened inside a real frame, so the [switch-page] GTK emits while the
+     first page is inserted was swallowed by the guard: [page_seen] is 0. *)
+  printf "nb driver, after mount: %s (Bonsai saw %d)\n" (driven_key ()) !page_seen;
+  let nb : W.Notebook.t = cast (driven_notebook ()) in
+  Option.iter
+    (W_notebook.page_index_by_key nb "parts")
+    ~f:(W.Notebook.set_current_page nb);
+  (* Printed before the drain as well as after: the emission arms a GLib idle, and by the
+     time the loop is handed back the correcting frame has already run -- so without this
+     line the claim would be indistinguishable from a click that never landed. *)
+  printf "nb driver, after the user clicked a tab: %s\n" (driven_key ());
+  drain ();
+  printf
+    "nb driver, after the frame the click armed: %s (Bonsai saw %d)\n"
+    (driven_key ())
+    !page_seen;
+  (* And a further no-diff frame writes nothing: [select] compares against the widget
+     before it writes, so nothing here should move and [switch-page] should not fire
+     again. *)
+  Bonsai_gtk.Expert.Driver.frame d;
+  printf
+    "nb driver, after one more frame: %s (Bonsai saw %d)\n"
+    (driven_key ())
+    !page_seen;
+  Bonsai_gtk.Expert.Driver.stop d
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* The selection fixup's cost per idle frame, at the scale the flow box is the container
+   for. This is a regression rather than a benchmark: its job is to fail if the shape of
+   [apply_selection] ever goes back to being quadratic in the selection.
+
+   The shape it guards against ([task-7-review.md]'s I1): [apply_selection] runs from the
+   fixup queue on every mount, every patch {i and} every no-change frame through
+   [reassert_only], so its cost is paid sixty times a second by an application doing
+   nothing. Resolving each key with a linear walk of the children made that O(|selected| x
+   n): measured on the shipped-then-fixed code at n=1000 with 200 selected, an {i idle}
+   frame cost 16.5 ms -- the whole 16.7 ms budget, spent deciding that nothing had changed
+   -- and 500-of-500 cost 24 ms, at which point the driver cannot reach 60 fps at all
+   while the selection is held. With the per-call map the same frame is 0.39 ms.
+
+   {b What is asserted is a ratio, not a wall-clock bound}, and that is
+   [task-7-review.md]'s N1 taken in its second form. The bound used to be "under 2 ms per
+   idle frame", which has five times the headroom on an idle machine and about 3% on a
+   contended one: the reviewer reproduced a real failure (2.312 ms) at 2x CPU
+   oversubscription, with three more samples within 3% of the line, and a CI runner
+   sharing a host reaches that. Raising the bound to 8 ms would have been the one-line
+   fix. This is the other one, and it is a better instrument for the same price: the
+   property under test is that the cost does {i not} scale with the size of the selection,
+   so the same fixup is timed at two selection sizes over one child list and the {i ratio}
+   is what the golden gets. Contention scales both measurements, so it cancels. The fixed
+   code measures ~1.1 and the quadratic code ~57 (the reviewer's numbers, and mine); a
+   bound of 5 is an order of magnitude clear of both ends and is not a timing at all.
 
    The frames are the real thing: [reassert_only] + [run_fixups] inside the patch guard is
    what [Driver.frame] runs when a computation hands back the physically same node.
 
-   The golden gets the verdict rather than the number, because a timing is not
-   reproducible; the number goes to stderr, which is not compared, so a failure says how
+   The golden gets the verdict rather than the numbers, because a timing is not
+   reproducible; the numbers go to stderr, which is not compared, so a failure says how
    far over it went rather than only [false]. *)
 let () =
   let n = 1000 in
-  let sel = 200 in
-  let bound_ms = 2.0 in
+  let many = 200 in
+  let bound_ratio = 5.0 in
   let frames = 200 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
   let ctx =
@@ -1025,37 +1530,52 @@ let () =
   in
   let key i = sprintf "k%d" i in
   let cards = List.init n ~f:(fun i -> Node.label ~key:(key i) (Int.to_string i)) in
-  (* Spread through the list rather than taken from the front, so that neither the walk
-     nor the map is flattered by locality. *)
-  let selected = List.init sel ~f:(fun i -> key (i * (n / sel))) in
-  let live =
-    P.mount
-      ctx
-      ~path:"bench"
-      ~is_root:true
-      (Node.window
-         ~title:"bench"
-         (Node.flow_box ~selection_mode:Multiple ~selected cards))
+  (* One measurement: mount a grid of [n] cards with [sel] of them selected, run [frames]
+     idle frames through the fixup queue, and answer the milliseconds each one cost. The
+     selection is spread through the list rather than taken from the front, so that
+     neither the walk nor the map is flattered by locality. *)
+  let idle_frame_ms ~sel =
+    let selected = List.init sel ~f:(fun i -> key (i * (n / sel))) in
+    let live =
+      P.mount
+        ctx
+        ~path:"bench"
+        ~is_root:true
+        (Node.window
+           ~title:"bench"
+           (Node.flow_box ~selection_mode:Multiple ~selected cards))
+    in
+    P.run_fixups ctx;
+    (* The selection is exactly the one asked for, which is what stops this from timing a
+       fixup that has quietly stopped doing anything. *)
+    let selected_count = List.length (W_flow_box.selected_keys (flow_box live)) in
+    printf "bench: n=%d, selected %d of %d\n" n selected_count sel;
+    let start = Time_ns.now () in
+    for _ = 1 to frames do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:"bench" live;
+        P.run_fixups ctx)
+    done;
+    let ms =
+      Time_ns.Span.to_ms (Time_ns.diff (Time_ns.now ()) start) /. Int.to_float frames
+    in
+    P.destroy ctx live;
+    ms
   in
-  P.run_fixups ctx;
-  let selected_count = List.length (W_flow_box.selected_keys (flow_box live)) in
-  let start = Time_ns.now () in
-  for _ = 1 to frames do
-    Scheduler.with_patch_guard scheduler (fun () ->
-      P.reassert_only ctx ~path:"bench" live;
-      P.run_fixups ctx)
-  done;
-  let per_frame_ms =
-    Time_ns.Span.to_ms (Time_ns.diff (Time_ns.now ()) start) /. Int.to_float frames
-  in
-  (* The selection is still exactly the one asked for, which is what stops this from
-     measuring a fixup that has quietly stopped doing anything. *)
-  printf "bench: n=%d, selected %d of %d\n" n selected_count sel;
+  let one = idle_frame_ms ~sel:1 in
+  let lots = idle_frame_ms ~sel:many in
+  let ratio = lots /. one in
   printf
-    "bench: %d idle frames, under %g ms each: %b\n"
+    "bench: %d idle frames at 1 and at %d selected, cost ratio under %g: %b\n"
     frames
-    bound_ms
-    Float.(per_frame_ms < bound_ms);
-  eprintf "bench: %.3f ms per idle frame (bound %g)\n%!" per_frame_ms bound_ms;
-  P.destroy ctx live
+    many
+    bound_ratio
+    Float.(ratio < bound_ratio);
+  eprintf
+    "bench: %.3f ms at sel=1, %.3f ms at sel=%d, ratio %.2f (bound %g)\n%!"
+    one
+    lots
+    many
+    ratio
+    bound_ratio
 ;;

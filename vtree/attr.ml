@@ -27,6 +27,7 @@ module Name = struct
       | Page_title
       | Row_selectable
       | Row_activatable
+      | Tab_label
       | On_clicked
       | On_toggled
       | On_changed
@@ -41,6 +42,7 @@ module Name = struct
       | On_selected_rows_changed
       | On_child_activated
       | On_selected_children_changed
+      | On_page_changed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
          output reorders. *)
       | On_click
@@ -68,6 +70,7 @@ module Name = struct
       | On_selected_rows_changed
       | On_child_activated
       | On_selected_children_changed
+      | On_page_changed
       (* The controller attrs are events too -- they carry a handler and a widget that
          cannot deliver one is a mistake worth a diagnostic. What they are not is any
          impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
@@ -104,7 +107,8 @@ module Name = struct
       | Grid_cell
       | Page_title
       | Row_selectable
-      | Row_activatable -> false
+      | Row_activatable
+      | Tab_label -> false
     ;;
   end
 
@@ -155,6 +159,12 @@ module Private = struct
     | Page_title of string
     | Row_selectable of bool
     | Row_activatable of bool
+    (* The tab label a [GtkNotebook] draws for this page, held by the {i notebook} on the
+       page's behalf exactly as [Page_title] is held by a stack. A [string] and not a
+       node: the tab label is a widget GTK builds and owns, and a node there would mean a
+       second child list, a second patch path and a second lifetime for something that is
+       always a label. *)
+    | Tab_label of string
     | On_clicked of unit Handler.t
     | On_toggled of bool Handler.t
     | On_changed of string Handler.t
@@ -178,6 +188,10 @@ module Private = struct
        rather than rejected. *)
     | On_child_activated of Key.t Handler.t
     | On_selected_children_changed of Key.t list Handler.t
+    (* The page's {!Key.t}, on the rule the other four container handlers follow:
+       [switch-page] hands GTK's callback the page's {i content widget} and an index that
+       moves, and the key is the only name the application has for either. *)
+    | On_page_changed of Key.t Handler.t
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
@@ -247,6 +261,7 @@ let name = function
   | Page_title _ -> Some Page_title
   | Row_selectable _ -> Some Row_selectable
   | Row_activatable _ -> Some Row_activatable
+  | Tab_label _ -> Some Tab_label
   | On_clicked _ -> Some On_clicked
   | On_toggled _ -> Some On_toggled
   | On_changed _ -> Some On_changed
@@ -261,6 +276,7 @@ let name = function
   | On_selected_rows_changed _ -> Some On_selected_rows_changed
   | On_child_activated _ -> Some On_child_activated
   | On_selected_children_changed _ -> Some On_selected_children_changed
+  | On_page_changed _ -> Some On_page_changed
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
@@ -275,7 +291,8 @@ let rec equal a b =
   | Test_id a, Test_id b
   | Widget_name a, Widget_name b
   | Cursor_name a, Cursor_name b
-  | Page_title a, Page_title b -> String.equal a b
+  | Page_title a, Page_title b
+  | Tab_label a, Tab_label b -> String.equal a b
   | Margin_start a, Margin_start b
   | Margin_end a, Margin_end b
   | Margin_top a, Margin_top b
@@ -308,6 +325,7 @@ let rec equal a b =
   | On_selected_rows_changed a, On_selected_rows_changed b -> Handler.equal a b
   | On_child_activated a, On_child_activated b -> Handler.equal a b
   | On_selected_children_changed a, On_selected_children_changed b -> Handler.equal a b
+  | On_page_changed a, On_page_changed b -> Handler.equal a b
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
@@ -372,6 +390,10 @@ let page_title s = Page_title s
    these are properties of that wrapper rather than of the child. See the mli. *)
 let row_selectable b = Row_selectable b
 let row_activatable b = Row_activatable b
+
+(* The one setting a *notebook* holds about each page, on [Attr.page_title]'s rule. See
+   the mli for why it is a string rather than a node. *)
+let tab_label s = Tab_label s
 let on_clicked eff = On_clicked (fun () -> eff)
 let on_toggled f = On_toggled f
 let on_changed f = On_changed f
@@ -386,6 +408,7 @@ let on_row_activated f = On_row_activated f
 let on_selected_rows_changed f = On_selected_rows_changed f
 let on_child_activated f = On_child_activated f
 let on_selected_children_changed f = On_selected_children_changed f
+let on_page_changed f = On_page_changed f
 
 let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }

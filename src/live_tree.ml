@@ -491,6 +491,43 @@ let rec dump (w : Widget.t) : Sexp.t =
           | `VERTICAL -> [ Sexp.Atom "vertical" ])
        @ int_prop "selected-children" (selected_child_count b) ~default:0
      | "GtkFlowBoxChild" -> flag_prop "selected" (W.Flow_box_child.is_selected (cast w))
+     (* A [GtkNotebook]'s pages are {i not} reachable through [get_first_child]: its two
+        internal children are a [GtkBox] of tabs and a [GtkStack] of pages, and the
+        stack's child order does not follow the page order (measured -- a reorder moves
+        the tabs and leaves the stack's children where they were). So the recursion below
+        prints the tab labels in page order and the page widgets in whatever order the
+        internal stack holds them, and a test whose claim is the page order has to ask
+        [W_notebook] rather than read it out of this dump. [test/live/live_lists.ml] does.
+
+        [pages] and [current-page] are printed unconditionally, like a stack's [visible]:
+        they are what the node asked for rather than GTK defaults, and a dump that omitted
+        them could not show a controlled write landing (or failing to). The other four are
+        printed only when they are not GTK's own -- and note that two of them are on by
+        default, so it is [no-tabs] and [no-border] that appear rather than their
+        positives. *)
+     | "GtkNotebook" ->
+       let nb : W.Notebook.t = cast w in
+       [ Sexp.List [ Atom "pages"; Atom (Int.to_string (W.Notebook.get_n_pages nb)) ]
+       ; Sexp.List
+           [ Atom "current-page"; Atom (Int.to_string (W.Notebook.get_current_page nb)) ]
+       ]
+       @ (if W.Notebook.get_show_tabs nb then [] else [ Sexp.Atom "no-tabs" ])
+       @ (if W.Notebook.get_show_border nb then [] else [ Sexp.Atom "no-border" ])
+       @ flag_prop "scrollable" (W.Notebook.get_scrollable nb)
+       @
+         (match W.Notebook.get_tab_pos nb with
+         | `TOP -> []
+         | p ->
+           [ Sexp.List
+               [ Atom "tab-pos"
+               ; Atom
+                   (match p with
+                    | `TOP -> "top"
+                    | `BOTTOM -> "bottom"
+                    | `LEFT -> "left"
+                    | `RIGHT -> "right")
+               ]
+           ])
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

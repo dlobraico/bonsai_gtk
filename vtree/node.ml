@@ -507,6 +507,38 @@ let flow_box
     (List children)
 ;;
 
+(* The third keyed container, and the only one whose children really move: [GtkNotebook]
+   has [gtk_notebook_reorder_child], so [Widget_impl.list_ops.move] is [Some] for it and
+   the reconciler emits [Move] ops rather than being told not to.
+
+   No geometry to check, unlike {!flow_box}: every prop here is a bool or an enum, and the
+   only argument GTK could refuse -- a page name -- is checked against the live tree by
+   the fixup pass rather than here, because "not there yet" and "never" are the same thing
+   at construction time. *)
+let notebook
+  ?key
+  ?attrs
+  ?(scrollable = Defaults.Notebook.scrollable)
+  ?(show_tabs = Defaults.Notebook.show_tabs)
+  ?(show_border = Defaults.Notebook.show_border)
+  ?(tab_pos = Defaults.Notebook.tab_pos)
+  ~current_page
+  children
+  =
+  require_child_keys
+    ~which:"Node.notebook"
+    ~why:"a page's key is what ~current_page names and every handler receives"
+    children;
+  make
+    ?key
+    ?attrs
+    (Notebook { current_page; scrollable; show_tabs; show_border; tab_pos })
+    (* A plain [List], like {!flow_box}'s: a notebook interposes nothing this library has
+       to name apart. Its tab labels are widgets GTK builds from [Attr.tab_label], not
+       nodes, which is the whole reason there is one child list here rather than two. *)
+    (List children)
+;;
+
 let stack_switcher ?key ?attrs ~stack () =
   make ?key ?attrs (Stack_switcher { stack }) No_children
 ;;

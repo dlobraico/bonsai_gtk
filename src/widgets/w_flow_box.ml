@@ -138,9 +138,9 @@ let selected_keys (w : Widget.t) =
   |> List.filter_map ~f:key_of_child
 ;;
 
-(* One key, resolved by walking the box. For the callers that ask about a single key; the
-   selection fixup builds a table instead, and the difference between the two is the point
-   of the next comment.
+(* One key, resolved by walking the box. For [test/live/live_lists.ml], which asks about a
+   single key; the selection fixup builds a table instead, and the difference between the
+   two is the point of the next comment.
 
    {b Never cache this into a table that outlives the call.} The obvious optimisation --
    one key-to-wrapper map per flow box, maintained by [insert]/[remove] -- is unsafe here

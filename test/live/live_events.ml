@@ -52,6 +52,7 @@ let all_kinds : Kind.t list =
   ; (Node.stack_sidebar ~stack:"s" ()).kind
   ; (Node.list_box ~selected:[] []).kind
   ; (Node.flow_box ~selected:[] []).kind
+  ; (Node.notebook ~current_page:"a" []).kind
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind

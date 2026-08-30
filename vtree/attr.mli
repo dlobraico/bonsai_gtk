@@ -36,6 +36,7 @@ module Name : sig
     | Page_title
     | Row_selectable
     | Row_activatable
+    | Tab_label
     | On_clicked
     | On_toggled
     | On_changed
@@ -50,6 +51,7 @@ module Name : sig
     | On_selected_rows_changed
     | On_child_activated
     | On_selected_children_changed
+    | On_page_changed
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -130,6 +132,7 @@ module Private : sig
     | Page_title of string
     | Row_selectable of bool
     | Row_activatable of bool
+    | Tab_label of string
     | On_clicked of unit Handler.t
     | On_toggled of bool Handler.t
     | On_changed of string Handler.t
@@ -144,6 +147,7 @@ module Private : sig
     | On_selected_rows_changed of Key.t list Handler.t
     | On_child_activated of Key.t Handler.t
     | On_selected_children_changed of Key.t list Handler.t
+    | On_page_changed of Key.t Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -299,6 +303,28 @@ val row_selectable : bool -> t
     is GTK's own default. A container-placement attr on the same terms as
     {!row_selectable}, and [false] on the same kind of row. *)
 val row_activatable : bool -> t
+
+(** The text a {!Node.notebook} draws on this page's tab. A page without one gets GTK's
+    own unnamed tab; the page's {i key} -- what [~current_page] selects it by and what
+    {!on_page_changed} hands back -- is the node's {!Key.t}, not this.
+
+    A container-placement attr like {!page_title}: the tab label is a [GtkLabel] the
+    {i notebook} builds and owns on the page's behalf, so it rides on the page node's
+    attrs and is written by the notebook's impl -- at insert, and again through
+    [Widget_impl.list_ops.updated] when it changes (dropping the attr puts the unnamed tab
+    back).
+
+    {b A [string] and not a node}, which is the one place this library's "children are
+    nodes" rule is broken on purpose. A node would mean a second child list under every
+    page, a second patch path for it, and a second widget lifetime -- for something that
+    is a label in every notebook anyone has written. A tab that genuinely needs an icon
+    and a close button is a {!Node.native} whose [create] builds the notebook, or a
+    {!Node.box} of tabs above a {!Node.stack}, which is what modern GTK applications use
+    instead of a notebook anyway.
+
+    Inert outside a notebook, and rejected there like every other misplaced placement
+    attr. *)
+val tab_label : string -> t
 
 val on_clicked : unit Ui_effect.t -> t
 
@@ -462,6 +488,24 @@ val on_child_activated : (Key.t -> unit Ui_effect.t) -> t
     Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
     node is mounted or patched. *)
 val on_selected_children_changed : (Key.t list -> unit Ui_effect.t) -> t
+
+(** Fires when a {!Node.notebook}'s current page changes, carrying the {i key} of the page
+    now showing.
+
+    GTK's [switch-page] hands its callback the page's {i content widget} -- not a
+    [GtkNotebookPage] -- and a page number that moves whenever a page is added, removed or
+    reordered, so the key is again the only name the application has. It is looked up in
+    the same table {!on_row_activated} and {!on_child_activated} use.
+
+    GTK emits [switch-page] while the {i first} page is being inserted, which happens
+    inside the patch; that emission is swallowed by the reentrancy guard like any other
+    the library provokes, so mounting a notebook fires no handler.
+
+    [~current_page] is {i controlled} (spec §6.5), so a notebook that carries no
+    [on_page_changed] -- or whose model declines the change -- snaps back to the model's
+    page on the next frame. Attaching it to a widget that emits no such signal raises
+    [Invalid_argument] when the node is mounted or patched. *)
+val on_page_changed : (Key.t -> unit Ui_effect.t) -> t
 
 (** A [GtkGestureClick] on this widget.
 
