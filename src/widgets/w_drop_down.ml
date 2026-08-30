@@ -330,10 +330,11 @@ let impl : Widget_impl.t =
             if not (same_items old.items new_.items)
             then (
               set_items d new_.items;
-              (* A rebuild changes what GTK will accept -- a model that has become empty
-                 will now take "nothing selected", and one that has become non-empty will
-                 not -- so a refusal remembered against the old model must not outlive it.
-                 [reassert] runs immediately after this and decides again. *)
+              (* An items change changes what GTK will accept -- a list that has become
+                 empty will now take "nothing selected", one that has become non-empty
+                 will not, and one that has grown will now take an index that was past the
+                 end -- so a refusal remembered against the old contents must not outlive
+                 them. [reassert] runs immediately after this and decides again. *)
               forget_refusal w);
             if not (Bool.equal old.enable_search new_.enable_search)
             then W.Drop_down.set_enable_search d new_.enable_search;
@@ -341,10 +342,20 @@ let impl : Widget_impl.t =
             then W.Drop_down.set_show_arrow d new_.show_arrow)
           (* [selected] is deliberately absent: it is controlled, so it belongs to
              [reassert], which the patcher runs immediately after this and on every other
-             patch too -- including this one, where the model rebuild above has just reset
-             the widget's selection to item 0. That ordering is the whole reason a rebuild
-             is safe: the selection is re-applied in the same frame, so the drop-down is
-             never left showing an item the model did not choose. *)
+             patch too -- including this one.
+
+             The splice does {i not} reset the selection to item 0; carrying the position
+             across is the whole point of splicing rather than replacing, and
+             [test/live/live_text.ml]'s "items changed, selection unchanged and still in
+             range" line exists because of it. What the ordering is still load-bearing for
+             is the cases where the new contents {i force} the selection to move -- the
+             selected item deleted, the list emptied, the list grown to include an index
+             that was past the end -- because in each of those GTK picks a position of its
+             own and only the [reassert] on the next line puts the model's back, in the
+             same frame. So the drop-down is never left showing an item the model did not
+             choose. (task-10-review.md R1: this comment used to describe the model
+             replacement that no longer happens, and said the opposite of what the code
+             does.) *)
         | _, k -> Widget_impl.wrong_kind "DropDown" k)
   ; reassert = Some reassert
   ; signals = [ selected_changed ]

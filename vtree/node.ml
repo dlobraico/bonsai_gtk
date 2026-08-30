@@ -658,6 +658,59 @@ let drop_down
   make ?key ?attrs (Drop_down { items; selected; enable_search; show_arrow }) No_children
 ;;
 
+(* The one thing a calendar node can carry that no later frame could make valid, and it is
+   not the date.
+
+   A day outside 1-31 is not a day of any month, however the date moves. GTK's own answer
+   is a {i silent no-op} -- [gtk_calendar_mark_day] tests the range itself and returns
+   without a critical, so a [~marked_days:[0]] would simply never appear and nothing
+   anywhere would say why (measured: [mark_day 0] and [mark_day 40] both leave
+   [get_day_is_marked] false, with no diagnostic). A day that is out of range for the
+   month {i currently showing} is a different thing and is perfectly legal: marks are per
+   day-of-month and survive a month change, so day 31 marked while February is showing is
+   still marked when March arrives (measured).
+
+   The {i date} is not checked here. GTK's year range is 1-9999 and [Core.Date] allows
+   year 0, so a date with year 0 is a value the widget cannot hold -- but it is a value,
+   carrying model state, in the same position an unstorable [~text] is on a text view, and
+   a text view does not raise for that either: [w_calendar.ml] refuses the write, leaves
+   the calendar as it was, and reports it once with the node's path. Raising would not
+   report the mistake, it would end the application (see the note at the top of this
+   file's mli). *)
+let calendar
+  ?key
+  ?attrs
+  ?(show_day_names = Defaults.Calendar.show_day_names)
+  ?(show_heading = Defaults.Calendar.show_heading)
+  ?(show_week_numbers = Defaults.Calendar.show_week_numbers)
+  ?(marked_days = Defaults.Calendar.marked_days)
+  ~date
+  ()
+  =
+  List.iter marked_days ~f:(fun day ->
+    if day < 1 || day > 31
+    then
+      invalid_argf
+        "Node.calendar: ~marked_days holds %d, which is not a day of any month (GTK \
+         ignores it silently); days are 1-31 and a day out of range for the month \
+         showing is legal"
+        day
+        ());
+  make
+    ?key
+    ?attrs
+    (Calendar { date; show_day_names; show_heading; show_week_numbers; marked_days })
+    No_children
+;;
+
+(* [~text] is required for the reason the entries' is, and [~editing] for the reason a
+   toggle's [~active] is: it is controlled, so a node that did not say would be a widget
+   whose state nothing owns. See [node.mli] for what controlling a read-only GTK property
+   means here. *)
+let editable_label ?key ?attrs ?(editing = Defaults.Editable_label.editing) ~text () =
+  make ?key ?attrs (Editable_label { text; editing }) No_children
+;;
+
 let stack_switcher ?key ?attrs ~stack () =
   make ?key ?attrs (Stack_switcher { stack }) No_children
 ;;

@@ -53,6 +53,8 @@ module Name : sig
     | On_selected_children_changed
     | On_page_changed
     | On_selected_changed
+    | On_day_selected
+    | On_editing_changed
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -150,6 +152,8 @@ module Private : sig
     | On_selected_children_changed of Key.t list Handler.t
     | On_page_changed of Key.t Handler.t
     | On_selected_changed of int Handler.t
+    | On_day_selected of Date.t Handler.t
+    | On_editing_changed of bool Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -536,6 +540,54 @@ val on_page_changed : (Key.t -> unit Ui_effect.t) -> t
     index on the next frame. Attaching it to a widget that emits no such signal raises
     [Invalid_argument] when the node is mounted or patched. *)
 val on_selected_changed : (int -> unit Ui_effect.t) -> t
+
+(** The date a [GtkCalendar] now shows, whenever the user picks a day, walks to another
+    month or another year, or GTK moves the selection for any other reason.
+
+    A {!Core.Date.t}, which is the whole reason this attr is worth having. GTK's
+    [day-selected] carries {i no payload at all}, and the date is spread over three
+    integer properties whose [month] is {b zero-based} while whose [day] is not — an
+    asymmetry that reads correctly all through January and is wrong for the other eleven
+    months. [src/widgets/w_calendar.ml] reads the three getters back and assembles the
+    date, and it is the only code in this library that ever sees the raw month.
+
+    [day-selected] is the only calendar signal this library exposes, and it is enough: GTK
+    emits it whenever the {i day-of-month} changes, and moving to another month or year
+    through the heading buttons moves the day too. (Measured: [set_month] and [set_year]
+    alone emit [notify::month]/[notify::year] but {i not} [day-selected], which is why the
+    library's own writes always end with the day.) [next-month], [prev-month], [next-year]
+    and [prev-year] are not exposed: they say the heading was clicked rather than what the
+    calendar now shows, and a handler that wants the date already has it here.
+
+    [~date] is {i controlled} (spec §6.5), so a calendar that carries no [on_day_selected]
+    — or whose model declines the day — snaps back to the model's date on the next frame.
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched. *)
+val on_day_selected : (Date.t -> unit Ui_effect.t) -> t
+
+(** Whether a [GtkEditableLabel] is now in editing mode: [true] when the user has
+    double-clicked (or pressed Enter on) the label, [false] when the edit was committed or
+    abandoned.
+
+    There is no [editing-changed] signal — [GtkEditableLabel] binds four methods and no
+    signals at all — so this rides on [notify::editing] and the handler reads
+    [gtk_editable_label_get_editing] back, the [w_switch.ml] shape. Like every [notify::],
+    it fires for the library's own writes too; the reentrancy guard drops the ones a patch
+    provokes, so a handler sees the user's edits and nothing else.
+
+    The {i text} does not arrive here. A [GtkEditableLabel] reaches its text through
+    [GtkEditable] exactly as a [GtkEntry] does, so {!on_changed} is what carries it — and
+    it fires per keystroke while the label is being edited, not once at the end (measured:
+    one inserted character, one [changed]). Committing an edit emits no [changed] of its
+    own, because the text was already there.
+
+    [~editing] is {i controlled} (spec §6.5), which is not the same as writable: GTK has
+    no [set_editing], so the library enters with [start_editing] and leaves with
+    [stop_editing ~commit:true]. See {!Bonsai_gtk_vtree.Node.editable_label} for why
+    committing rather than discarding is the only defensible reading of a model that
+    renders [~editing:false]. Attaching this to a widget that emits no such signal raises
+    [Invalid_argument] when the node is mounted or patched. *)
+val on_editing_changed : (bool -> unit Ui_effect.t) -> t
 
 (** A [GtkGestureClick] on this widget.
 

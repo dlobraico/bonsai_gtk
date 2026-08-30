@@ -2177,6 +2177,28 @@ let%expect_test "nothing selected is a legal node, whatever GTK does with it" =
     +|   (((kind (Drop_down ((items (60 90 120 144)) (selected 3))))
            (attrs ((Test_id tempo) (On_selected_changed <handler>)))
            (children No_children))))))
+    |}];
+  (* The second instance of the same asymmetry, next to the first (task-10-review.md R2).
+     An index {i past the end} is a legal node too -- the constructor accepts it by
+     design, because [~items] and [~selected] come from different Bonsai state and a
+     shrinking list leaves the index stale for a frame -- and headless it produces no
+     signal at all: [Events] has nothing to say about it and there is no list model to
+     ask. Only the live runtime reports it, once, with the node's path. *)
+  let handle =
+    Bonsai_gtk_test.create (fun (_graph @ local) ->
+      Bonsai.return
+        (Node.window
+           ~title:"Tempo"
+           (Node.drop_down ~attrs:[ Attr.test_id "tempo" ] ~items:tempos ~selected:9 ())))
+  in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Tempo))))) (attrs ())
+     (children
+      (Single
+       (((kind (Drop_down ((items (60 90 120 144)) (selected 9))))
+         (attrs ((Test_id tempo))) (children No_children))))))
     |}]
 ;;
 
@@ -2258,5 +2280,259 @@ let%expect_test "the drop-down's event attr, and other kinds'" =
     {|
     (Invalid_argument "root/0: LevelBar does not emit On_value_changed")
     (Invalid_argument "root/0: LevelBar does not emit On_selected_changed")
+    |}]
+;;
+
+(* A date picker whose model will not accept a weekend, which is the declined-edit shape
+   for a calendar and which no other test in this suite has. The two other declining
+   models here are a drop-down refusing an odd index and a text view rewriting text; a
+   date is the case where the {i value} the user produced is legal and the {i model} is
+   the only thing that can say no.
+
+   Headless this is the whole claim: the handler runs, the model keeps the Friday, and the
+   node does not move. Live it is the harder half -- the frame Bonsai runs hands back the
+   physically same node, so nothing is diffed and [Widget_impl.reassert] is the only thing
+   that can put the calendar back; [test/live/live_text.ml] makes that one. *)
+let%expect_test "a date picker that declines weekends" =
+  let picker (graph @ local) =
+    let date, set_date = Bonsai.state (Date.of_string "2026-08-28") graph in
+    let%arr date and set_date in
+    Node.window
+      ~title:"When"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.calendar
+             ~attrs:
+               [ Attr.test_id "when"
+               ; Attr.on_day_selected (fun d ->
+                   match Date.day_of_week d with
+                   | Sat | Sun -> Ui_effect.Ignore
+                   | Mon | Tue | Wed | Thu | Fri -> set_date d)
+               ]
+             ~marked_days:[ 28 ]
+             ~date
+             ()
+         ; Node.label
+             ~attrs:[ Attr.test_id "chosen" ]
+             (sprintf !"%{Date} is a %{sexp: Day_of_week.t}" date (Date.day_of_week date))
+         ])
+  in
+  let handle = Bonsai_gtk_test.create picker in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (When))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Calendar ((date 2026-08-28) (marked_days (28)))))
+             (attrs ((Test_id when) (On_day_selected <handler>)))
+             (children No_children))
+            ((kind (Label ((text "2026-08-28 is a FRI"))))
+             (attrs ((Test_id chosen))) (children No_children))))))))))
+    |}];
+  (* A weekday: taken. *)
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Select_day ("when", Date.of_string "2026-08-31") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (When))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (Calendar ((date 2026-08-28) (marked_days (28)))))
+    +|       (((kind (Calendar ((date 2026-08-31) (marked_days (28)))))
+               (attrs ((Test_id when) (On_day_selected <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text "2026-08-28 is a FRI"))))
+    +|        ((kind (Label ((text "2026-08-31 is a MON"))))
+               (attrs ((Test_id chosen))) (children No_children))))))))))
+    |}];
+  (* The Saturday after it: declined, and the node does not move at all -- which is what
+     makes the live frame a no-diff one. *)
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Select_day ("when", Date.of_string "2026-09-05") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| |}];
+  (* And December, because January is the month a zero-based conversion gets right by
+     accident. Nothing in the vtree can convert anything, which is the point: the date the
+     handler was handed is the date the model holds. *)
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Select_day ("when", Date.of_string "2026-12-31") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (When))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (Calendar ((date 2026-08-31) (marked_days (28)))))
+    +|       (((kind (Calendar ((date 2026-12-31) (marked_days (28)))))
+               (attrs ((Test_id when) (On_day_selected <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text "2026-08-31 is a MON"))))
+    +|        ((kind (Label ((text "2026-12-31 is a THU"))))
+               (attrs ((Test_id chosen))) (children No_children))))))))))
+    |}]
+;;
+
+(* The editable label's two controlled props, and the asymmetry between them.
+
+   The text arrives through [Set_text] because live it arrives through [Attr.on_changed]
+   -- a [GtkEditableLabel] reaches its text through [GtkEditable] exactly as an entry does
+   -- and the mode arrives through [Set_editing], which live is a [notify::editing] rather
+   than a signal at all. A model that trims what it is given is the declining shape for
+   the text half. *)
+let%expect_test "an editable label's text and its editing mode" =
+  let titled (graph @ local) =
+    let title, set_title = Bonsai.state "Set One" graph in
+    let editing, set_editing = Bonsai.state false graph in
+    let%arr title and set_title and editing and set_editing in
+    Node.window
+      ~title:"Setlist"
+      (Node.editable_label
+         ~attrs:
+           [ Attr.test_id "title"
+           ; Attr.on_changed (fun t -> set_title (String.strip t))
+           ; Attr.on_editing_changed set_editing
+           ]
+         ~editing
+         ~text:title
+         ())
+  in
+  let handle = Bonsai_gtk_test.create titled in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Setlist))))) (attrs ())
+     (children
+      (Single
+       (((kind (Editable_label ((text "Set One") (editing false))))
+         (attrs
+          ((Test_id title) (On_changed <handler>) (On_editing_changed <handler>)))
+         (children No_children))))))
+    |}];
+  (* The user double-clicks: editing becomes true and the text has not moved. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_editing ("title", true) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Setlist))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Editable_label ((text "Set One") (editing false))))
+    +|   (((kind (Editable_label ((text "Set One") (editing true))))
+           (attrs
+            ((Test_id title) (On_changed <handler>) (On_editing_changed <handler>)))
+           (children No_children))))))
+    |}];
+  (* Typing, which live is one [changed] per keystroke on the [GtkEditable]. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_text ("title", "Set Two  ") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Setlist))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Editable_label ((text "Set One") (editing true))))
+    +|   (((kind (Editable_label ((text "Set Two") (editing true))))
+           (attrs
+            ((Test_id title) (On_changed <handler>) (On_editing_changed <handler>)))
+           (children No_children))))))
+    |}];
+  (* Leaving editing mode. The model's [~editing:false] is what the widget is then made to
+     obey, and live that is [stop_editing ~commit:true] -- the text the user typed is
+     {i kept}, which it must be: the model has already seen it above and accepted the
+     trimmed form. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_editing ("title", false) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Setlist))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Editable_label ((text "Set Two") (editing true))))
+    +|   (((kind (Editable_label ((text "Set Two") (editing false))))
+           (attrs
+            ((Test_id title) (On_changed <handler>) (On_editing_changed <handler>)))
+           (children No_children))))))
+    |}]
+;;
+
+(* The negatives for the two new kinds, both directions, on the rule the drop-down block
+   above follows: an attr copied onto a widget that does not emit it is rejected rather
+   than accepted and never firing.
+
+   [On_changed] is the interesting near miss and it goes the other way from the rest: an
+   editable label {i does} emit it, because it reaches its text through the same
+   [GtkEditable] an entry does, so the line a reader copies across from an entry works. A
+   calendar does not. *)
+let%expect_test "the calendar's and the editable label's event attrs, and other kinds'" =
+  let bad node (_graph @ local) = Bonsai.return (Node.window ~title:"bad" node) in
+  let refuse node =
+    Expect_test_helpers_core.require_does_raise (fun () ->
+      let handle = Bonsai_gtk_test.create (bad node) in
+      Bonsai_gtk_test.Handle.show handle)
+  in
+  let day = Attr.on_day_selected (fun _ -> Ui_effect.Ignore) in
+  let mode = Attr.on_editing_changed (fun _ -> Ui_effect.Ignore) in
+  let changed = Attr.on_changed (fun _ -> Ui_effect.Ignore) in
+  let date = Date.of_string "2026-08-30" in
+  refuse (Node.label ~attrs:[ day ] "x");
+  refuse (Node.entry ~attrs:[ day ] ~text:"" ());
+  refuse (Node.editable_label ~attrs:[ day ] ~text:"" ());
+  [%expect
+    {|
+    (Invalid_argument "root/0: Label does not emit On_day_selected")
+    (Invalid_argument "root/0: Entry does not emit On_day_selected")
+    (Invalid_argument "root/0: EditableLabel does not emit On_day_selected")
+    |}];
+  refuse (Node.label ~attrs:[ mode ] "x");
+  refuse (Node.entry ~attrs:[ mode ] ~text:"" ());
+  refuse (Node.calendar ~attrs:[ mode ] ~date ());
+  [%expect
+    {|
+    (Invalid_argument "root/0: Label does not emit On_editing_changed")
+    (Invalid_argument "root/0: Entry does not emit On_editing_changed")
+    (Invalid_argument "root/0: Calendar does not emit On_editing_changed")
+    |}];
+  (* And what a calendar does not emit, including the two an author reaches for first. *)
+  List.iter
+    [ changed
+    ; Attr.on_value_changed (fun _ -> Ui_effect.Ignore)
+    ; Attr.on_selected_changed (fun _ -> Ui_effect.Ignore)
+    ]
+    ~f:(fun attr -> refuse (Node.calendar ~attrs:[ attr ] ~date ()));
+  [%expect
+    {|
+    (Invalid_argument "root/0: Calendar does not emit On_changed")
+    (Invalid_argument "root/0: Calendar does not emit On_value_changed")
+    (Invalid_argument "root/0: Calendar does not emit On_selected_changed")
+    |}];
+  (* An editable label emits [changed], so this is the one line in the block that must
+     {i not} raise. *)
+  let handle =
+    Bonsai_gtk_test.create
+      (bad (Node.editable_label ~attrs:[ changed; mode ] ~text:"t" ()))
+  in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (bad))))) (attrs ())
+     (children
+      (Single
+       (((kind (Editable_label ((text t) (editing false))))
+         (attrs ((On_changed <handler>) (On_editing_changed <handler>)))
+         (children No_children))))))
     |}]
 ;;

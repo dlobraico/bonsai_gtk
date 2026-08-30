@@ -42,6 +42,8 @@ let all_kinds : Kind.t list =
   ; (Node.flow_box ~selected:[] []).kind
   ; (Node.notebook ~current_page:"a" []).kind
   ; (Node.drop_down ~items:[] ~selected:(-1) ()).kind
+  ; (Node.calendar ~date:(Date.of_string "2026-08-30") ()).kind
+  ; (Node.editable_label ~text:"" ()).kind
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind
@@ -91,6 +93,8 @@ let%expect_test "every kind's event attrs" =
     (FlowBox (On_child_activated On_selected_children_changed))
     (Notebook (On_page_changed))
     (DropDown (On_selected_changed))
+    (Calendar (On_day_selected))
+    (EditableLabel (On_changed On_editing_changed))
     (CenterBox ())
     (Paned (On_position_changed))
     (Overlay ())
@@ -167,8 +171,8 @@ let%expect_test "is_event over every name" =
       On_value_changed On_expanded_changed On_revealed On_position_changed
       On_visible_child_changed On_row_activated On_selected_rows_changed
       On_child_activated On_selected_children_changed On_page_changed
-      On_selected_changed On_click On_focus_enter On_focus_leave On_key_pressed
-      On_key_released))
+      On_selected_changed On_day_selected On_editing_changed On_click
+      On_focus_enter On_focus_leave On_key_pressed On_key_released))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect

@@ -56,6 +56,8 @@ let all_kinds : Kind.t list =
   ; (Node.flow_box ~selected:[] []).kind
   ; (Node.notebook ~current_page:"a" []).kind
   ; (Node.drop_down ~items:[] ~selected:(-1) ()).kind
+  ; (Node.calendar ~date:(Date.of_string "2026-08-30") ()).kind
+  ; (Node.editable_label ~text:"" ()).kind
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind

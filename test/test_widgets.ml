@@ -1164,3 +1164,186 @@ let%expect_test "same_kind distinguishes every pair it is given" =
        : bool * bool)];
   [%expect {| (false false) |}]
 ;;
+
+(* {b The one test in this file that is really about GTK's zero-based month.}
+
+   [Node.calendar] takes a [Date.t] and the vtree holds a [Date.t], so nothing here can
+   catch a wrong conversion on its own -- the conversion lives in [w_calendar.ml] and is
+   asserted live. What this pins is the half that makes the live assertion meaningful: the
+   node carries the date the caller wrote, in full, and December is printed as December. A
+   [Kind.calendar_props] that had quietly become three integers would show up here. *)
+let%expect_test "calendar takes a Date.t, not GTK's zero-based month" =
+  print_s [%sexp (Node.calendar ~date:(Date.of_string "2026-01-15") () : Node.t)];
+  [%expect
+    {| ((kind (Calendar ((date 2026-01-15)))) (attrs ()) (children No_children)) |}];
+  (* December, whose zero-based index is 11 and which is the month a wrong conversion
+     renders as November. *)
+  print_s [%sexp (Node.calendar ~date:(Date.of_string "2026-12-31") () : Node.t)];
+  [%expect
+    {| ((kind (Calendar ((date 2026-12-31)))) (attrs ()) (children No_children)) |}]
+;;
+
+let%expect_test "calendar constructor and defaults" =
+  (* Every [show_*] default is GTK's own, and two of the three are [true], so a bare
+     calendar drops all three from the sexp. *)
+  print_s [%sexp (Node.calendar ~date:(Date.of_string "2026-08-30") () : Node.t)];
+  [%expect
+    {| ((kind (Calendar ((date 2026-08-30)))) (attrs ()) (children No_children)) |}];
+  print_s
+    [%sexp
+      (Node.calendar
+         ~show_day_names:true
+         ~show_heading:true
+         ~show_week_numbers:false
+         ~date:(Date.of_string "2026-08-30")
+         ()
+       : Node.t)];
+  [%expect
+    {| ((kind (Calendar ((date 2026-08-30)))) (attrs ()) (children No_children)) |}];
+  (* And each of them moved off GTK's default, which is the half the drops cannot show. *)
+  print_s
+    [%sexp
+      (Node.calendar
+         ~show_day_names:false
+         ~show_heading:false
+         ~show_week_numbers:true
+         ~marked_days:[ 3; 14 ]
+         ~date:(Date.of_string "2026-08-30")
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Calendar
+       ((date 2026-08-30) (show_day_names false) (show_heading false)
+        (show_week_numbers true) (marked_days (3 14)))))
+     (attrs ()) (children No_children))
+    |}]
+;;
+
+(* Marks are per day-of-month, so 1-31 is the whole domain and a day outside it is not a
+   day of any month -- no later date could make it valid, which is the test [node.mli]
+   states for raising at all. GTK's own answer is worse than useless:
+   [gtk_calendar_mark_day] range-checks and returns {i silently}, with no critical, so the
+   mark would simply never appear. *)
+let%expect_test "calendar rejects a marked day that is not a day" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.calendar ~marked_days:[ 3; 0 ] ~date:(Date.of_string "2026-08-30") ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.calendar: ~marked_days holds 0, which is not a day of any month (GTK ignores it silently); days are 1-31 and a day out of range for the month showing is legal")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.calendar ~marked_days:[ 32 ] ~date:(Date.of_string "2026-08-30") ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.calendar: ~marked_days holds 32, which is not a day of any month (GTK ignores it silently); days are 1-31 and a day out of range for the month showing is legal")
+    |}];
+  (* 31 is legal even while a 30-day month is showing: marks survive a month change, so
+     the day is marked and simply not drawn until a month that has one arrives. *)
+  print_s
+    [%sexp
+      (Node.calendar ~marked_days:[ 1; 31 ] ~date:(Date.of_string "2026-04-15") ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Calendar ((date 2026-04-15) (marked_days (1 31))))) (attrs ())
+     (children No_children))
+    |}]
+;;
+
+(* A year GTK cannot hold is {i not} rejected here, and that is the decision the impl's
+   refusal machinery exists for. [Core.Date] admits year 0 and GTK's calendar does not
+   (its setters assert 1-9999), so this is a value carrying model state in the same
+   position an unstorable [~text] is on a text view -- and a text view does not raise for
+   that either. Raising would end the application rather than report the mistake; the impl
+   refuses the write, leaves the calendar showing the date it had, and reports it once
+   with the node's path ([test/live/live_text.ml]). *)
+let%expect_test "calendar accepts a date GTK will not hold" =
+  print_s [%sexp (Node.calendar ~date:(Date.create_exn ~y:0 ~m:Jan ~d:1) () : Node.t)];
+  [%expect
+    {| ((kind (Calendar ((date 0000-01-01)))) (attrs ()) (children No_children)) |}];
+  (* The other end of [Core.Date]'s own range is inside GTK's, so there is no second case:
+     10000 is not a [Date.t] at all. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Date.create_exn ~y:10000 ~m:Jan ~d:1);
+  [%expect
+    {|
+    (Invalid_argument
+     "Date.create_exn ~y:10000 ~m:Jan ~d:1 error: year outside of [0..9999]")
+    |}]
+;;
+
+let%expect_test "calendar props take part in equal_props" =
+  let props ?(date = Date.of_string "2026-08-30") ?(marked_days = []) ?show_heading () =
+    (Node.calendar ~date ~marked_days ?show_heading ()).kind
+  in
+  print_s
+    [%sexp
+      (( Kind.equal_props (props ()) (props ())
+       , Kind.equal_props (props ()) (props ~date:(Date.of_string "2026-08-31") ())
+       , Kind.equal_props (props ()) (props ~marked_days:[ 1 ] ())
+       , Kind.equal_props (props ()) (props ~show_heading:false ()) )
+       : bool * bool * bool * bool)];
+  [%expect {| (true false false false) |}];
+  (* The marks compare structurally, not physically: a view that rebuilds an equal list
+     every render must not make GTK clear and redraw the month sixty times a second. [b]
+     is built rather than written as a literal, because two structured constants with the
+     same contents are shared by the compiler and a pair of literals would be physically
+     equal (task-10-review.md M1's lesson, in the other widget). *)
+  let a = [ 3; 14 ] in
+  let b = List.map a ~f:(fun d -> d + 1) |> List.map ~f:(fun d -> d - 1) in
+  print_s
+    [%sexp
+      (( phys_equal a b
+       , Kind.equal_props (props ~marked_days:a ()) (props ~marked_days:b ()) )
+       : bool * bool)];
+  [%expect {| (false true) |}];
+  print_s [%sexp (Kind.same_kind (props ()) (props ~show_heading:false ()) : bool)];
+  [%expect {| true |}]
+;;
+
+(* [~text] is required for the reason the entries' is; [~editing] is optional and defaults
+   to GTK's [false], but it carries no [@sexp_drop_if] -- it is a controlled prop, so like
+   a toggle's [~active] its value is always something the caller asked for and printing it
+   is what makes a node say what it controls. *)
+let%expect_test "editable label constructor and defaults" =
+  print_s [%sexp (Node.editable_label ~text:"a title" () : Node.t)];
+  [%expect
+    {|
+    ((kind (Editable_label ((text "a title") (editing false)))) (attrs ())
+     (children No_children))
+    |}];
+  print_s [%sexp (Node.editable_label ~editing:true ~text:"a title" () : Node.t)];
+  [%expect
+    {|
+    ((kind (Editable_label ((text "a title") (editing true)))) (attrs ())
+     (children No_children))
+    |}];
+  (* Text a [GtkEditableLabel] will not hold is a legal node, on [text_view]'s rule: it is
+     a value carrying model state, the impl refuses the write and leaves the label as it
+     was, and raising here would end the application instead of reporting anything. *)
+  print_s [%sexp (Node.editable_label ~text:"ab\000cd" () : Node.t)];
+  [%expect
+    {|
+    ((kind (Editable_label ((text "ab\000cd") (editing false)))) (attrs ())
+     (children No_children))
+    |}]
+;;
+
+let%expect_test "editable label props take part in equal_props" =
+  let props ?(text = "a") ?(editing = false) () =
+    (Node.editable_label ~text ~editing ()).kind
+  in
+  print_s
+    [%sexp
+      (( Kind.equal_props (props ()) (props ())
+       , Kind.equal_props (props ()) (props ~text:"b" ())
+       , Kind.equal_props (props ()) (props ~editing:true ()) )
+       : bool * bool * bool)];
+  [%expect {| (true false false) |}];
+  print_s [%sexp (Kind.same_kind (props ()) (props ~editing:true ()) : bool)];
+  [%expect {| true |}]
+;;

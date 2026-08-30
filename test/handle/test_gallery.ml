@@ -101,6 +101,32 @@ let every_widget (graph @ local) =
                        ~value:0.
                        ()
                    ; Node.progress_bar ~fraction:0.5 ~show_text:true ()
+                     (* Task 10's two, which its own task did not add here although this
+                        file claims every constructor: without them a change to
+                        [Node.drop_down]'s or [Node.level_bar]'s defaults showed up in no
+                        snapshot at all. *)
+                   ; Node.drop_down
+                       ~attrs:[ Attr.on_selected_changed (fun _ -> Ui_effect.Ignore) ]
+                       ~enable_search:true
+                       ~items:[ "one"; "two" ]
+                       ~selected:1
+                       ()
+                   ; Node.level_bar ~min:0. ~max:5. ~mode:Discrete ~value:3. ()
+                     (* The date is a literal rather than [Date.today], which would make
+                        this snapshot change once a day. *)
+                   ; Node.calendar
+                       ~attrs:[ Attr.on_day_selected (fun _ -> Ui_effect.Ignore) ]
+                       ~show_week_numbers:true
+                       ~marked_days:[ 1; 15 ]
+                       ~date:(Date.of_string "2026-12-31")
+                       ()
+                   ; Node.editable_label
+                       ~attrs:
+                         [ Attr.on_changed (fun _ -> Ui_effect.Ignore)
+                         ; Attr.on_editing_changed (fun _ -> Ui_effect.Ignore)
+                         ]
+                       ~text:"editable"
+                       ()
                    ; Node.spinner ~spinning:true ()
                    ; Node.image ~pixel_size:24 (Icon_name "list-add-symbolic")
                    ; Node.picture ~alternative_text:"nothing" Empty
@@ -307,6 +333,24 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                          (children No_children))
                         ((kind (Progress_bar ((fraction 0.5) (show_text true))))
                          (attrs ()) (children No_children))
+                        ((kind
+                          (Drop_down
+                           ((items (one two)) (selected 1) (enable_search true))))
+                         (attrs ((On_selected_changed <handler>)))
+                         (children No_children))
+                        ((kind (Level_bar ((value 3) (max 5) (mode Discrete))))
+                         (attrs ()) (children No_children))
+                        ((kind
+                          (Calendar
+                           ((date 2026-12-31) (show_week_numbers true)
+                            (marked_days (1 15)))))
+                         (attrs ((On_day_selected <handler>)))
+                         (children No_children))
+                        ((kind
+                          (Editable_label ((text editable) (editing false))))
+                         (attrs
+                          ((On_changed <handler>) (On_editing_changed <handler>)))
+                         (children No_children))
                         ((kind (Spinner ((spinning true)))) (attrs ())
                          (children No_children))
                         ((kind

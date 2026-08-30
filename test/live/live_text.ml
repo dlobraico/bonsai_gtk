@@ -743,6 +743,7 @@ let () =
    holding the same strings reads identically. So the model's {i GObject identity} is what
    is asserted, which is the one thing that differs. *)
 module List_model = Bonsai_gtk.Private.Gtk_import.List_model
+module W_calendar = Bonsai_gtk.Private.W_calendar
 module W_drop_down = Bonsai_gtk.Private.W_drop_down
 
 let drop_down live : W.Drop_down.t = cast (child live)
@@ -1001,6 +1002,14 @@ let () =
   show "wrong again" live;
   let live = patch live (picker ~items:[ "a" ] ~selected:7 ()) in
   show "wrong differently" live;
+  (* An index into an {i empty} list, which is a legal node -- it is the shape a picker
+     renders while its query is still running -- and which reaches a branch of [refusal]
+     no other case here does: the widget's live selection is [-1] rather than an item, so
+     the message reads "nothing is selected" rather than "item N is still selected". Both
+     other shapes above have a non-empty list, so that half of the wording was unexercised
+     (task-10-review.md N2). *)
+  let live = patch live (picker ~items:[] ~selected:0 ()) in
+  show "an index into an empty list" live;
   P.destroy ctx live
 ;;
 
@@ -1352,4 +1361,649 @@ let () =
     big_refused
     refused_ratio
     bound_ratio
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* {b The calendar's write order, measured against the order that reads as careful.}
+
+   This is the block the whole widget turns on, and it is run against a raw [GtkCalendar]
+   rather than through the library, because the claim is about GTK.
+
+   Each of [set_year], [set_month] and [set_day] rebuilds the whole date and refuses the
+   write outright if the result is not a real day -- [g_return_if_fail (date != NULL)], a
+   critical on stderr and {i nothing written}. It does not clamp. So writing year, then
+   month, then day silently strands the calendar on the old month for every date whose
+   day-of-month does not exist in the new one, which is most month changes and every leap
+   day. [w_calendar.ml] writes day 1 first, then year, then month, then the real day: day
+   1 exists in every month of every year, so no intermediate state is invalid.
+
+   The criticals GTK logs for the naive column go to stderr and so are not in this golden
+   -- which is itself the point, since stderr is where a bug like this hides. *)
+let () =
+  let c = W.Calendar.new_ () in
+  let read () = W.Calendar.get_year c, W.Calendar.get_month c, W.Calendar.get_day c in
+  let force (y, m, d) =
+    W.Calendar.set_day c 1;
+    W.Calendar.set_year c y;
+    W.Calendar.set_month c m;
+    W.Calendar.set_day c d
+  in
+  let naive (y, m, d) =
+    W.Calendar.set_year c y;
+    W.Calendar.set_month c m;
+    W.Calendar.set_day c d
+  in
+  let show (y, m, d) = sprintf "%04d-%02d-%02d" y (m + 1) d in
+  (* On stderr rather than in the golden, because that is where GTK's own complaints go
+     and a reader of a CI log needs to know these four are the point of the test rather
+     than a fault in it. *)
+  eprintf
+    "live_text: the four Gtk-CRITICALs that follow are expected -- they are the naive \
+     write order below being refused by GTK, which is what this block measures\n\
+     %!";
+  printf "write order (GTK's raw zero-based month, +1 for printing):\n";
+  let wrong = ref 0 in
+  List.iter
+    [ (* December 31st to February 15th: the naive order's [set_month] is asked for a
+         February 31st and refuses. *)
+      (2026, 11, 31), (2026, 1, 15)
+    ; (* A leap day losing its year: the naive order's [set_year] is asked for 2025-02-29
+         and refuses. *)
+      (2024, 1, 29), (2025, 1, 28)
+    ; (* 31 days to 30: January 31st to April 30th. *)
+      (2026, 0, 31), (2026, 3, 30)
+    ; (* And the one transition the naive order gets right, which is why a single case
+         would have proved nothing: nothing moves at all. *)
+      (2026, 0, 1), (2026, 0, 1)
+    ; (* Into a leap day from a month with 31 days. *)
+      (2023, 2, 31), (2024, 1, 29)
+    ]
+    ~f:(fun (from_, want) ->
+      force from_;
+      naive want;
+      let got_naive = read () in
+      force from_;
+      force want;
+      let got_force = read () in
+      if not ([%equal: int * int * int] got_naive want) then incr wrong;
+      printf
+        "  %s -> %s : year,month,day gives %s (%s); day-1-first gives %s (%s)\n"
+        (show from_)
+        (show want)
+        (show got_naive)
+        (if [%equal: int * int * int] got_naive want then "ok" else "WRONG")
+        (show got_force)
+        (if [%equal: int * int * int] got_force want then "ok" else "WRONG"));
+  printf "  transitions the naive order gets wrong: %d of 5\n" !wrong;
+  (* And what GTK emits for each write, which is why [w_calendar.ml] always ends with the
+     day: [day-selected] is emitted exactly when the day-of-month changes, so [set_month]
+     and [set_year] alone emit only their own [notify::]. A [day-selected] handler that
+     wanted "the month changed" would never hear it -- but walking the heading moves the
+     day too, which is why one signal is enough. *)
+  let sel = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Calendar.on_day_selected c ~callback:(fun () -> incr sel)
+  in
+  let step label f =
+    let before = !sel in
+    f ();
+    printf "  %-24s -> %s, day-selected +%d\n" label (show (read ())) (!sel - before)
+  in
+  printf "per-call emissions:\n";
+  force (2026, 0, 10);
+  step "set_year 2020" (fun () -> W.Calendar.set_year c 2020);
+  step "set_month 5" (fun () -> W.Calendar.set_month c 5);
+  step "set_day 11" (fun () -> W.Calendar.set_day c 11);
+  step "set_day 11 again" (fun () -> W.Calendar.set_day c 11);
+  (* [freeze_notify] does not suppress it: [day-selected] is a signal, not a property
+     notification, so [Widget_impl.batch] is about the [notify::] round trips and nothing
+     else. This is the measurement behind that claim in [w_calendar.ml]. *)
+  let before = !sel in
+  Gobject.Property.freeze_notify (c :> Bonsai_gtk.Private.Gtk_import.Widget.t);
+  W.Calendar.set_day c 12;
+  let during = !sel - before in
+  Gobject.Property.thaw_notify (c :> Bonsai_gtk.Private.Gtk_import.Widget.t);
+  printf
+    "  inside freeze_notify: day-selected +%d before the thaw, +%d after\n"
+    during
+    (!sel - before);
+  (* Marks, which are per day-of-month and survive a month change -- and whose
+     out-of-range rejection is [Node.calendar]'s because GTK's own answer is a silent
+     no-op. *)
+  W.Calendar.mark_day c 31;
+  printf "  marked 31 while June shows: %b\n" (W.Calendar.get_day_is_marked c 31);
+  W.Calendar.set_day c 1;
+  W.Calendar.set_month c 0;
+  printf "  still marked in January: %b\n" (W.Calendar.get_day_is_marked c 31);
+  W.Calendar.mark_day c 40;
+  W.Calendar.mark_day c 0;
+  printf
+    "  mark_day 40 and mark_day 0 are silent no-ops: %b %b\n"
+    (W.Calendar.get_day_is_marked c 40)
+    (W.Calendar.get_day_is_marked c 0)
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* The calendar through the library: the props, the controlled date, a declined day, the
+   marks, and the reentrancy case.
+
+   Case 1's December is the whole defence against the zero-based month. January is index 0
+   and therefore reads correctly however wrong the conversion is, so both are asserted in
+   the same dump -- and [Live_tree] prints the date through [W_calendar.read_date], the
+   same conversion the write uses, so what makes this checkable at all is that the printed
+   date is compared against the [Date.t] the node carried. *)
+let () =
+  let scheduled = ref 0 in
+  let reports = ref [] in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path message -> reports := (node_path, message) :: !reports)
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let take_reports () =
+    let r = List.rev !reports in
+    reports := [];
+    Sexp.to_string [%sexp (r : (string * string) list)]
+  in
+  let calendar live : W.Calendar.t = cast (child live) in
+  let cal ?show_heading ?show_week_numbers ?marked_days ~date () =
+    Node.window
+      ~title:"when"
+      (Node.calendar
+         ~attrs:[ Attr.on_day_selected (fun _ -> Ui_effect.Ignore) ]
+         ?show_heading
+         ?show_week_numbers
+         ?marked_days
+         ~date:(Date.of_string date)
+         ())
+  in
+  (* 1. January and December in the same run. A conversion that dropped the [- 1] would
+        print January as February and December as an invalid month; one that dropped both
+        halves would look right in January and wrong in December, which is the failure
+        this pair exists for. *)
+  let live = P.mount ctx ~path:"cal" ~is_root:true (cal ~date:"2026-01-15" ()) in
+  print_s (Live_tree.dump live.widget);
+  let patch live node =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"cal" ~is_root:true live node)
+  in
+  let live = patch live (cal ~date:"2026-12-31" ()) in
+  print_s (Live_tree.dump live.widget);
+  (* The raw properties beside the printed date, once, so the golden holds both ends: the
+     dump says December and GTK's own [get_month] says 11. *)
+  printf
+    "raw properties for %s: year=%d month=%d day=%d\n"
+    (Date.to_string (W_calendar.read_date (calendar live)))
+    (W.Calendar.get_year (calendar live))
+    (W.Calendar.get_month (calendar live))
+    (W.Calendar.get_day (calendar live));
+  (* Every month of a year, round-tripped through the widget. This is what makes the
+     conversion checkable rather than merely printed: the node's [Date.t] goes in, the
+     three integer properties come back through [read_date], and the two are compared. A
+     conversion wrong in both directions -- the failure a printed dump alone cannot catch
+     -- is caught here, because the {i input} is the node's date and not a read-back. *)
+  let live, mismatches =
+    List.fold (List.range 1 13) ~init:(live, []) ~f:(fun (live, bad) m ->
+      let date = Date.create_exn ~y:2026 ~m:(Month.of_int_exn m) ~d:28 in
+      let live = patch live (cal ~date:(Date.to_string date) ()) in
+      let got = W_calendar.read_date (calendar live) in
+      live, if Date.equal got date then bad else (date, got) :: bad)
+  in
+  printf
+    "every month of 2026 round-tripped, mismatches: %s\n"
+    (Sexp.to_string [%sexp (List.rev mismatches : (Date.t * Date.t) list)]);
+  (* And the leap day, which is the transition the naive write order also gets wrong. *)
+  let live = patch live (cal ~date:"2024-02-29" ()) in
+  printf "leap day: %s\n" (Date.to_string (W_calendar.read_date (calendar live)));
+  let live = patch live (cal ~date:"2025-03-01" ()) in
+  printf
+    "the day after a leap year ends: %s\n"
+    (Date.to_string (W_calendar.read_date (calendar live)));
+  (* 2. The declined date. The user picks a day by hand -- [set_day], which is what a
+     click does -- and the model renders the date it was already rendering, so [update] is
+     skipped entirely and [reassert] is the only thing that can put the calendar back. It
+     must. *)
+  let live = patch live (cal ~date:"2026-08-28" ()) in
+  printf
+    "before the user's pick: %s\n"
+    (Date.to_string (W_calendar.read_date (calendar live)));
+  W.Calendar.set_day (calendar live) 29;
+  printf
+    "the user picked the 29th: %s\n"
+    (Date.to_string (W_calendar.read_date (calendar live)));
+  let live = patch live (cal ~date:"2026-08-28" ()) in
+  printf
+    "the model rendered the 28th again: %s (reports %s)\n"
+    (Date.to_string (W_calendar.read_date (calendar live)))
+    (take_reports ());
+  (* A second patch with nothing having changed writes nothing: the comparison is against
+     the widget, which now agrees. *)
+  let sel = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Calendar.on_day_selected (calendar live) ~callback:(fun () -> incr sel)
+  in
+  let live = patch live (cal ~date:"2026-08-28" ()) in
+  printf "and a patch that changes nothing writes nothing: GTK emitted %d\n" !sel;
+  (* Idle frames are the same question and must cost nothing either. *)
+  for _ = 1 to 5 do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"cal" live;
+      P.run_fixups ctx)
+  done;
+  printf "five idle frames later: GTK emitted %d in total\n" !sel;
+  (* 3. Marks added and removed. Not controlled -- nothing the user does marks a day -- so
+     this rides in [update] and only when the list differs. *)
+  let live = patch live (cal ~date:"2026-08-28" ~marked_days:[ 3; 14 ] ()) in
+  print_s (Live_tree.dump live.widget);
+  let live = patch live (cal ~date:"2026-08-28" ~marked_days:[ 14 ] ()) in
+  print_s (Live_tree.dump live.widget);
+  (* A day out of range for the month showing is legal and simply not drawn; it is still
+     marked, which is what the dump reports and what makes the mark survive to a month
+     that has a 31st. *)
+  let live = patch live (cal ~date:"2026-04-15" ~marked_days:[ 14; 31 ] ()) in
+  print_s (Live_tree.dump live.widget);
+  let live = patch live (cal ~date:"2026-04-15" ~marked_days:[] ()) in
+  print_s (Live_tree.dump live.widget);
+  (* The two [show_*] flags, off and back on, so the dump shows both directions. *)
+  let live =
+    patch live (cal ~date:"2026-04-15" ~show_heading:false ~show_week_numbers:true ())
+  in
+  print_s (Live_tree.dump live.widget);
+  (* 4. A date GTK will not hold: year 0, which [Core.Date] admits and
+     [gtk_calendar_set_year] asserts against. Refused {i before} the write, so the
+     calendar keeps the date it had rather than being left with the [set_day 1] landed and
+     the rest refused; reported once with the node's path; and written on the frame the
+     model offers a date GTK will take. *)
+  let live = patch live (cal ~date:"2026-04-15" ()) in
+  ignore (take_reports () : string);
+  let live = patch live (cal ~date:"0000-01-01" ()) in
+  printf
+    "asked for year 0: showing %s (reports %s)\n"
+    (Date.to_string (W_calendar.read_date (calendar live)))
+    (take_reports ());
+  for _ = 1 to 5 do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"cal" live;
+      P.run_fixups ctx)
+  done;
+  printf
+    "five idle frames parked on it: showing %s (reports %s)\n"
+    (Date.to_string (W_calendar.read_date (calendar live)))
+    (take_reports ());
+  (* The same-frame rule: the first frame offering a holdable date writes it. *)
+  let live = patch live (cal ~date:"0001-01-01" ()) in
+  printf
+    "year 1, the first GTK holds: showing %s (reports %s)\n"
+    (Date.to_string (W_calendar.read_date (calendar live)))
+    (take_reports ());
+  (* And a second refusal after a write that landed is a new decision, reported again --
+     the refusal is remembered against the date and every successful write forgets it. *)
+  let live = patch live (cal ~date:"0000-06-06" ()) in
+  printf
+    "year 0 again, a different date: showing %s (reports %s)\n"
+    (Date.to_string (W_calendar.read_date (calendar live)))
+    (take_reports ());
+  (* 5. Reentrancy. The library's own writes emit [day-selected] synchronously -- once or
+     twice per date change, since the sequence moves the day to 1 and then to the target
+     -- and every one of them arrives inside the patch, so nothing reaches Bonsai. *)
+  let live = patch live (cal ~date:"2026-08-28" ()) in
+  let emitted = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Calendar.on_day_selected (calendar live) ~callback:(fun () -> incr emitted)
+  in
+  let before = !scheduled in
+  let live = patch live (cal ~date:"2026-02-15" ()) in
+  printf
+    "a programmatic date change: GTK emitted %d, reached Bonsai %d\n"
+    !emitted
+    (!scheduled - before);
+  (* And the same write outside a patch does reach Bonsai, which is what says the guard is
+     the thing doing the dropping rather than the handler being absent. *)
+  let before = !scheduled in
+  W.Calendar.set_day (calendar live) 20;
+  printf "the same write outside a patch: reached Bonsai %d\n" (!scheduled - before);
+  P.destroy ctx live
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* The editable label: text through [GtkEditable], editing through two asymmetric methods,
+   and the ruling that leaving edit mode commits.
+
+   Case 4 of the brief, and the block that has to prove [stop_editing true] rather than
+   [stop_editing false]: a user types, the model echoes, the model then renders
+   [~editing:false], and the text the user typed must still be there. Under
+   [stop_editing false] GTK would put the {i previous} text back -- measured below on a
+   raw widget, so the golden holds both the choice and what the other choice does. *)
+let () =
+  let scheduled = ref 0 in
+  let reports = ref [] in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path message -> reports := (node_path, message) :: !reports)
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let take_reports () =
+    let r = List.rev !reports in
+    reports := [];
+    Sexp.to_string [%sexp (r : (string * string) list)]
+  in
+  let ed_label live : W.Editable_label.t = cast (child live) in
+  let editable live = W.Editable.from_gobject (child live) in
+  let node ?editing ~text () =
+    Node.window
+      ~title:"title"
+      (Node.editable_label
+         ~attrs:
+           [ Attr.on_changed (fun _ -> Ui_effect.Ignore)
+           ; Attr.on_editing_changed (fun _ -> Ui_effect.Ignore)
+           ]
+         ?editing
+         ~text
+         ())
+  in
+  let live = P.mount ctx ~path:"lbl" ~is_root:true (node ~text:"Set One" ()) in
+  (* 1. The props. The dump prints the text through [GtkEditable] and [editing] only when
+        it is on, and prints no children: a [GtkEditableLabel] holds a whole
+        [GtkPopoverMenu] beside its two-page stack, none of which is the application's
+        tree. *)
+  print_s (Live_tree.dump live.widget);
+  let patch live node =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"lbl" ~is_root:true live node)
+  in
+  let state what live =
+    printf
+      "%s: text=%S editing=%b\n"
+      what
+      (W.Editable.get_text (editable live))
+      (W.Editable_label.get_editing (ed_label live))
+  in
+  (* 2. The controlled text, on the entry's rule and through the entry's own
+     [set_text_if_needed]. *)
+  let live = patch live (node ~text:"Set Two" ()) in
+  state "the model rewrote the text" live;
+  print_s (Live_tree.dump live.widget);
+  (* 3. Editing entered and left, from the model side. *)
+  let live = patch live (node ~editing:true ~text:"Set Two" ()) in
+  state "the model asked for editing" live;
+  print_s (Live_tree.dump live.widget);
+  (* 4. {b The ruling.} The user types while editing -- which live is one [changed] per
+     keystroke on the [GtkEditable], counted below -- the model echoes what was typed, and
+     then the model renders [~editing:false]. The text the user typed must still be there
+     afterwards. *)
+  let changes = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Editable.on_changed (editable live) ~callback:(fun () -> incr changes)
+  in
+  let before = !changes in
+  W.Editable.insert_text (editable live) "!" 1 7;
+  W.Editable.insert_text (editable live) "!" 1 8;
+  printf "two single-character insertions emitted %d changed\n" (!changes - before);
+  state "the user typed" live;
+  let live = patch live (node ~editing:true ~text:"Set Two!!" ()) in
+  state "the model echoed it" live;
+  let live = patch live (node ~editing:false ~text:"Set Two!!" ()) in
+  state "the model then left editing mode" live;
+  printf
+    "the text the user typed survived leaving edit mode: %b\n"
+    (String.equal (W.Editable.get_text (editable live)) "Set Two!!");
+  (* And what the other choice does, on a raw widget beside it, so the golden holds the
+     alternative rather than a comment claiming it: [stop_editing false] puts the previous
+     text back and emits [changed] doing so. *)
+  let raw = W.Editable_label.new_ "before" in
+  let raw_e = W.Editable.from_gobject (raw :> Bonsai_gtk.Private.Gtk_import.Widget.t) in
+  let raw_changes = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Editable.on_changed raw_e ~callback:(fun () -> incr raw_changes)
+  in
+  W.Editable_label.start_editing raw;
+  W.Editable.insert_text raw_e "X" 1 0;
+  let before = !raw_changes in
+  W.Editable_label.stop_editing raw false;
+  printf
+    "raw widget, stop_editing false: text=%S (%d changed emitted undoing the edit)\n"
+    (W.Editable.get_text raw_e)
+    (!raw_changes - before);
+  W.Editable_label.start_editing raw;
+  W.Editable.insert_text raw_e "X" 1 0;
+  let before = !raw_changes in
+  W.Editable_label.stop_editing raw true;
+  printf
+    "raw widget, stop_editing true: text=%S (%d changed emitted committing it)\n"
+    (W.Editable.get_text raw_e)
+    (!raw_changes - before);
+  (* The ordering hazard, from the other side: a frame that changes both props writes the
+     text first, so entering edit mode leaves the caret and the selection where entering
+     edit mode put them rather than where a text write did. *)
+  let live = patch live (node ~editing:true ~text:"Rewritten" ()) in
+  state "both props at once" live;
+  printf "  position after it: %d\n" (W.Editable.get_position (editable live));
+  let live = patch live (node ~editing:false ~text:"Rewritten" ()) in
+  state "and back out" live;
+  (* A patch that changes nothing writes nothing: the comparison is against the widget. *)
+  let notifies = ref 0 in
+  let (_ : Gobject.Signal.handler_id) =
+    Gobject.Signal.connect_simple
+      (child live)
+      ~name:"notify::editing"
+      ~callback:(fun () -> incr notifies)
+      ~after:false
+  in
+  let before = !changes in
+  let live = patch live (node ~editing:false ~text:"Rewritten" ()) in
+  for _ = 1 to 5 do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"lbl" live;
+      P.run_fixups ctx)
+  done;
+  printf
+    "a no-op patch and five idle frames: %d changed, %d notify::editing\n"
+    (!changes - before)
+    !notifies;
+  (* 5. Reentrancy, both props. Every write the library makes emits something
+     synchronously -- [changed] twice for a [set_text], [notify::editing] once for each of
+     [start_editing] and [stop_editing] -- and all of it arrives inside the patch. *)
+  let before_changes = !changes
+  and before_notifies = !notifies
+  and before_scheduled = !scheduled in
+  let live = patch live (node ~editing:true ~text:"Programmatic" ()) in
+  printf
+    "a programmatic write of both props: GTK emitted %d changed and %d notify::editing, \
+     reached Bonsai %d\n"
+    (!changes - before_changes)
+    (!notifies - before_notifies)
+    (!scheduled - before_scheduled);
+  let live = patch live (node ~editing:false ~text:"Programmatic" ()) in
+  (* And the same writes outside a patch do reach Bonsai. *)
+  let before = !scheduled in
+  W.Editable.set_text (editable live) "typed";
+  W.Editable_label.start_editing (ed_label live);
+  printf "the same writes outside a patch: reached Bonsai %d\n" (!scheduled - before);
+  let live = patch live (node ~editing:false ~text:"Programmatic" ()) in
+  state "put back by the next patch" live;
+  (* 6. Text a [GtkEditableLabel] will not hold. A NUL truncates silently; the write is
+     refused before it is made, the label keeps what it had, and it is reported once with
+     the node's path. Invalid UTF-8 is {i not} refused -- unlike a [GtkTextBuffer], a
+     [GtkEditable] stores it and reads it back -- which is why this block asserts both. *)
+  ignore (take_reports () : string);
+  let live = patch live (node ~text:"ab\000cd" ()) in
+  printf
+    "asked for a text with a NUL: text=%S (reports %s)\n"
+    (W.Editable.get_text (editable live))
+    (take_reports ());
+  for _ = 1 to 5 do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"lbl" live;
+      P.run_fixups ctx)
+  done;
+  printf
+    "five idle frames parked on it: text=%S (reports %s)\n"
+    (W.Editable.get_text (editable live))
+    (take_reports ());
+  let live = patch live (node ~text:"caf\xc3\xa9 latte" ()) in
+  printf
+    "and a text GTK does take: text=%S (reports %s)\n"
+    (W.Editable.get_text (editable live))
+    (take_reports ());
+  (* Invalid UTF-8, which the text view refuses and this widget stores. *)
+  let live = patch live (node ~text:"caf\xe9 latte" ()) in
+  printf
+    "invalid UTF-8 is stored rather than refused: %b (reports %s)\n"
+    (String.equal (W.Editable.get_text (editable live)) "caf\xe9 latte")
+    (take_reports ());
+  P.destroy ctx live
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* The declined day through a real [Driver.frame], which is the claim the hand-driven
+   patches above cannot make. A model that will only sit on a weekday: when it refuses,
+   its state does not move, so the frame Bonsai runs hands back the
+   {i physically same node} and is not diffed at all -- [Widget_impl.reassert] is the only
+   thing left, and a driver that skipped it would leave the user's Saturday standing with
+   the model holding the Friday.
+
+   The whole loop is real: GTK emits [day-selected], the trampoline schedules the
+   handler's effect, the driver's idle runs the frame, and the frame corrects the widget.
+   [live_driver.ml] makes this claim for a toggle and the drop-down block above for a
+   property notification; this is the one for a widget whose signal carries no payload at
+   all and whose value has to be assembled from three getters to be known. *)
+let () =
+  let seen = ref [] in
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let d =
+    Bonsai_gtk.Expert.Driver.create
+      ~time_source
+      ~on_window_created:(fun _ -> ())
+      (fun (graph @ local) ->
+        let date, set_date = Bonsai.state (Date.of_string "2026-08-28") graph in
+        let%arr date and set_date in
+        Node.window
+          ~title:"when"
+          (Node.calendar
+             ~attrs:
+               [ Attr.on_day_selected (fun d ->
+                   seen := d :: !seen;
+                   match Date.day_of_week d with
+                   | Sat | Sun -> Ui_effect.Ignore
+                   | Mon | Tue | Wed | Thu | Fri -> set_date d)
+               ]
+             ~date
+             ()))
+  in
+  Bonsai_gtk.Expert.Driver.frame d;
+  let driven () : W.Calendar.t =
+    let root = Option.value_exn (Bonsai_gtk.Expert.Driver.root_widget d) in
+    cast (List.hd_exn (Bonsai_gtk.Private.Gtk_import.widget_children root))
+  in
+  let showing () = Date.to_string (W_calendar.read_date (driven ())) in
+  (* The mount happened inside a real frame, so the [day-selected] GTK emitted while the
+     date was written was swallowed by the guard. *)
+  printf "driver, after mount: %s (handler saw %d)\n" (showing ()) (List.length !seen);
+  (* A weekday, picked by hand the way a click does. Printed before the drain as well as
+     after: the emission arms the driver's idle, and by the time the loop is handed back
+     the frame it armed has already run. *)
+  W.Calendar.set_day (driven ()) 31;
+  printf "driver, user picked the 31st (a Monday), before the frame: %s\n" (showing ());
+  drain ();
+  printf "driver, after the frame the choice armed: %s\n" (showing ());
+  (* Now the refusal. The handler sees the Saturday, the model keeps its Monday, and the
+     frame it runs is a no-diff one -- so [reassert] is the only thing that can put the
+     calendar back, and it must. *)
+  W.Calendar.set_day (driven ()) 29;
+  printf "driver, user picked the 29th (a Saturday), before the frame: %s\n" (showing ());
+  drain ();
+  printf
+    "driver, after the frame the refusal armed: %s (handler saw %s)\n"
+    (showing ())
+    (Sexp.to_string [%sexp (List.rev !seen : Date.t list)]);
+  (* One more frame with nothing having happened: the correction above is not a loop.
+     [reassert] compares against the widget before it writes, so this frame writes nothing
+     -- and the handler sees nothing new, which is what says the correcting write did not
+     feed itself back in. *)
+  let before = List.length !seen in
+  Bonsai_gtk.Expert.Driver.frame d;
+  drain ();
+  printf
+    "driver, one more frame: %s (handler saw %d more)\n"
+    (showing ())
+    (List.length !seen - before);
+  Bonsai_gtk.Expert.Driver.stop d
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* [GtkEditable.from_gobject] under GC churn, which is the one reference-counted call
+   either of these two widgets makes -- and it is made {i once per idle frame per label},
+   because [reassert] reaches the text through it.
+
+   The stub is the shape Task 6 needed and did not get from [get_selected_rows]: it checks
+   [g_type_is_a] and then [g_object_ref]s before wrapping, which is the correct pairing
+   for the wrapper's unconditional unref. So five hundred wrappers around one label, all
+   unreachable, all collected, must leave the label's reference count exactly where it
+   started and the label itself readable. Under the [get_selected_rows] shape this drops
+   the count five hundred times and the read below is a use-after-free.
+
+   The calendar has no such call at all -- every method it uses returns an int or a bool
+   -- which is why there is no calendar half to this block. *)
+let () =
+  let scheduled = ref 0 in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx = ctx_of scheduler ~scheduled in
+  let live =
+    P.mount
+      ctx
+      ~path:"gc"
+      ~is_root:true
+      (Node.window
+         ~title:"title"
+         (Node.editable_label
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~text:"Rehearsal"
+            ()))
+  in
+  let w = child live in
+  Gc.full_major ();
+  let before = Gobject.get_ref_count w in
+  for _ = 1 to 500 do
+    ignore (Sys.opaque_identity (W.Editable.from_gobject w) : W.Editable.t)
+  done;
+  Gc.full_major ();
+  printf
+    "after 500 from_gobject wrappers and a full major: text=%S, references %d -> %d\n"
+    (W.Editable.get_text (W.Editable.from_gobject w))
+    before
+    (Gobject.get_ref_count w);
+  (* And the same through the library's own path, which is what an idle frame really does:
+     five thousand reasserts, each one a [from_gobject] and a [get_text]. *)
+  for _ = 1 to 5_000 do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"gc" live;
+      P.run_fixups ctx)
+  done;
+  Gc.full_major ();
+  printf
+    "after 5000 idle frames: text=%S, references %d\n"
+    (W.Editable.get_text (W.Editable.from_gobject w))
+    (Gobject.get_ref_count w);
+  P.destroy ctx live
 ;;

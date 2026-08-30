@@ -501,6 +501,111 @@ let layout (graph @ local) =
     ()
 ;;
 
+(* Page 7: the two widgets whose GTK API is not the one you would look for, and the two
+   places that shows.
+
+   The calendar's date is a [Date.t] and the model {i declines weekends} -- so picking a
+   Saturday is the live demonstration of a controlled prop: the handler runs, the model
+   keeps the Friday, Bonsai hands back a node that has not moved, nothing is diffed, and
+   [Widget_impl.reassert] is the only thing left to put the calendar back. Click a
+   Saturday and watch it snap.
+
+   The marks are the other half and are deliberately {i not} controlled: nothing the user
+   does marks a day, so the button is how one gets marked. They are days of the month and
+   survive a month change, which is visible by marking a day and then walking to another
+   month with the heading arrows.
+
+   The editable label is the page's own heading. Double-click it to edit; the model
+   uppercases the first letter of every word as you type, which is the same "model
+   rewrites what you typed" demonstration the Notes box on the Controls page makes and is
+   worth making again here because the widget writes through [GtkEditable] rather than
+   having a [set_text] of its own. Pressing Enter leaves editing mode and {i keeps} the
+   text: [stop_editing ~commit:true] is the library's only choice, and the checkbox below
+   drives the same state from the model side. *)
+let dates (graph @ local) =
+  let date, set_date = Bonsai.state (Date.of_string "2026-08-28") graph in
+  let marks, set_marks = Bonsai.state [ 1 ] graph in
+  let title, set_title = Bonsai.state "Rehearsal" graph in
+  let editing, set_editing = Bonsai.state false graph in
+  let%arr date
+  and set_date
+  and marks
+  and set_marks
+  and title
+  and set_title
+  and editing
+  and set_editing in
+  let day = Date.day date in
+  Node.box
+    ~orientation:Vertical
+    ~spacing:8
+    ~attrs:[ Attr.margin 12 ]
+    [ Node.editable_label
+        ~attrs:
+          [ Attr.halign Start
+          ; Attr.on_changed (fun t ->
+              set_title
+                (String.concat
+                   ~sep:" "
+                   (List.map (String.split t ~on:' ') ~f:String.capitalize)))
+          ; Attr.on_editing_changed set_editing
+          ]
+        ~editing
+        ~text:title
+        ()
+    ; Node.check_button
+        ~attrs:[ Attr.on_toggled set_editing ]
+        ~label:"Editing (the model drives it; leaving commits)"
+        ~active:editing
+        ()
+    ; Node.separator ~orientation:Horizontal ()
+    ; Node.calendar
+        ~attrs:
+          [ Attr.halign Start
+          ; Attr.on_day_selected (fun d ->
+              match Date.day_of_week d with
+              | Sat | Sun -> Ui_effect.Ignore
+              | Mon | Tue | Wed | Thu | Fri -> set_date d)
+          ]
+        ~show_week_numbers:true
+        ~marked_days:marks
+        ~date
+        ()
+    ; Node.box
+        ~orientation:Horizontal
+        ~spacing:8
+        [ Node.button
+            ~attrs:
+              [ Attr.on_clicked
+                  (set_marks
+                     (if List.mem marks day ~equal:Int.equal
+                      then List.filter marks ~f:(fun d -> d <> day)
+                      else List.sort (day :: marks) ~compare:Int.compare))
+              ]
+            ~label:
+              (if List.mem marks day ~equal:Int.equal
+               then sprintf "Unmark day %d" day
+               else sprintf "Mark day %d" day)
+            ()
+        ; Node.button ~attrs:[ Attr.on_clicked (set_marks []) ] ~label:"Clear marks" ()
+        ]
+    ; Node.label
+        ~xalign:0.
+        (sprintf
+           !"%{Date} is a %{sexp: Day_of_week.t}; marked %s%s"
+           date
+           (Date.day_of_week date)
+           (if List.is_empty marks
+            then "nothing"
+            else String.concat ~sep:", " (List.map marks ~f:Int.to_string))
+           (if editing then "; editing" else ""))
+    ; Node.label
+        ~xalign:0.
+        ~ellipsize:End
+        "Weekends are declined by the model: pick a Saturday and the calendar snaps back."
+    ]
+;;
+
 let app (graph @ local) =
   let page, set_page = Bonsai.state "controls" graph in
   let controls = controls graph in
@@ -509,6 +614,7 @@ let app (graph @ local) =
   let grid = grid graph in
   let tabs = tabs graph in
   let layout = layout graph in
+  let dates = dates graph in
   let%arr page
   and set_page
   and controls
@@ -516,7 +622,8 @@ let app (graph @ local) =
   and lists
   and grid
   and tabs
-  and layout in
+  and layout
+  and dates in
   Node.window
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
@@ -570,6 +677,11 @@ let app (graph @ local) =
                    ~attrs:[ Attr.page_title "Layout" ]
                    ~orientation:Vertical
                    [ layout ]
+               ; Node.box
+                   ~key:"dates"
+                   ~attrs:[ Attr.page_title "Dates" ]
+                   ~orientation:Vertical
+                   [ dates ]
                ]
            ]
        ])

@@ -20,6 +20,8 @@ module Action = struct
     | Set_selection of string * Key.t list
     | Set_page of string * Key.t
     | Set_selected of string * int
+    | Select_day of string * Date.t
+    | Set_editing of string * bool
   [@@deriving sexp_of]
 end
 
@@ -283,6 +285,43 @@ module Result_spec = struct
        | Some (On_selected_changed h) -> h index
        | _ ->
          failwithf "Bonsai_gtk_test: node %s has no on_selected_changed handler" id ())
+    (* The calendar's own. Like every other action the node's own [~date] is not
+       consulted: "the user is now on this day" is what the real widget reports whatever
+       the model was rendering, which is exactly what a test showing a model that
+       {i declines} a day needs.
+
+       A [Date.t] rather than three integers, because that is what the attr carries and
+       because GTK's zero-based month has no business anywhere near a test. And the
+       {i kind} is checked, as the two activate actions and [Set_page] do, so that a
+       [Select_day] aimed at something else names what it found rather than reporting a
+       missing handler. *)
+    | Select_day (id, date) ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"Calendar" ~is_expected:(function
+        | Kind.Calendar _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_day_selected :> Attr.Private.t option) with
+       | Some (On_day_selected h) -> h date
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_day_selected handler" id ())
+    (* The editable label's, and the one action in this list whose live counterpart is not
+       a signal at all: [editing] is a read-only GTK property observed through
+       [notify::editing]. Headless that distinction does not exist, which is the point --
+       what a test can see is that the user entered or left editing mode and what the
+       model did about it.
+
+       Not [Toggle] reused, and the node's own [~editing] is deliberately not consulted:
+       leaving editing mode is not the inverse of entering it (a user commits with Enter,
+       abandons with Escape, and loses focus by clicking elsewhere), so a test says which
+       of the two happened rather than asking the node to guess. The {i text} of the edit
+       arrives through [Set_text], because live it arrives through [Attr.on_changed]. *)
+    | Set_editing (id, editing) ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"EditableLabel" ~is_expected:(function
+        | Kind.Editable_label _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_editing_changed :> Attr.Private.t option) with
+       | Some (On_editing_changed h) -> h editing
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_editing_changed handler" id ())
   ;;
 end
 

@@ -139,6 +139,8 @@ let selected_child_count (b : W.Flow_box.t) =
    obvious way to read the current item, and its stub both fails to ref a transfer-none
    return {i and} returns a bare custom block where the [.mli] promises an [option]. It is
    unusable; the position plus this list says the same thing safely. *)
+let string_object_type = lazy (Gobject.Type.from_name "GtkStringObject")
+
 let drop_down_items (d : W.Drop_down.t) =
   match W.Drop_down.get_model d with
   | None -> []
@@ -153,11 +155,12 @@ let drop_down_items (d : W.Drop_down.t) =
          invariant is [w_drop_down.ml]'s (this library installs a [GtkStringList] and
          nothing else), and it is enforced there by the same [g_type_is_a] rather than
          assumed; asking again costs one type check per item in a test-only dump and keeps
-         the two ends honest independently. *)
+         the two ends honest independently. Memoised in a module-level [lazy], the way
+         [w_drop_down.ml] memoises its half: two ends of an invariant that are checked
+         independently read better when they are written the same way (task-10-review.md
+         N1). *)
       | Some o ->
-        if Gobject.Type.is_a
-             (Gobject.get_type o)
-             (Gobject.Type.from_name "GtkStringObject")
+        if Gobject.Type.is_a (Gobject.get_type o) (force string_object_type)
         then W.String_object.get_string (cast o)
         else "<not a string>")
 ;;
@@ -675,6 +678,34 @@ let rec dump (w : Widget.t) : Sexp.t =
           | `CONTINUOUS -> []
           | m -> [ Sexp.List [ Atom "mode"; Atom (level_bar_mode_name m) ] ])
        @ flag_prop "inverted" (W.Level_bar.get_inverted b)
+     (* {b The date is printed through [W_calendar.read_date]}, not from the three getters
+        again. A dump that assembled the date here would be a second conversion of GTK's
+        zero-based month, and two conversions that are wrong the same way print a
+        consistent lie -- [test/live/live_text.ml] compares the printed date against the
+        [Date.t] the node carried, which is what makes one conversion checkable at all.
+
+        The marks are read back per day rather than printed from the node, so the dump
+        says what GTK holds: [get_day_is_marked] is the only reader there is, and marks
+        are per day-of-month, so 1-31 is the whole domain. Printed only when there are
+        any, like every other non-default property. *)
+     | "GtkCalendar" ->
+       let c : W.Calendar.t = cast w in
+       [ Sexp.List [ Atom "date"; Atom (Date.to_string (W_calendar.read_date c)) ] ]
+       @ (if W.Calendar.get_show_heading c then [] else [ Sexp.Atom "no-heading" ])
+       @ (if W.Calendar.get_show_day_names c then [] else [ Sexp.Atom "no-day-names" ])
+       @ flag_prop "week-numbers" (W.Calendar.get_show_week_numbers c)
+       @
+         (match List.filter (List.range 1 32) ~f:(W.Calendar.get_day_is_marked c) with
+         | [] -> []
+         | days -> [ [%sexp `marked (days : int list)] ])
+     (* [text] through [GtkEditable], as an entry's is, and [editing] only when it is on
+        -- GTK's own is off. Both are printed from the widget rather than from the node,
+        which is the point: a controlled write that did not land shows up as the dump and
+        the node disagreeing. *)
+     | "GtkEditableLabel" ->
+       let l : W.Editable_label.t = cast w in
+       [ [%sexp `text (W.Editable.get_text (W.Editable.from_gobject w) : string)] ]
+       @ flag_prop "editing" (W.Editable_label.get_editing l)
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])
@@ -686,17 +717,32 @@ let rec dump (w : Widget.t) : Sexp.t =
     @ if Widget.get_sensitive w then [] else [ Sexp.Atom "insensitive" ]
   in
   let kids =
-    (* One kind's children are not printed, and it is the only one: a [GtkDropDown]'s
-       twenty-odd internal widgets are a toggle button, a popover, a search entry and a
-       [GtkListView] whose [GtkListItemWidget] children come and go with the item count
-       and with what has been realized. None of that is the application's tree, and a
-       golden holding it would churn on an item being added. What the drop-down actually
-       contains is printed above, from its model, which is the honest read anyway.
+    (* Three kinds' children are not printed, and they are the only three.
+
+       A [GtkDropDown]'s twenty-odd internal widgets are a toggle button, a popover, a
+       search entry and a [GtkListView] whose [GtkListItemWidget] children come and go
+       with the item count and with what has been realized. A [GtkCalendar]'s are a
+       heading box of four buttons and two labels, then a grid of {i forty-nine} labels
+       whose text is the month showing -- so a golden would hold every day number of
+       whichever month the test picked and churn on every date change, which is the one
+       thing a calendar test always does. A [GtkEditableLabel]'s are a whole
+       [GtkPopoverMenu] (an Edit/Copy menu inside a scrolled window inside a viewport
+       inside a stack, twenty-odd widgets) beside the two-page stack that is the widget
+       itself.
+
+       None of that is the application's tree, and in all three cases what the widget
+       actually holds is printed above, read from its own getters, which is the honest
+       read anyway.
 
        Every other widget's internals stay in -- an entry's [GtkText], a progress bar's
        gizmos, a scrolled window's scrollbars -- because they are few, stable, and
        occasionally the thing under test. *)
-    match String.equal ty "GtkDropDown", widget_children w with
+    let internals_only =
+      match ty with
+      | "GtkDropDown" | "GtkCalendar" | "GtkEditableLabel" -> true
+      | _ -> false
+    in
+    match internals_only, widget_children w with
     | true, _ | _, [] -> []
     | false, kids -> [ Sexp.List (Sexp.Atom "children" :: List.map kids ~f:dump) ]
   in

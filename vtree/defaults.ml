@@ -220,3 +220,28 @@ module Level_bar = struct
   let mode = Level_bar_mode.Continuous
   let inverted = false
 end
+
+(* GTK's own, read off a fresh [GtkCalendar]. Two of the three are [true]: a bare calendar
+   draws its heading (the month and year, with the four walk buttons) and the row of
+   weekday initials, and does {i not} draw the ISO week number column. So the two
+   [~show_*] arguments a caller is likely to write are the ones that turn something off.
+
+   There is no default for [~date]: it is a required labelled argument, for the reason the
+   entries' [~text] is. A calendar built with no date shows {i today}, which is a value
+   that changes underneath an application while it runs and which no model chose -- and
+   the whole point of the controlled date is that the calendar shows what the model says.
+
+   [marked_days] defaults to no marks, which is GTK's, and is an ordinary list rather than
+   an option: there is no difference between "no marks" and "do not mention marks". *)
+module Calendar = struct
+  let show_day_names = true
+  let show_heading = true
+  let show_week_numbers = false
+  let marked_days = ([] : int list)
+end
+
+(* GTK's own, and the only one there is: a [GtkEditableLabel] comes up showing its label
+   rather than its entry. [~text] is required, like the entries'. *)
+module Editable_label = struct
+  let editing = false
+end

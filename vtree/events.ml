@@ -53,6 +53,19 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      [On_selected_rows_changed], on this table's usual rule: a line copied from a stack or
      a list box is rejected here instead of being accepted and never firing. *)
   | Drop_down _ -> [ On_selected_changed ]
+  (* One signal out of five. [GtkCalendar] also emits [next-month], [prev-month],
+     [next-year] and [prev-year], and none of them is exposed: each says the heading was
+     clicked rather than what the calendar now shows, and walking to another month moves
+     the day too -- so [day-selected] fires for all four anyway and carries the answer.
+     (Measured: [day-selected] is emitted whenever the day-of-month changes, and
+     [set_month]/[set_year] alone emit only their own [notify::].) *)
+  | Calendar _ -> [ On_day_selected ]
+  (* Two, and the first is the {i entry's} name rather than one of its own: a
+     [GtkEditableLabel] reaches its text through [GtkEditable], so [changed] is literally
+     the same interface signal an entry emits and a line copied from an entry works here.
+     [On_editing_changed] is the other half, and it is a [notify::editing] -- the class
+     binds no signals at all. *)
+  | Editable_label _ -> [ On_changed; On_editing_changed ]
   | Window _ | Box _ | Grid _ | Center_box _ | Overlay _ | Frame _ | Scrolled_window _ ->
     []
 ;;
@@ -128,6 +141,8 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_selected_children_changed
   | On_page_changed
   | On_selected_changed
+  | On_day_selected
+  | On_editing_changed
   | Row_selectable
   | Row_activatable
   | Tab_label -> None

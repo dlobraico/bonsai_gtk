@@ -358,6 +358,40 @@ type drop_down_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The date is a {!Core.Date.t} and never GTK's three integers. [GtkCalendar] has no date
+   property: it has [year], [month] and [day], and its [month] is {b zero-based} while its
+   [day] is one-based. [gtk_calendar_get_date] and [select_day] would sidestep that, but
+   they trade in [GDateTime] and this binding has none, so the conversion lives in
+   [src/widgets/w_calendar.ml] and nowhere else. [date] is the required labelled argument
+   and so carries no [@sexp_drop_if]; the three [show_*] flags are GTK's own, and two of
+   them are [true].
+
+   [marked_days] is a list of days of the month (1-31), is not controlled -- nothing the
+   user does marks a day -- and is applied as [clear_marks] plus one [mark_day] per entry,
+   for which order and duplicates make no difference. *)
+type calendar_props =
+  { date : Date.t
+  ; show_day_names : bool [@sexp_drop_if Bool.equal Defaults.Calendar.show_day_names]
+  ; show_heading : bool [@sexp_drop_if Bool.equal Defaults.Calendar.show_heading]
+  ; show_week_numbers : bool
+       [@sexp_drop_if Bool.equal Defaults.Calendar.show_week_numbers]
+  ; marked_days : int list [@sexp_drop_if List.is_empty]
+  }
+[@@deriving sexp_of, equal]
+
+(* Both props are controlled and neither carries a [@sexp_drop_if]: [text] is the required
+   labelled argument and [editing] is a controlled prop, so both are always something the
+   caller asked for.
+
+   [editing] is {b read-only in GTK}. Controlling it means [start_editing] to enter and
+   [stop_editing ~commit:true] to leave, which is two methods rather than a property
+   write. See [Node.editable_label]. *)
+type editable_label_props =
+  { text : string
+  ; editing : bool
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -399,6 +433,8 @@ type t =
   | Flow_box of flow_box_props
   | Notebook of notebook_props
   | Drop_down of drop_down_props
+  | Calendar of calendar_props
+  | Editable_label of editable_label_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props

@@ -4,7 +4,12 @@ open Gtk_import
 
 (* All three entry kinds implement [GtkEditable], and text, editability, width-chars,
    max-width-chars and alignment all go through it — as does [changed], which is why one
-   spec serves every one of them. [from_gobject] is how the interface is reached. *)
+   spec serves every one of them. [from_gobject] is how the interface is reached.
+
+   {b Four kinds, not three.} [GtkEditableLabel] implements [GtkEditable] too and has no
+   [set_text] of its own, so [src/widgets/w_editable_label.ml] reaches its text through
+   this same function and reuses {!set_text_if_needed}, {!needs_text} and {!changed}
+   outright. Nothing in any of the three mentions an entry; keep it that way. *)
 let editable (w : Widget.t) : W.Editable.t = W.Editable.from_gobject w
 
 (* Against the *widget's* text, never against the previous node's. The user has typed
@@ -20,7 +25,11 @@ let editable (w : Widget.t) : W.Editable.t = W.Editable.from_gobject w
 
    Returns whether it wrote. Most callers do not care, but [w_search_entry.ml] does: a
    write there arms a debounce whose emission arrives long after the patch is over, and it
-   has to know which writes armed one. *)
+   has to know which writes armed one.
+
+   [w_editable_label.ml] is the second module outside this file to call it, and for the
+   same underlying reason: the widget is a [GtkEditable], and the caret dance below is the
+   policy rather than the entry's. *)
 let needs_text (e : W.Editable.t) text = not (String.equal (W.Editable.get_text e) text)
 
 (* The most of [text] a widget with this [max_length] can hold.

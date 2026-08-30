@@ -1084,6 +1084,126 @@ val drop_down
   -> unit
   -> t
 
+(** A [GtkCalendar]: a month at a time, with a heading that walks between months and
+    years, and one day selected.
+
+    {b The date is a {!Core.Date.t}, and this is the only widget in the library where that
+      matters as much as it does.}
+    GTK has no date property. It has [year], [month] and [day] — three integers, written
+    and read separately, whose [month] is {b zero-based} while whose [day] is one-based.
+    There is a [gtk_calendar_get_date] and a [gtk_calendar_select_day] that trade in
+    [GDateTime] and would sidestep all of it, and they are {i not bound}: they take a
+    [GDateTime], this binding has no [GDateTime] anywhere, and there is no [GLib-2.0.gir]
+    in the checkout to generate one from. So the conversion has to exist somewhere, and it
+    exists once, in [src/widgets/w_calendar.ml]. An off-by-one there is the kind nobody
+    notices until December; the live suite asserts a December date and a January one in
+    the same dump, because January is the month whose zero-based index is 0 and which
+    therefore looks right even when the conversion is wrong.
+
+    [~date] is {i controlled} (spec §6.5): it is compared against the {i widget's} current
+    date on every frame and written when they differ, so a day the user picks and the
+    model declines snaps back. A model that wants to keep the user's choice connects
+    {!Attr.on_day_selected}, which hands over a {!Core.Date.t} — GTK's [day-selected]
+    carries no payload, so the handler reads the three getters back through the same
+    conversion.
+
+    {b A date GTK cannot hold.} GTK's year range is 1-9999 ([gtk_calendar_set_year]
+    asserts it) and [Core.Date] allows year 0, so a date in year 0 is a value the widget
+    will not take. It is not rejected here, for the reason {!text_view}'s unstorable text
+    is not: it is a value carrying model state rather than a typo in the call, and raising
+    would end the application rather than report anything (see "What a constructor's
+    [Invalid_argument] costs" above). The impl refuses the write {i before} touching the
+    widget — so the calendar keeps the date it had rather than being left half-written —
+    remembers the refusal so the frames after it cost nothing, and reports it once through
+    the patcher's channel with the node's path. A later frame offering a date GTK will
+    hold writes it on {i that} frame.
+
+    {b The three writes are not atomic, and the obvious order is wrong.} Each setter
+    rebuilds the whole date and refuses the write outright if the result is not a real
+    day: setting the month to February while the day is 31 fails with a critical and
+    changes {i nothing} (it does not clamp), and setting the year to 2025 while the date
+    is 29 February 2024 does the same. So writing year, then month, then day — which reads
+    as the careful order — silently leaves the calendar on the old month for any date
+    whose day does not exist in it. The library writes {b day 1 first}, then the year,
+    then the month, then the real day: day 1 exists in every month of every year, so no
+    intermediate state is invalid and every date in range lands. The live suite runs that
+    as a matrix against the naive order, which gets four of its five transitions wrong.
+
+    [~marked_days] is a list of days of the {i month} (1-31) to draw with a mark, applied
+    as [clear_marks] plus one [mark_day] per entry whenever the list changes. It is
+    {i not} controlled: nothing the user does marks a day. Marks are per day-of-month and
+    survive a month change, so a day marked while February is showing is still marked in
+    March; a day outside 1-31 raises here, because GTK's own answer is to ignore it in
+    silence and no later date could make it a day. A calendar with no marks is a date
+    picker, which is what this constructor would otherwise be only for.
+
+    [~show_heading] and [~show_day_names] default to GTK's [true] and [~show_week_numbers]
+    to GTK's [false], so the arguments a caller writes are the ones that turn something
+    off. *)
+val calendar
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?show_day_names:bool
+  -> ?show_heading:bool
+  -> ?show_week_numbers:bool
+  -> ?marked_days:int list
+  -> date:Date.t
+  -> unit
+  -> t
+
+(** A [GtkEditableLabel]: a label that turns into an entry when the user double-clicks it,
+    and back into a label when the edit is committed or abandoned.
+
+    {b Neither of this widget's two methods is the one you would look for.}
+    [gtk_editable_label_set_text] does not exist: the text goes through the [GtkEditable]
+    interface, exactly as an entry's does ([w_entry.ml] reaches an entry's the same way),
+    and so does {!Attr.on_changed}. And [gtk_editable_label_set_editing] does not exist
+    either — [editing] is {b read-only in GTK}. The class binds four methods and no
+    signals at all: [new_], [start_editing], [stop_editing] and [get_editing].
+
+    [~text] is {i controlled} (spec §6.5), on the entry's rule and with the entry's caret
+    policy: compared against the widget's current text, written only when they differ, and
+    the cursor position saved across the write. A model that echoes what the user typed
+    writes nothing; a model that rewrites it (uppercasing, trimming) wins. Note that while
+    the label is being edited, [GtkEditable] reads and writes the {i in-progress} text, so
+    this prop controls the edit as it happens — which is what makes a model that rejects
+    input work at all, and which is why {!Attr.on_changed} fires per keystroke rather than
+    once at the end (measured: one inserted character, one [changed]).
+
+    {b Text a [GtkEditableLabel] cannot hold.} A string containing a NUL byte is stored up
+    to the NUL and no further, silently — [gtk_editable_set_text] takes a NUL-terminated
+    string. That write is refused before it is made, remembered so the frames after it
+    cost nothing, and reported once with the node's path, on {!text_view}'s rule. Text
+    that is not valid UTF-8 is {i not} refused: unlike a [GtkTextBuffer], an editable
+    label stores it and reads it back unchanged (measured), so there is nothing to report.
+
+    [~editing] is controlled too, and controlling a read-only property means two methods
+    rather than a write: [start_editing] to enter, [stop_editing ~commit:true] to leave.
+    {b Leaving commits.} [stop_editing false] would {i discard} what the user typed and
+    put the previous text back (measured — it emits [changed] three times doing so), and
+    that is not what a model rendering [~editing:false] is saying. It is saying "stop
+    editing"; the edit itself reached the model through {!Attr.on_changed} keystroke by
+    keystroke, so a model that wanted to reject it has already rejected it in [~text].
+    Discarding here would throw away an edit the model may have already accepted.
+
+    The two props are written in the order {b text first, then editing}, which is the
+    reverse of how they read. Entering editing mode selects the whole text, and a text
+    write after [start_editing] would collapse that selection; a text write before it is
+    the state the user is then handed. On the way out the same order commits the model's
+    text rather than whatever the widget was showing.
+
+    There is no value of [~editing] a [GtkEditableLabel] refuses. It enters editing mode
+    while insensitive, while hidden, while unrealized and while [GtkEditable]'s [editable]
+    property is [false] (all measured), so unlike [~text] there is nothing here to refuse
+    or report. *)
+val editable_label
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?editing:bool
+  -> text:string
+  -> unit
+  -> t
+
 (** A [GtkStackSwitcher]: a row of buttons, one per page of the {!stack} named by
     [~stack], showing each page's {!Attr.page_title}.
 

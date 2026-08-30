@@ -137,6 +137,7 @@ module Private : sig
   module Scheduler = Scheduler
   module Signals = Signals
   module W_button = W_button
+  module W_calendar = W_calendar
   module W_drop_down = W_drop_down
   module W_list_box = W_list_box
   module W_flow_box = W_flow_box

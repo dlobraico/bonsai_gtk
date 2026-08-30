@@ -101,6 +101,8 @@ wrong again: selected=0 (reports ((none/0"~selected:2 names no item: the list ho
 wrong again, five idle frames later: selected=0 (reports ())
 wrong differently: selected=0 (reports ((none/0"~selected:7 names no item: the list holds 1. GTK ignores a position outside its model, so item 0 is still selected -- and 7 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
 wrong differently, five idle frames later: selected=0 (reports ())
+an index into an empty list: selected=-1 (reports ((none/0"~selected:0 names no item: the list holds 0. GTK ignores a position outside its model, so nothing is selected -- and 0 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
+an index into an empty list, five idle frames later: selected=-1 (reports ())
 a fresh GtkStringList holds 2 references (1 is correct; 2 is the stub's extra ref_sink, which nothing on a reachable path pays any more)
 after 500 get_model wrappers and a full major: items=(a b c) selected=0
 four items changes later: same model object throughout: true, references 4 -> 4, items=(a b c)
@@ -165,3 +167,83 @@ bench: parked on a refused ~selected:(-1), 1000 items, showing 0 (refusals so fa
 bench: refusals reported across every frame above: 1
 bench: 20000 idle frames over 4 and over 1000 items, cost ratio under 5: true
 bench: an idle frame parked on a refused selection, against a settled one, under 5: true
+write order (GTK's raw zero-based month, +1 for printing):
+  2026-12-31 -> 2026-02-15 : year,month,day gives 2026-12-15 (WRONG); day-1-first gives 2026-02-15 (ok)
+  2024-02-29 -> 2025-02-28 : year,month,day gives 2024-02-28 (WRONG); day-1-first gives 2025-02-28 (ok)
+  2026-01-31 -> 2026-04-30 : year,month,day gives 2026-01-30 (WRONG); day-1-first gives 2026-04-30 (ok)
+  2026-01-01 -> 2026-01-01 : year,month,day gives 2026-01-01 (ok); day-1-first gives 2026-01-01 (ok)
+  2023-03-31 -> 2024-02-29 : year,month,day gives 2024-03-29 (WRONG); day-1-first gives 2024-02-29 (ok)
+  transitions the naive order gets wrong: 4 of 5
+per-call emissions:
+  set_year 2020            -> 2020-01-10, day-selected +0
+  set_month 5              -> 2020-06-10, day-selected +0
+  set_day 11               -> 2020-06-11, day-selected +1
+  set_day 11 again         -> 2020-06-11, day-selected +0
+  inside freeze_notify: day-selected +1 before the thaw, +1 after
+  marked 31 while June shows: true
+  still marked in January: true
+  mark_day 40 and mark_day 0 are silent no-ops: false false
+(GtkWindow (title (when)) (css (background)) hidden
+ (children (GtkCalendar (date 2026-01-15) (css (view)))))
+(GtkWindow (title (when)) (css (background)) hidden
+ (children (GtkCalendar (date 2026-12-31) (css (view)))))
+raw properties for 2026-12-31: year=2026 month=11 day=31
+every month of 2026 round-tripped, mismatches: ()
+leap day: 2024-02-29
+the day after a leap year ends: 2025-03-01
+before the user's pick: 2026-08-28
+the user picked the 29th: 2026-08-29
+the model rendered the 28th again: 2026-08-28 (reports ())
+and a patch that changes nothing writes nothing: GTK emitted 0
+five idle frames later: GTK emitted 0 in total
+(GtkWindow (title (when)) (css (background)) hidden
+ (children (GtkCalendar (date 2026-08-28) (marked (3 14)) (css (view)))))
+(GtkWindow (title (when)) (css (background)) hidden
+ (children (GtkCalendar (date 2026-08-28) (marked (14)) (css (view)))))
+(GtkWindow (title (when)) (css (background)) hidden
+ (children (GtkCalendar (date 2026-04-15) (marked (14 31)) (css (view)))))
+(GtkWindow (title (when)) (css (background)) hidden
+ (children (GtkCalendar (date 2026-04-15) (css (view)))))
+(GtkWindow (title (when)) (css (background)) hidden
+ (children
+  (GtkCalendar (date 2026-04-15) no-heading week-numbers (css (view)))))
+asked for year 0: showing 2026-04-15 (reports ((cal/0"~date:0000-01-01 is in year 0, and GTK's calendar holds years 1 to 9999 (gtk_calendar_set_year asserts it and writes nothing); the write was refused and the calendar was left showing the date it had")))
+five idle frames parked on it: showing 2026-04-15 (reports ())
+year 1, the first GTK holds: showing 0001-01-01 (reports ())
+year 0 again, a different date: showing 0001-01-01 (reports ((cal/0"~date:0000-06-06 is in year 0, and GTK's calendar holds years 1 to 9999 (gtk_calendar_set_year asserts it and writes nothing); the write was refused and the calendar was left showing the date it had")))
+a programmatic date change: GTK emitted 2, reached Bonsai 0
+the same write outside a patch: reached Bonsai 1
+(GtkWindow (title (title)) (css (background)) hidden
+ (children (GtkEditableLabel (text "Set One"))))
+the model rewrote the text: text="Set Two" editing=false
+(GtkWindow (title (title)) (css (background)) hidden
+ (children (GtkEditableLabel (text "Set Two"))))
+the model asked for editing: text="Set Two" editing=true
+(GtkWindow (title (title)) (css (background)) hidden
+ (children (GtkEditableLabel (text "Set Two") editing (css (editing)))))
+two single-character insertions emitted 2 changed
+the user typed: text="Set Two!!" editing=true
+the model echoed it: text="Set Two!!" editing=true
+the model then left editing mode: text="Set Two!!" editing=false
+the text the user typed survived leaving edit mode: true
+raw widget, stop_editing false: text="before" (2 changed emitted undoing the edit)
+raw widget, stop_editing true: text="Xbefore" (0 changed emitted committing it)
+both props at once: text="Rewritten" editing=true
+  position after it: 9
+and back out: text="Rewritten" editing=false
+a no-op patch and five idle frames: 0 changed, 0 notify::editing
+a programmatic write of both props: GTK emitted 2 changed and 1 notify::editing, reached Bonsai 0
+the same writes outside a patch: reached Bonsai 3
+put back by the next patch: text="Programmatic" editing=false
+asked for a text with a NUL: text="Programmatic" (reports ((lbl/0"text contains a NUL byte, which GTK would silently truncate at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the label was left as it was")))
+five idle frames parked on it: text="Programmatic" (reports ())
+and a text GTK does take: text="caf\195\169 latte" (reports ())
+invalid UTF-8 is stored rather than refused: true (reports ())
+driver, after mount: 2026-08-28 (handler saw 0)
+driver, user picked the 31st (a Monday), before the frame: 2026-08-31
+driver, after the frame the choice armed: 2026-08-31
+driver, user picked the 29th (a Saturday), before the frame: 2026-08-29
+driver, after the frame the refusal armed: 2026-08-31 (handler saw (2026-08-31 2026-08-29))
+driver, one more frame: 2026-08-31 (handler saw 0 more)
+after 500 from_gobject wrappers and a full major: text="Rehearsal", references 3 -> 3
+after 5000 idle frames: text="Rehearsal", references 3

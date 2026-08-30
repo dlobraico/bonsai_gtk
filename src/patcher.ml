@@ -167,6 +167,12 @@ type interest =
      [~selected] is [-1] over a non-empty list is asking for a selection GTK will not
      hold, and this is where that gets said. *)
   | Drop_down
+  (* Carries nothing, twice more and for the same reason. A calendar's [~date] in a year
+     outside GTK's 1-9999 and an editable label's [~text] with a NUL in it are both writes
+     the widget will not take; the impls refuse them and this is where the path comes
+     from. *)
+  | Calendar
+  | Editable_label
 
 let interest_of_kind (kind : Kind.t) =
   match kind with
@@ -179,6 +185,8 @@ let interest_of_kind (kind : Kind.t) =
   | Notebook p -> Notebook p
   | Text_view _ -> Text_view
   | Drop_down _ -> Drop_down
+  | Calendar _ -> Calendar
+  | Editable_label _ -> Editable_label
   | Label _
   | Button _
   | Toggle_button _
@@ -237,6 +245,15 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
      nothing unless there is something to say. *)
   | Drop_down ->
     Option.iter (W_drop_down.take_report widget) ~f:(ctx.report ~node_path:path)
+  (* The third and fourth callers of [ctx.report], the same shape as the first two: not a
+     fixup, nothing deferred and nothing written -- the impl's [reassert] has already
+     decided the write cannot land, and this is the one place holding both the widget and
+     the path of the node it came from. One ephemeron lookup per widget per frame,
+     allocating nothing unless there is something to say. *)
+  | Calendar ->
+    Option.iter (W_calendar.take_report widget) ~f:(ctx.report ~node_path:path)
+  | Editable_label ->
+    Option.iter (W_editable_label.take_report widget) ~f:(ctx.report ~node_path:path)
   | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected.
@@ -316,7 +333,14 @@ let note_interest
      Queue.enqueue
        ctx.stack_claims
        { claim_path = path; give_up; take = name; claimant = widget }
-   | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ | Text_view | Drop_down -> ());
+   | Stack_ref _
+   | List_box _
+   | Flow_box _
+   | Notebook _
+   | Text_view
+   | Drop_down
+   | Calendar
+   | Editable_label -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
@@ -497,6 +521,8 @@ and destroy ctx (live : live) =
   | Search_entry _
   | Text_view _
   | Drop_down _
+  | Calendar _
+  | Editable_label _
   | Level_bar _
   | Spin_button _
   | Scale _
@@ -562,7 +588,9 @@ and drop_stack_names ctx (live : live) =
    | Flow_box _
    | Notebook _
    | Text_view
-   | Drop_down -> ());
+   | Drop_down
+   | Calendar
+   | Editable_label -> ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 
 and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =

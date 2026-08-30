@@ -32,6 +32,8 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Flow_box _ -> W_flow_box.impl
   | Notebook _ -> W_notebook.impl
   | Drop_down _ -> W_drop_down.impl
+  | Calendar _ -> W_calendar.impl
+  | Editable_label _ -> W_editable_label.impl
   | Center_box _ -> W_center_box.impl
   | Paned _ -> W_paned.impl
   | Overlay _ -> W_overlay.impl

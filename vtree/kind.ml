@@ -373,6 +373,54 @@ type drop_down_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The date is a {!Core.Date.t} and never GTK's three integers, which is the whole point
+   of this record: [GtkCalendar] has no date property at all, only [year], [month] and
+   [day] -- and its [month] is {b zero-based} while its [day] is one-based, an asymmetry
+   that reads correctly through January and is wrong for the other eleven months.
+   [gtk_calendar_get_date] and [gtk_calendar_select_day] would hand over a [GDateTime] and
+   sidestep it, but they take and return one and this binding has no [GDateTime] anywhere
+   (there is no [GLib-2.0.gir] in the checkout to generate one from), so they are not
+   bound. The conversion therefore has to live somewhere, and it lives in
+   [src/widgets/w_calendar.ml] alone.
+
+   [date] carries no [@sexp_drop_if] because it is the required labelled argument, and
+   because a calendar with an implicit date would show {i today} -- a value nothing chose
+   and which moves while the application runs.
+
+   [marked_days] is a list of {i days of the month}, 1-31, and is deliberately not
+   controlled: nothing the user does marks a day. It is an [int list] rather than a set
+   because it is short, because [equal_calendar_props] then compares it in list order
+   (which is what a view producing a sorted list already gives), and because the impl
+   applies it with [clear_marks] followed by one [mark_day] per entry -- an operation for
+   which order and duplicates make no difference. Marks are per day-of-month and survive a
+   month change: day 31 marked while February is showing is still marked in March
+   (measured). *)
+type calendar_props =
+  { date : Date.t
+  ; show_day_names : bool [@sexp_drop_if Bool.equal Defaults.Calendar.show_day_names]
+  ; show_heading : bool [@sexp_drop_if Bool.equal Defaults.Calendar.show_heading]
+  ; show_week_numbers : bool
+       [@sexp_drop_if Bool.equal Defaults.Calendar.show_week_numbers]
+  ; marked_days : int list [@sexp_drop_if List.is_empty]
+  }
+[@@deriving sexp_of, equal]
+
+(* Two props, both controlled, and neither carries a [@sexp_drop_if]: [text] is the
+   required labelled argument (the entries' rule) and [editing] is a controlled prop whose
+   value is always something the caller asked for (the toggles' rule).
+
+   [editing] being controlled is the unusual one. It is {b read-only in GTK} -- there is
+   no [gtk_editable_label_set_editing] -- so the impl enters editing mode with
+   [start_editing] and leaves it with [stop_editing ~commit:true], which are two methods
+   rather than a property write and are not symmetric with each other.
+   [Node.editable_label] says why committing is the only defensible reading of a model
+   that renders [~editing:false]. *)
+type editable_label_props =
+  { text : string
+  ; editing : bool
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -414,6 +462,8 @@ type t =
   | Flow_box of flow_box_props
   | Notebook of notebook_props
   | Drop_down of drop_down_props
+  | Calendar of calendar_props
+  | Editable_label of editable_label_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
@@ -452,6 +502,8 @@ let name = function
   | Flow_box _ -> "FlowBox"
   | Notebook _ -> "Notebook"
   | Drop_down _ -> "DropDown"
+  | Calendar _ -> "Calendar"
+  | Editable_label _ -> "EditableLabel"
   | Center_box _ -> "CenterBox"
   | Paned _ -> "Paned"
   | Overlay _ -> "Overlay"
@@ -520,6 +572,8 @@ let equal_props a b =
   | Flow_box a, Flow_box b -> equal_flow_box_props a b
   | Notebook a, Notebook b -> equal_notebook_props a b
   | Drop_down a, Drop_down b -> equal_drop_down_props a b
+  | Calendar a, Calendar b -> equal_calendar_props a b
+  | Editable_label a, Editable_label b -> equal_editable_label_props a b
   | Center_box a, Center_box b -> equal_center_box_props a b
   | Paned a, Paned b -> equal_paned_props a b
   | Overlay a, Overlay b -> equal_overlay_props a b

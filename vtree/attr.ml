@@ -44,6 +44,8 @@ module Name = struct
       | On_selected_children_changed
       | On_page_changed
       | On_selected_changed
+      | On_day_selected
+      | On_editing_changed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
          output reorders. *)
       | On_click
@@ -73,6 +75,8 @@ module Name = struct
       | On_selected_children_changed
       | On_page_changed
       | On_selected_changed
+      | On_day_selected
+      | On_editing_changed
       (* The controller attrs are events too -- they carry a handler and a widget that
          cannot deliver one is a mistake worth a diagnostic. What they are not is any
          impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
@@ -206,6 +210,22 @@ module Private = struct
        make the attr claim more than GTK says: [notify::selected] reports a position and
        nothing else. *)
     | On_selected_changed of int Handler.t
+    (* The date a [GtkCalendar] now shows, as a {!Core.Date.t} and never as GTK's three
+       integers. GTK's [day-selected] carries no payload and its [month] property is
+       zero-based; both stop inside [src/widgets/w_calendar.ml], which reads the three
+       getters back and assembles the date. So this handler is handed the one thing an
+       application can act on, and the off-by-one that makes December look like November
+       has no path to it. *)
+    | On_day_selected of Date.t Handler.t
+    (* Whether a [GtkEditableLabel] is now in editing mode.
+
+       [editing] is read-only in GTK -- there is no [gtk_editable_label_set_editing] --
+       and there is no [editing-changed] signal either, so this rides on [notify::editing]
+       and the handler reads [get_editing] back ([src/widgets/w_editable_label.ml]). The
+       {i text} the user typed does not come through here: it arrives through [On_changed]
+       like an entry's, because a [GtkEditableLabel] reaches its text through
+       [GtkEditable] like an entry does. *)
+    | On_editing_changed of bool Handler.t
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
@@ -292,6 +312,8 @@ let name = function
   | On_selected_children_changed _ -> Some On_selected_children_changed
   | On_page_changed _ -> Some On_page_changed
   | On_selected_changed _ -> Some On_selected_changed
+  | On_day_selected _ -> Some On_day_selected
+  | On_editing_changed _ -> Some On_editing_changed
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
@@ -342,6 +364,8 @@ let rec equal a b =
   | On_selected_children_changed a, On_selected_children_changed b -> Handler.equal a b
   | On_page_changed a, On_page_changed b -> Handler.equal a b
   | On_selected_changed a, On_selected_changed b -> Handler.equal a b
+  | On_day_selected a, On_day_selected b -> Handler.equal a b
+  | On_editing_changed a, On_editing_changed b -> Handler.equal a b
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
@@ -426,6 +450,8 @@ let on_child_activated f = On_child_activated f
 let on_selected_children_changed f = On_selected_children_changed f
 let on_page_changed f = On_page_changed f
 let on_selected_changed f = On_selected_changed f
+let on_day_selected f = On_day_selected f
+let on_editing_changed f = On_editing_changed f
 
 let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }

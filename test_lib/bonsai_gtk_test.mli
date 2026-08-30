@@ -167,10 +167,41 @@ module Action : sig
         [~selected]. Declining is the interesting case and it needs exactly that: a model
         that answers a [Set_selected 2] by re-rendering [~selected:0] is the headless
         statement of what [test/live/live_text.ml] proves against the real widget, where
-        [Widget_impl.reassert] puts the drop-down back. The index is not range-checked
-        either: [Node.drop_down] has already checked the props this handle is looking at,
-        so what a test can reach here is its own handler's behaviour, which is its
-        business. *)
+        [Widget_impl.reassert] puts the drop-down back.
+
+        The index is not range-checked either, and the honest reason is the one the [-1]
+        case already has: headless there is no list model to ask, and GTK is what decides.
+        [Node.drop_down] deliberately does {i not} check that [~selected] indexes [~items]
+        — an index past the end is a state a correct model passes through — so the props
+        this handle sees are {i not} in range by construction, and a check here would be
+        inventing a rule the runtime does not have. What a test can reach is its own
+        handler's behaviour, which is its business. (task-10-review.md R2.) *)
+    | Select_day of string * Date.t
+    (** test_id of a [calendar] carrying [Attr.on_day_selected], and the day the user
+        picked. Fires that handler with exactly that date.
+
+        A [Date.t], which is what the attr carries: GTK's [day-selected] has no payload
+        and its date is three integers with a zero-based month, and none of that reaches a
+        test. Like the two activate actions it checks the node's {i kind} and fails naming
+        what it found.
+
+        The node's own [~date] is not consulted, as ever, and the declining case is why: a
+        model that answers a [Select_day] on a Saturday by re-rendering the Friday it was
+        already showing is the headless statement of what [test/live/live_text.ml] proves
+        against the real widget. *)
+    | Set_editing of string * bool
+    (** test_id of an [editable_label] carrying [Attr.on_editing_changed], and whether the
+        user has entered or left editing mode. Fires that handler with exactly that.
+
+        Live this is a [notify::editing] rather than a signal — [editing] is read-only in
+        GTK and the class binds no signals at all — and headless that distinction does not
+        exist, which is the point.
+
+        Not derived from the node's [~editing], and deliberately not a toggle: leaving
+        editing mode is not the inverse of entering it (Enter commits, Escape abandons, a
+        click elsewhere takes the focus away), so a test says which happened. The {i text}
+        of the edit arrives through {!Set_text}, because live it arrives through
+        [Attr.on_changed] — per keystroke, on the [GtkEditable] the label implements. *)
   [@@deriving sexp_of]
 end
 
