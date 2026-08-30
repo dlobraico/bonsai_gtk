@@ -11,10 +11,15 @@ let impl : Widget_impl.t =
           let e = W.Password_entry.new_ () in
           let w = (e :> Widget.t) in
           Widget_impl.batch w (fun () ->
-            (* Unlike [GtkEntry]'s and [GtkSearchEntry]'s, this setter is not nullable —
-               hence the [""] on the update path below. As there, an absent placeholder is
-               simply not written. *)
-            Option.iter p.placeholder ~f:(W.Password_entry.set_placeholder_text e);
+            (* The setter is nullable as of the pin this repository now tracks, the same
+               as [GtkEntry]'s and [GtkSearchEntry]'s — but both paths here keep writing
+               [Some _], and the update path below keeps writing [Some ""]. Taking the
+               actual benefit is a separate, deliberate change, and it would have no
+               visible effect on this widget in any case: GTK normalises the NULL back to
+               [""] once the internal [GtkText] exists (measured on 4.22). As before, an
+               absent placeholder is simply not written. *)
+            Option.iter p.placeholder ~f:(fun t ->
+              W.Password_entry.set_placeholder_text e (Some t));
             if not p.show_peek_icon then W.Password_entry.set_show_peek_icon e false;
             if p.activates_default then W.Password_entry.set_activates_default e true;
             ignore (W_entry.set_text_if_needed (W_entry.editable w) p.text : bool));
@@ -30,7 +35,7 @@ let impl : Widget_impl.t =
             then
               W.Password_entry.set_placeholder_text
                 e
-                (Option.value new_.placeholder ~default:"");
+                (Some (Option.value new_.placeholder ~default:""));
             if not (Bool.equal old.show_peek_icon new_.show_peek_icon)
             then W.Password_entry.set_show_peek_icon e new_.show_peek_icon;
             if not (Bool.equal old.activates_default new_.activates_default)

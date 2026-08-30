@@ -189,7 +189,9 @@ let impl : Widget_impl.t =
               if not (Option.equal String.equal (page_title old) (page_title node))
               then (
                 let page = W.Stack.get_page (cast parent) child in
-                W.Stack_page.set_title page (Option.value (page_title node) ~default:"")))
+                W.Stack_page.set_title
+                  page
+                  (Some (Option.value (page_title node) ~default:""))))
         }
   }
 ;;

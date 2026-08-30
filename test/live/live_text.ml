@@ -1025,24 +1025,25 @@ let () =
    holds. That is the shape that was {i wrong} for [GtkListBox.get_selected_rows] in Task
    6 and cost a segfault, so it is checked here rather than assumed.
 
-   [String_list.new_] is a constructor -- transfer-full -- and its stub reference-sinks
-   too, which is one ref too many: [GtkStringList] descends from [GObject] rather than
-   [GInitiallyUnowned], so it is not floating and the sink is a plain extra reference that
-   the finaliser does not balance. A fresh model therefore reads a reference count of 2
-   where it should read 1. **Nothing in this library calls it on a reachable path any
-   more** -- [create] goes through [new_from_strings] and items changes splice into the
+   [String_list.new_] is a constructor -- transfer-full -- and its stub used to
+   reference-sink too, which was one ref too many: [GtkStringList] descends from [GObject]
+   rather than [GInitiallyUnowned], so it is not floating and the sink was a plain extra
+   reference that the finaliser did not balance. A fresh model read a reference count of 2
+   where it should read 1. The fork fixed that for all 279 non-widget constructors, so the
+   number below is now 1; it is still measured here because it is the cheapest standing
+   check that the pinned binding has the fix, and because nothing else in this suite would
+   notice if a future pin lost it. **Nothing in this library calls [new_] on a reachable
+   path** -- [create] goes through [new_from_strings] and items changes splice into the
    model that already exists, so the only caller left is [w_drop_down.ml]'s defensive
-   fallback for a model this library did not install. The count is still measured here,
-   because it is the evidence behind [docs/m1-backlog.md]'s generator entry and because
-   the entry covers every non-widget [*_new] in the binding, not just this one. *)
+   fallback for a model this library did not install. *)
 let () =
   let scheduled = ref 0 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
   let ctx = ctx_of scheduler ~scheduled in
   let fresh = W.String_list.new_ (Some [| "x"; "y" |]) in
   printf
-    "a fresh GtkStringList holds %d references (1 is correct; 2 is the stub's extra \
-     ref_sink, which nothing on a reachable path pays any more)\n"
+    "a fresh GtkStringList holds %d references (1 is correct; 2 would mean the pinned \
+     binding still ref_sinks a constructor that already transferred)\n"
     (Gobject.get_ref_count fresh);
   let live =
     P.mount ctx ~path:"gc" ~is_root:true (picker ~items:[ "a"; "b"; "c" ] ~selected:0 ())

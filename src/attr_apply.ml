@@ -96,7 +96,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | Opacity f -> Widget.set_opacity w f
   | Focusable b -> Widget.set_focusable w b
   | Can_focus b -> Widget.set_can_focus w b
-  | Widget_name s -> Widget.set_name w s
+  | Widget_name s -> Widget.set_name w (Some s)
   | Cursor_name s -> Widget.set_cursor_from_name w (Some s)
   (* [Test_id] is inert at runtime; the [On_*] attrs are handled by [Signals]. [Many] is
      flattened away by [Attrs.of_list] and never reaches here.
@@ -165,7 +165,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Opacity -> Widget.set_opacity w d.opacity
   | Focusable -> Widget.set_focusable w d.focusable
   | Can_focus -> Widget.set_can_focus w d.can_focus
-  | Widget_name -> Widget.set_name w d.widget_name
+  | Widget_name -> Widget.set_name w (Some d.widget_name)
   | Cursor_name -> Widget.set_cursor w d.cursor
   | Test_id
   | Measure_overlay

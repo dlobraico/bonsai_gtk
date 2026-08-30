@@ -103,7 +103,7 @@ wrong differently: selected=0 (reports ((none/0"~selected:7 names no item: the l
 wrong differently, five idle frames later: selected=0 (reports ())
 an index into an empty list: selected=-1 (reports ((none/0"~selected:0 names no item: the list holds 0. GTK ignores a position outside its model, so nothing is selected -- and 0 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
 an index into an empty list, five idle frames later: selected=-1 (reports ())
-a fresh GtkStringList holds 2 references (1 is correct; 2 is the stub's extra ref_sink, which nothing on a reachable path pays any more)
+a fresh GtkStringList holds 1 references (1 is correct; 2 would mean the pinned binding still ref_sinks a constructor that already transferred)
 after 500 get_model wrappers and a full major: items=(a b c) selected=0
 four items changes later: same model object throughout: true, references 4 -> 4, items=(a b c)
 (GtkWindow (title (levels)) (css (background)) hidden
