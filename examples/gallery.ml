@@ -741,7 +741,14 @@ let input (graph @ local) =
       ]
     [ Node.label
         ~xalign:0.
-        "Click the card, type in the entries, press Escape, and Tab between them."
+        (* "the words", not "the card": [Attr.on_click] is on the label, and a widget's
+           [Attr.margin] is space outside its allocation, so the 24px of padding that
+           makes the card look like a target is not one. Measured with xdotool under Xvfb
+           in M2's Task 16 -- a click 14px below the text moved no readout. Putting the
+           gesture on the frame instead would make the whole card live; it is on the
+           backlog, because which of the two the page should demonstrate is a choice and
+           not a bug. *)
+        "Click the words below, type in the entries, press Escape, and Tab between them."
     ; Node.frame
         ~label:"A click gesture, any button"
         (* [~button] defaults to 0, which is "any of them", so the readout can show which

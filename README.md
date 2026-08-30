@@ -337,8 +337,14 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   press to the controller in between — and for keys specifically, **that propagation
   works**: nothing here shows that a `Handled` Escape failed to reach a sibling, or that a
   `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The
-  compensating controls are the gallery's *Input* page, run by hand on a real display, and
-  the fact that every input to GTK's routing is asserted. Closing it needs a fork patch
+  compensating controls are the fact that every input to GTK's routing is asserted, and the
+  gallery's *Input* page, which M2 closed by driving under `xvfb` with `xdotool` — real
+  X button presses and keystrokes, delivered by the X server rather than synthesised in
+  process, with screenshots of the readouts. That run moved all four readouts and showed
+  the button number, the press count, the widget-local coordinates and the modifiers all
+  arriving, an Escape consumed in the capture phase while the entry below kept its text,
+  and focus moving on Tab. It is a hand-run demonstration, not a test: nothing re-runs it
+  and nothing fails if it stops working. Closing it needs a fork patch
   exposing a `GdkEvent` constructor or `gtk_test_widget_click`, or driving the X server the
   live tests already run on (`xdotool` under the same `xvfb`); both are on the backlog.
   Focus is the exception and *is* covered end to end — `Widget.grab_focus` on a presented

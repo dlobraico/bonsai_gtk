@@ -359,30 +359,46 @@ Consistency:
     neither suite can show that a `Handled` Escape failed to reach a sibling, or that a
     `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The routing is
     GTK's, and every input to it is asserted; the routing itself is not. Compensating controls:
-    the gallery's Input section, and the real-display click-through below. Closing it properly
+    the gallery's Input section, and the XTEST click-through Task 16 ran through it (below) --
+    which demonstrated the routing once, by hand, but is not a test and re-runs nowhere. Closing it properly
     needs an ocgtk fork patch exposing a `GdkEvent` constructor or
     `gtk_test_widget_click`/`gtk_test_widget_send_key` (none is bound today), or the XTEST
     route below. Tasks 4 and 5.
-- **A synthetic click or key press may be reachable through XTEST rather than through the
+- **A synthetic click or key press is reachable through XTEST rather than through the
   binding**, and this is the single most valuable follow-up in the file: it would *close* the
   gap above rather than compensate for it. The plan closed the question against ocgtk and did
-  not consider driving the X server the live tests already run on — `xdotool`/`xte` under the
-  same `xvfb` would deliver a real button press and a real keystroke to a real window, which is
-  exactly the step no suite in this repository takes. It needs a package in the dev shell and a
-  live test that maps widget coordinates to screen coordinates. Task 13's review asked for this
-  to become a numbered bead rather than a backlog line, "because the backlog is where the same
-  gap has already sat since M1"; the controller filed it.
+  not consider driving the X server the live tests already run on. **Task 16 established that
+  the route works**: `xvfb-run -a -s '-screen 0 1280x800x24 -nolisten tcp'`, the gallery
+  launched inside it, `xdotool search --onlyvisible --name` for the window and `windowfocus`
+  to give it the keyboard (there is no window manager, so `windowactivate` fails and is not
+  needed), then `mousemove X Y click 1|2|3|--repeat 2` and `key`/`type`, with ImageMagick
+  `import -window root` between the steps. GTK reads those as ordinary events: the click
+  readout produced the right button, press count, widget-local coordinates and modifiers, and
+  the key readout the right keyvals and modifiers. Two things a test still has to solve that
+  the by-hand run did not: **mapping a widget to screen coordinates** (the run read them off a
+  screenshot, and a click 14px outside a label's allocation silently does nothing — the misses
+  look exactly like a broken handler), and **a settling wait** that is not a `sleep`. The
+  packages are `xdotool` and `imagemagick`, neither of which is in the dev shell today. Task
+  13's review asked for this to become a numbered bead rather than a backlog line, "because the
+  backlog is where the same gap has already sat since M1"; the controller filed it.
 - Focus is the exception and *is* covered end to end: `Widget.grab_focus` on a presented window
   really drives `GtkEventControllerFocus`, and `live_controllers.ml` asserts the handler fires,
   that the reentrancy guard drops a focus change made during a patch, and that a removed
   controller stops firing. Task 4.
-- **Real-display click-through of `examples/gallery.exe`** — it has only ever been run under
-  `xvfb`. **Task 13 built the page** (the gallery's *Input* tab): a click card reporting button,
-  press count, widget-local coordinates and modifiers; a `Capture`-phase key controller that
-  consumes Escape (`Handled_and`, with a counter) and observes every other key without
-  consuming it (`Propagate_and`, with an entry below it that must still receive the text); and
-  two entries whose focus enter/leave name which one has it. **The remaining work is a person
-  running it on a real display and confirming all four readouts move.**
+- **Click-through of `examples/gallery.exe`** — **Task 13 built the page** (the gallery's
+  *Input* tab): a click card reporting button, press count, widget-local coordinates and
+  modifiers; a `Capture`-phase key controller that consumes Escape (`Handled_and`, with a
+  counter) and observes every other key without consuming it (`Propagate_and`, with an entry
+  below it that must still receive the text); and two entries whose focus enter/leave name
+  which one has it. **Task 16 drove all of it** — the machine is a headless server, so under
+  `xvfb` with `xdotool` rather than on a real display — and every readout moved: button 1/2/3
+  each reported as itself, a double click as `press 2`, a ctrl-held click as `ctrl`, `hello`
+  typed into the first entry with the last keyval reported per keystroke, Escape counted and
+  consumed with the entry keeping its text, and focus moving to the second entry on Tab.
+  Screenshots were read, not just captured. **What is still not done is a real display**: an
+  X server with a window manager and a compositor, or Wayland, where GTK takes a different
+  input path (`gdk_wayland`) than the one exercised here. That is now a small residual rather
+  than the whole check.
 - **GC/lifetime**: remove a keyed child, `Gc.full_major`, assert the widget was finalized — the
   spec's central ownership assumption, still unwritten (carried from M0). M2 makes it more
   interesting, not less: `Child_keys` is an ephemeron table on exactly those widgets, and the
@@ -479,6 +495,15 @@ Do not "fix" these when an expected file surprises you:
   `Events.Family.t` for tidiness reorders them even though every `armed=` assertion holds.
 
 ## Plumbing / hygiene
+
+- **The gallery's click card is not a click target; the words inside it are.** `Attr.on_click`
+  sits on the `Node.label`, and `Attr.margin 24` is space *outside* a widget's allocation, so
+  the padding that makes the card read as a button is inert — a click 14px below the text moved
+  no readout in Task 16's run, and a reader debugging their own gesture would have no way to
+  tell that from a broken handler. Task 16 corrected the page's instruction to say "the words"
+  rather than "the card". The alternative is to move the gesture onto the `Node.frame`, which
+  would make the whole card live and would demonstrate "legal on any node" better than a label
+  does; which of the two the page should show is a choice, so it is here rather than done.
 
 - ~~`scripts/ci.sh`'s generated-opam check is `git diff --exit-code -- '*.opam'`; add `HEAD` so
   *staged* drift is caught too.~~ **Done** in the M2 clean-tree pass (Task 16).
