@@ -261,13 +261,22 @@ let grid (graph @ local) =
 (* Page 5: the one container whose children really move. A [GtkNotebook] has
    [reorder_child], so the page order is reconciled with real [Move] ops -- and the two
    buttons here are what that is for: they change the model's page {i list}, and the
-   notebook reorders the pages in place rather than rebuilding them. The pages hold state
-   (an entry each) so that the reorder visibly keeps it. *)
+   notebook reorders the pages in place rather than rebuilding them.
+
+   What that preserves, and what a rebuild would lose, is {i widget-local} state: the
+   entry on each page keeps its cursor position, its text selection and its focus across a
+   move. The typed text itself would survive a rebuild too -- it lives in the model, like
+   everything else here -- so it is not the demonstration; each page has its own state
+   only so that typing on one tab does not echo into the other two. *)
 let tabs (graph @ local) =
   let current, set_current = Bonsai.state "score" graph in
   let order, set_order = Bonsai.state [ "score"; "parts"; "notes" ] graph in
-  let notes, set_notes = Bonsai.state "" graph in
-  let%arr current and set_current and order and set_order and notes and set_notes in
+  (* One piece of state per page rather than one shared between them: three entries bound
+     to a single string would echo each other, which reads as a bug in the demo. *)
+  let texts, set_texts =
+    Bonsai.state (String.Map.of_alist_exn [ "score", ""; "parts", ""; "notes", "" ]) graph
+  in
+  let%arr current and set_current and order and set_order and texts and set_texts in
   let title = function
     | "score" -> "Score"
     | "parts" -> "Parts"
@@ -281,14 +290,20 @@ let tabs (graph @ local) =
       ~spacing:8
       [ Node.label ~attrs:[ Attr.margin 12 ] (sprintf "This is the %s page." (title key))
       ; Node.entry
-          ~attrs:[ Attr.margin 12; Attr.on_changed set_notes ]
-          ~placeholder:"type here, then move the tab"
-          ~text:notes
+          ~attrs:
+            [ Attr.margin 12
+            ; Attr.on_changed (fun text -> set_texts (Map.set texts ~key ~data:text))
+            ]
+          ~placeholder:"type here, put the cursor mid-word, then move the tab"
+          ~text:(Map.find_exn texts key)
           ()
       ]
   in
-  (* Move the current page one place in the list. The notebook does the rest: the page
-     keeps its widgets, its entry and whatever the user typed into it. *)
+  (* Move the current page one place in the list. The notebook does the rest, in one
+     [reorder_child]: the page keeps its widgets, and the entry keeps its cursor and its
+     selection -- neither of which is in the model and neither of which would survive the
+     remove-and-re-insert an unkeyed list, or a container without a reorder primitive,
+     would do instead. *)
   let move delta =
     match List.findi order ~f:(fun _ k -> String.equal k current) with
     | None -> Ui_effect.Ignore

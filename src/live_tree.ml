@@ -508,8 +508,13 @@ let rec dump (w : Widget.t) : Sexp.t =
      | "GtkNotebook" ->
        let nb : W.Notebook.t = cast w in
        [ Sexp.List [ Atom "pages"; Atom (Int.to_string (W.Notebook.get_n_pages nb)) ]
-       ; Sexp.List
-           [ Atom "current-page"; Atom (Int.to_string (W.Notebook.get_current_page nb)) ]
+       ; (* [-1] is GTK's "no page is current", which is a notebook with no pages at all.
+            Printed as [()] rather than as the raw sentinel: it is the same "nothing" a
+            stack prints as [(visible ())] and [W_notebook.current_key] answers as [None],
+            and a dump is the wrong place to make a reader know that [-1] is not an index. *)
+         (match W.Notebook.get_current_page nb with
+          | -1 -> Sexp.List [ Atom "current-page"; List [] ]
+          | i -> Sexp.List [ Atom "current-page"; Atom (Int.to_string i) ])
        ]
        @ (if W.Notebook.get_show_tabs nb then [] else [ Sexp.Atom "no-tabs" ])
        @ (if W.Notebook.get_show_border nb then [] else [ Sexp.Atom "no-border" ])

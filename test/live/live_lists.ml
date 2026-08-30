@@ -9,6 +9,8 @@ module W = Bonsai_gtk.Private.Gtk_import.W
 module W_flow_box = Bonsai_gtk.Private.W_flow_box
 module W_list_box = Bonsai_gtk.Private.W_list_box
 module W_notebook = Bonsai_gtk.Private.W_notebook
+module Registry = Bonsai_gtk.Private.Registry
+module Widget_impl = Bonsai_gtk.Private.Widget_impl
 module Widget = Bonsai_gtk.Private.Gtk_import.Widget
 
 let cast = Bonsai_gtk.Private.Gtk_import.cast
@@ -1004,6 +1006,14 @@ let notebook (live : P.live) =
    thing that answers the question this file keeps asking. *)
 let page_widgets (live : P.live) = W_notebook.pages (cast (notebook live))
 
+(* The notebook node's own kind, for the one test that reaches [Registry] for the impl
+   rather than going through the patcher. *)
+let notebook_kind (live : P.live) =
+  match live.children with
+  | Single (Some nb) -> nb.P.node.kind
+  | No_children | Single None | List _ | Slots _ -> assert false
+;;
+
 (* The pages in GTK's order, named by the label each one is. The dump says the tab order
    at length (the header box's labels are in page order); this is for the cases whose
    whole claim is the {i page} order, which the dump cannot show. *)
@@ -1033,10 +1043,63 @@ let current_key (live : P.live) =
   | None -> "(none)"
 ;;
 
+(* The tab order as [Live_tree.dump] shows it: the [GtkLabel]s GTK built for the tabs,
+   collected in order out of the header [GtkBox] subtree of the dumped notebook.
+
+   {b Not the same question as [tab_texts]}, which is why both are printed. [tab_texts]
+   and [page_labels] are both indexed {i by page} ([get_nth_page] then
+   [get_tab_label_text page]), so neither can catch a tab that failed to follow its page
+   -- they would agree with each other on a notebook whose header was in a completely
+   different order. This reads the header's own widget tree, which is the only independent
+   answer available, and it is the reading the brief asked the reorder cases to assert.
+
+   The header box's other children when [~scrollable] is on are [GtkButton]s holding
+   [GtkImage]s, so collecting labels from this subtree picks up tabs and nothing else. *)
+let tabs_in_dump (live : P.live) =
+  let rec labels acc (sexp : Sexp.t) =
+    match sexp with
+    | Sexp.List (Atom "GtkLabel" :: rest) ->
+      List.fold rest ~init:acc ~f:(fun acc field ->
+        match field with
+        | Sexp.List [ Atom "text"; Atom t ] -> t :: acc
+        | _ -> acc)
+    | Sexp.List l -> List.fold l ~init:acc ~f:labels
+    | Sexp.Atom _ -> acc
+  in
+  let header =
+    match Live_tree.dump (notebook live) with
+    | Sexp.List (Atom "GtkNotebook" :: rest) ->
+      List.find_map rest ~f:(function
+        | Sexp.List (Atom "children" :: first :: _) -> Some first
+        | _ -> None)
+    | _ -> None
+  in
+  match header with
+  | None -> "BUG: no header box in the dump"
+  | Some header -> String.concat ~sep:"," (List.rev (labels [] header))
+;;
+
 let page_positions pages nb =
   String.concat
     ~sep:","
     (List.map pages ~f:(fun p -> Int.to_string (W.Notebook.page_num nb p)))
+;;
+
+(* How many of [pages] still resolve to a key in [W_notebook]'s [Child_keys] table.
+
+   The direction the GC block does not test. That block asserts entries {i surviving} a
+   major collection; this asserts them being {i dropped} when they should be -- by
+   [list_ops.remove] for a page the model took away, and by [Patcher.destroy]'s
+   [forget_pages] for a notebook that went away whole. Neither has a test in any of the
+   three keyed containers, and both are leaks in a process-wide table if they regress: the
+   ephemeron makes them bounded rather than unbounded, but "the next GC" is no more a
+   bound for a tab the user closed than it is for a filtered row.
+
+   Asked through [key_of_page] rather than through a count, because [Child_keys] exposes
+   no size: the question "is this particular departed widget still remembered" is the one
+   that matters, and it is answerable with what is already public. *)
+let still_remembered pages =
+  List.count pages ~f:(fun p -> Option.is_some (W_notebook.key_of_page p))
 ;;
 
 let same_pages before after =
@@ -1216,8 +1279,12 @@ let () =
   printf "same GObjects after the reorder: %b\n" (same_pages before (page_widgets live));
   printf "the original pages are now at: %s\n" (page_positions before nb);
   printf "pages: %s | tabs: %s\n" (page_labels live) (tab_texts live);
-  (* The tab order moved with them, which is what the dump is here to show -- and is the
-     half [page_labels] cannot claim, since the tabs are widgets GTK owns. *)
+  (* The tab order moved with them, which is the half [page_labels] and [tab_texts] cannot
+     claim between them -- both are indexed by page. [tabs_in_dump] reads the header box's
+     own widget tree out of [Live_tree.dump], so it is the independent answer, and it is
+     printed after every one of the four moves below. The full dump is printed once, here,
+     for the shape; the four one-liners are what actually pin the order. *)
+  printf "tabs, from the dump: %s\n" (tabs_in_dump live);
   print_s (Live_tree.dump live.widget);
   (* The head page to the tail, which is the move [reorder_child]'s clamp would hide if
      the index were computed one too high: GTK clamps a position past the end to last, so
@@ -1225,13 +1292,16 @@ let () =
      is checked by the two moves either side of it rather than by itself. *)
   let live = patch live (view ~current:"score" ~pages:[ "notes"; "parts"; "score" ] ()) in
   printf "after the head moved to the tail: %s\n" (page_labels live);
+  printf "  tabs, from the dump: %s\n" (tabs_in_dump live);
   (* A middle page to the head -- destination index 0, which is the [after = None] arm. *)
   let live = patch live (view ~current:"score" ~pages:[ "parts"; "notes"; "score" ] ()) in
   printf "after a middle page moved to index 0: %s\n" (page_labels live);
+  printf "  tabs, from the dump: %s\n" (tabs_in_dump live);
   (* And one that leaves a page behind the moved one, so that an index one place out in
      either direction is visible rather than clamped away. *)
   let live = patch live (view ~current:"score" ~pages:[ "parts"; "score"; "notes" ] ()) in
   printf "after a rightward move with a page behind it: %s\n" (page_labels live);
+  printf "  tabs, from the dump: %s\n" (tabs_in_dump live);
   printf "current survived every reorder: %s\n" (current_key live);
   (* A page inserted in the middle, which is the same arithmetic from the other side: the
      index comes from the predecessor's own [page_num], not from the reconciler's. *)
@@ -1239,8 +1309,20 @@ let () =
     patch live (view ~current:"score" ~pages:[ "parts"; "score"; "draft"; "notes" ] ())
   in
   printf "after a middle insert: %s | tabs: %s\n" (page_labels live) (tab_texts live);
+  let departing =
+    List.filter (page_widgets live) ~f:(fun p ->
+      Option.exists (W_notebook.key_of_page p) ~f:(String.equal "draft"))
+  in
   let live = patch live (view ~current:"score" ~pages:[ "parts"; "score"; "notes" ] ()) in
   printf "after the middle page went away: %s\n" (page_labels live);
+  (* And its [Child_keys] entry went with it. [list_ops.remove] drops the key before it
+     tells GTK to remove the page; without that line the process-wide table keeps an entry
+     for every tab any application has ever closed until the widget itself is collected.
+     Nothing in any of the three keyed containers tested this direction before. *)
+  printf
+    "the removed page is still remembered: %d of %d\n"
+    (still_remembered departing)
+    (List.length departing);
   (* 3. The declined page change. The user clicks the "notes" tab; the model renders the
      same node; the frame that renders it must put the notebook back. This is spec §6.5
      for a container, and it is the reason [~current_page] is a fixup rather than an
@@ -1353,11 +1435,17 @@ let () =
   let live = patch live (hidden ~current:"parts") in
   let live = patch live (hidden ~current:"score") in
   printf "asking for a hidden page: %s\n" (current_key live);
-  (* Two more identical frames, each of which rewrites: the comparison is against
-     [get_current_page], which never moves, so it never comes out equal. That is the cost
-     the constructor documents -- a model to bring into line, not a loop and not an error
-     -- and it is the only way [~current_page] can name a page that exists and still not
-     land. A comparison against the {i key} would read [false] here and report success. *)
+  (* Two more identical frames, each of which rewrites: the comparison is a read-back of
+     the live widget, which never moves, so it never comes out equal. That is the cost the
+     constructor documents -- a model to bring into line, not a loop and not an error --
+     and it is the only way [~current_page] can name a page that exists and still not
+     land.
+
+     What this does {i not} show is any difference between comparing indices and comparing
+     keys: [W_notebook.current_key] is [get_current_page] with two lookups on top, so the
+     two are the same predicate and this line reads 2 either way. The comparison that
+     would report success here is one against the {i previous node} -- an [update]-style
+     comparison -- which is exactly what makes this a fixup instead. *)
   let before = !scheduled in
   let live = patch live (hidden ~current:"score") in
   let live = patch live (hidden ~current:"score") in
@@ -1404,14 +1492,90 @@ let () =
     "an empty notebook: pages=%d current=%s (no raise)\n"
     (List.length (page_widgets live))
     (current_key live);
+  (* Dumped, because this is the only tree in which [get_current_page] answers GTK's [-1]
+     sentinel and the dump is where a reader would meet it. It prints as [()], the same
+     "nothing" a stack's [(visible ())] prints and the same one [current_key] answers. *)
+  print_s (Live_tree.dump (notebook live));
   let live = patch live (view ~current:"notes" ~pages:[ "parts"; "notes" ] ()) in
   printf "the first page arrived: %s\n" (current_key live);
   (* 7. Teardown does not fire a handler. GTK emits [switch-page] as pages go away;
      [scheduled] must not move across the destroy, because [Patcher.destroy] empties the
      slots before anything is unparented. *)
   let before = !scheduled in
+  let torn_down = page_widgets live in
   P.destroy ctx live;
-  printf "handlers fired during teardown: %d\n" (!scheduled - before)
+  printf "handlers fired during teardown: %d\n" (!scheduled - before);
+  (* The other half of the table's bookkeeping, and the path [list_ops.remove] never
+     covers: a notebook torn down whole has its pages walked by the patcher rather than
+     removed from their parent, so [Patcher.destroy]'s [forget_pages] arm is the only
+     thing that drops their entries. Deleting that arm leaves this line reading 2. *)
+  printf
+    "pages still remembered after teardown: %d of %d\n"
+    (still_remembered torn_down)
+    (List.length torn_down)
+;;
+
+(* The [move] arm no frame reaches.
+
+   [Reconcile.diff] emits every [Move] with [from > to_] -- it scans left to right and
+   always finds its match at or after the index it is filling -- so [w_notebook.ml]'s
+   [if from < a] branch is unreachable through the patcher, and the four moves above all
+   take the [else]. That was pointed out in review ([task-8-review.md] N1), and the report
+   had claimed the four moves covered "both directions"; they do not.
+
+   The branch is kept (see the comment there for why an [assert] was rejected), so it is
+   exercised here directly instead: [Registry] hands back the impl, and its
+   [list_ops.move] is called by hand with an [~after] that sits {i after} the page being
+   moved, which is the shape a forward [Move] would produce. Four pages rather than three,
+   because [reorder_child] clamps a position past the end -- with only three, the wrong
+   index and the right one both land on the same order and the test would pass either way.
+
+   A,B,C,D with A moved to sit after B must give B,A,C,D. The shipped conditional computes
+   [from=0 < a=1], so [position = 1]. The unconditional [a + 1] a reader might "simplify"
+   it to computes 2, and GTK gives B,C,A,D -- which is the line that changes if the hedge
+   is deleted. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  let live =
+    P.mount
+      ctx
+      ~path:"fwd"
+      ~is_root:true
+      (Node.window
+         ~title:"fwd"
+         (Node.notebook
+            ~current_page:"a"
+            (List.map [ "a"; "b"; "c"; "d" ] ~f:(fun k ->
+               Node.label
+                 ~key:k
+                 ~attrs:[ Attr.tab_label (String.uppercase k) ]
+                 (String.uppercase k)))))
+  in
+  P.run_fixups ctx;
+  printf "forward move: before %s\n" (page_labels live);
+  let move =
+    match (Registry.for_kind (notebook_kind live)).children with
+    | Widget_impl.List { move = Some move; _ } -> move
+    | _ -> failwith "the notebook impl has no list move"
+  in
+  let nb = notebook live in
+  let page key = Option.value_exn (List.nth (page_widgets live) key) in
+  (* [~child] is at index 0 and [~after] at index 1, so [from < a] -- the arm the
+     reconciler never produces. *)
+  move nb ~child:(page 0) ~after:(Some (page 1));
+  printf "forward move: after %s\n" (page_labels live);
+  printf "forward move: tabs, from the dump: %s\n" (tabs_in_dump live);
+  P.destroy ctx live
 ;;
 
 (* The declined page change through a real [Driver.frame], which is the claim the

@@ -232,20 +232,6 @@ module Result_spec = struct
        only in the noun. Which attr it looks for is decided by the kind it found, so the
        action needs no kind check of its own: a node that is neither reports that it has
        no selection handler, naming both spellings. *)
-    (* The notebook's own, and neither of the two above reused: a page change is singular
-       where a selection is plural, and it is the {i user} switching tabs rather than
-       activating anything. Like every other action the node's own [~current_page] is not
-       consulted -- "the user is now on this page" is what the real widget reports
-       whatever the model was rendering -- and, like the two activate actions, the
-       {i kind} is checked so that the failure names it. *)
-    | Set_page (id, key) ->
-      let n = node_exn node id in
-      of_kind_exn n id ~expected:"Notebook" ~is_expected:(function
-        | Kind.Notebook _ -> true
-        | _ -> false);
-      (match (Attrs.find n.attrs On_page_changed :> Attr.Private.t option) with
-       | Some (On_page_changed h) -> h key
-       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_page_changed handler" id ())
     | Set_selection (id, keys) ->
       let n = node_exn node id in
       let name, attr =
@@ -258,6 +244,20 @@ module Result_spec = struct
        | Some (On_selected_rows_changed h) -> h keys
        | Some (On_selected_children_changed h) -> h keys
        | _ -> failwithf "Bonsai_gtk_test: node %s has no %s handler" id name ())
+    (* The notebook's own, and neither of the two above reused: a page change is singular
+       where a selection is plural, and it is the {i user} switching tabs rather than
+       activating anything. Like every other action the node's own [~current_page] is not
+       consulted -- "the user is now on this page" is what the real widget reports
+       whatever the model was rendering -- and, unlike [Set_selection] directly above, the
+       {i kind} is checked, as the two activate actions do, so that the failure names it. *)
+    | Set_page (id, key) ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"Notebook" ~is_expected:(function
+        | Kind.Notebook _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_page_changed :> Attr.Private.t option) with
+       | Some (On_page_changed h) -> h key
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_page_changed handler" id ())
   ;;
 end
 

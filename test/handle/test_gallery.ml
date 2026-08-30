@@ -165,14 +165,15 @@ let every_widget (graph @ local) =
                        ~orientation:Horizontal
                        ~selected:[ "card" ]
                        [ Node.label ~key:"card" "card" ]
-                     (* Every prop, and the one per-page attr. The notebook is the only
-                        container here whose children are reconciled with real [Move] ops,
-                        so its page list is also the coverage for
+                     (* Every prop, each set {i away} from GTK's default so that the sexp
+                        pins it rather than dropping it, and the one per-page attr. The
+                        notebook is the only container here whose children are reconciled
+                        with real [Move] ops, so its page list is also the coverage for
                         [Widget_impl.list_ops.move] being [Some]. *)
                    ; Node.notebook
                        ~attrs:[ Attr.on_page_changed (fun _ -> Ui_effect.Ignore) ]
                        ~scrollable:true
-                       ~show_tabs:true
+                       ~show_tabs:false
                        ~show_border:false
                        ~tab_pos:Bottom
                        ~current_page:"page"
@@ -382,7 +383,8 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                         ((kind
                           (Notebook
                            ((current_page page) (scrollable true)
-                            (show_border false) (tab_pos Bottom))))
+                            (show_tabs false) (show_border false)
+                            (tab_pos Bottom))))
                          (attrs ((On_page_changed <handler>)))
                          (children
                           (List

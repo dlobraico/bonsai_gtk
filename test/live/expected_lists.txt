@@ -212,6 +212,7 @@ pages: SCORE,PARTS,NOTES | tabs: Score,Parts,Notes | current: score
 same GObjects after the reorder: true
 the original pages are now at: 0,2,1
 pages: SCORE,NOTES,PARTS | tabs: Score,Notes,Parts
+tabs, from the dump: Score,Notes,Parts
 (GtkWindow (title (tabs)) (css (background)) hidden
  (children
   (GtkNotebook (pages 3) (current-page 0) (css (frame))
@@ -226,11 +227,15 @@ pages: SCORE,NOTES,PARTS | tabs: Score,Notes,Parts
      (children (GtkLabel (text SCORE)) (GtkLabel (text PARTS))
       (GtkLabel (text NOTES))))))))
 after the head moved to the tail: NOTES,PARTS,SCORE
+  tabs, from the dump: Notes,Parts,Score
 after a middle page moved to index 0: PARTS,NOTES,SCORE
+  tabs, from the dump: Parts,Notes,Score
 after a rightward move with a page behind it: PARTS,SCORE,NOTES
+  tabs, from the dump: Parts,Score,Notes
 current survived every reorder: score
 after a middle insert: PARTS,SCORE,DRAFT,NOTES | tabs: Parts,Score,Draft,Notes
 after the middle page went away: PARTS,SCORE,NOTES
+the removed page is still remembered: 0 of 1
 after the user clicked a tab: notes
 after the declining frame: score
 add-and-select: draft (pages PARTS,SCORE,NOTES,DRAFT)
@@ -265,8 +270,17 @@ the fixup raised: (Invalid_argument
 GTK picked: notes
 after the model moved its selection: notes
 an empty notebook: pages=0 current=(none) (no raise)
+(GtkNotebook (pages 0) (current-page ()) (css (frame))
+ (children
+  (GtkBox (spacing 0) (css (top horizontal)) hexpand
+   (children (GtkGizmo hexpand)))
+  (GtkStack (visible ()) hexpand vexpand)))
 the first page arrived: notes
 handlers fired during teardown: 0
+pages still remembered after teardown: 0 of 2
+forward move: before A,B,C,D
+forward move: after B,A,C,D
+forward move: tabs, from the dump: B,A,C,D
 nb driver, after mount: score (Bonsai saw 0)
 nb driver, after the user clicked a tab: parts
 nb driver, after the frame the click armed: score (Bonsai saw 1)

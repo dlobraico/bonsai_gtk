@@ -130,10 +130,14 @@ let forget_pages (w : Widget.t) =
   List.iter (pages (cast w)) ~f:(Child_keys.remove page_keys)
 ;;
 
-(* The page GTK is showing, by [page_num] rather than by widget: [get_current_page] and
-   [set_current_page] both speak in indices, and the index of a given page moves whenever
-   a page is inserted, removed or reordered before it. Deriving the index from the key on
-   every call is what makes that irrelevant. *)
+(* The page GTK is showing, as the key the node carried.
+
+   {b Not an independent source of truth}: this is [get_current_page] with two lookups on
+   top of it, so it answers whatever GTK answers and cannot disagree with it. It exists so
+   that handlers and tests can speak in keys, not so that the key becomes the thing being
+   tracked -- [Child_keys] is never authoritative over the notebook, and a reader who
+   believes otherwise is one step from the stale-map bug [page_index_by_key]'s own comment
+   warns against. *)
 let current_key (nb : W.Notebook.t) =
   match W.Notebook.get_current_page nb with
   | -1 -> None
@@ -164,13 +168,25 @@ let current_key (nb : W.Notebook.t) =
    key it could pass that would be right, and the frame that adds the first page runs this
    again.
 
-   The comparison is against [get_current_page], not against the key: a page whose child
-   is hidden {i cannot} be made current -- GTK emits [switch-page] and then leaves
-   [get_current_page] where it was (measured) -- so comparing keys would read the write
-   back as having landed. Comparing indices reports the truth, at the price of rewriting
-   on every frame, which is the same bargain [W_list_box.apply_selection] strikes with a
-   mode that cannot hold the selection it is given. Both are documented on their
-   constructors. *)
+   The comparison is against the {i widget} and not against the previous node, which is
+   the whole of spec §6.5 and is what the fixup queue is for: a model that declines a tab
+   click renders the props it rendered last frame, so [update] is skipped and nothing but
+   a read-back of the live widget can put the notebook where the model says it is.
+
+   Indices rather than keys is a spelling and not a decision -- {!current_key} is
+   [get_current_page] with two lookups on top, and keys are unique among a notebook's
+   pages, so [current_key nb = Some current_page] holds exactly when
+   [get_current_page nb = index]. Comparing keys instead would be the same predicate one
+   walk slower. (An earlier version of this comment claimed a key comparison would report
+   a write as having landed when it had not; it would not, and substituting one for the
+   other leaves the live golden byte-identical.)
+
+   What the read-back really buys is the case that {i cannot} be made to converge: GTK
+   refuses to switch to a page whose child is hidden -- it emits [switch-page] and then
+   leaves [get_current_page] where it was (measured) -- so the comparison stays unequal
+   and the write is repeated on every frame. Nothing is clamped, which is the same bargain
+   [W_list_box.apply_selection] strikes with a mode that cannot hold the selection it is
+   given. Both are documented on their constructors. *)
 let select (w : Widget.t) ~current_page =
   let nb : W.Notebook.t = cast w in
   match page_index_by_key nb current_page with
@@ -233,15 +249,22 @@ let write_props (nb : W.Notebook.t) (p : Kind.notebook_props) =
   W.Notebook.set_tab_pos nb (tab_position p.tab_pos)
 ;;
 
-(* The index of a page this impl is about to act on. [gtk_notebook_page_num] answers [-1]
-   for a widget the notebook does not hold, and every method that takes an index treats a
-   bad one differently -- [remove_page] silently does nothing, [reorder_child] logs a
-   critical -- so the check is here rather than left to GTK. It is this file's counterpart
-   to [W_list_box.row_of]'s type-name check: the one assumption every op rests on, stated
-   once and enforced. *)
+(* The index of a page this impl is about to act on.
+
+   Unreachable in a tree [Node.notebook] built, on [page_key]'s pattern: every widget this
+   is handed comes from [Patcher.patch_list]'s own [!cur], which mirrors GTK's page list
+   after every op, so [-1] cannot happen. It is kept because [gtk_notebook_page_num]
+   answers [-1] rather than raising and the three methods that take an index disagree
+   about what to do with a bad one -- [remove_page] silently does nothing, [reorder_child]
+   logs a [Gtk-CRITICAL] and carries on -- so the failure mode without this is a patch
+   that quietly did not happen. It is this file's counterpart to [W_list_box.row_of]'s
+   type-name check: the one assumption every op rests on, stated once.
+
+   No noun in the message: the patcher's [child_op] prefixes the node path, and [what]
+   already says which page. *)
 let page_num_exn (nb : W.Notebook.t) ~what (page : Widget.t) =
   match W.Notebook.page_num nb page with
-  | -1 -> invalid_argf "notebook: %s is not a page of this notebook" what ()
+  | -1 -> invalid_argf "%s is not a page of this notebook" what ()
   | i -> i
 ;;
 
@@ -342,9 +365,25 @@ let impl : Widget_impl.t =
                    was computed over the sibling list with this child
                    {i already taken out of it} while [page_num] answers about the list
                    that still holds it. The two differ by one exactly when the child
-                   currently sits before [after], so that is what is asked -- rather than
-                   relying on [Reconcile.diff] emitting every [Move] with [from > to_],
-                   which it does today and which this line would silently depend on. *)
+                   currently sits before [after], so that is what is asked.
+
+                   {b The [from < a] arm is unreachable through the reconciler today}, and
+                   is a hedge rather than a case anyone has seen: [Reconcile.diff] scans
+                   left to right and always finds its match at an index at or after the
+                   one it is filling, so every [Move] it emits has [from > to_], which
+                   forces [a = to_ - 1 < from]. Deleting the conditional and writing
+                   [a + 1] unconditionally leaves the whole live golden unchanged
+                   (checked). It is kept because the alternative is for this file to
+                   depend silently on a property of a module in another library; the two
+                   sibling containers make the same refusal by reading the predecessor's
+                   index {i after} their removal, which a notebook cannot do because
+                   [reorder_child] removes internally. An [assert] was considered and
+                   rejected -- it would turn a reconciler change into a crash where this
+                   arithmetic already handles it, and it would make the notebook the one
+                   container that encodes the invariant while the other two quietly
+                   survive it. [test/live/live_lists.ml] calls this very function with a
+                   forward [~after], so the arm is exercised against GTK even though no
+                   frame reaches it. *)
                 let nb : W.Notebook.t = cast parent in
                 let from = page_num_exn nb ~what:"the page being moved" child in
                 let position =
