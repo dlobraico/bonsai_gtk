@@ -6,7 +6,8 @@
   live_controls
   live_containers
   live_events
-  live_controllers)
+  live_controllers
+  live_keyvals)
  (libraries
   core
   bonsai
@@ -107,3 +108,15 @@
     output_controllers.txt
     (run %{exe:live_controllers.exe}))
    (diff expected_controllers.txt output_controllers.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_keyvals.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_keyvals.txt
+    (run %{exe:live_keyvals.exe}))
+   (diff expected_keyvals.txt output_keyvals.txt))))

@@ -13,6 +13,8 @@ module Action = struct
     | Click_at of string * Click_event.t
     | Focus_enter of string
     | Focus_leave of string
+    | Key_press of string * Key_event.t
+    | Key_release of string * Key_event.t
   [@@deriving sexp_of]
 end
 
@@ -59,6 +61,13 @@ let rec require_supported ~path ~parent (node : Node.t) =
        (Kind.name node.kind)
        (Attr.Name.to_string name)
        ());
+  (* The third thing the runtime refuses that is decidable from pure vtree data: the two
+     key attrs share one [GtkEventControllerKey] and so one propagation phase, and a node
+     asking for two is one [Controllers] cannot mount. Same function, same string, so the
+     two messages are identical rather than merely similar. Last of the three because it
+     is last at mount too -- [Controllers.update] runs after [Signals.require_specs] -- so
+     a node carrying more than one mistake reports the same one here and there. *)
+  Option.iter (Events.key_phase_rejection ~path node.attrs) ~f:invalid_arg;
   Children.iteri node.children ~path ~f:(fun path child ->
     require_supported ~path ~parent:(Some node.kind) child)
 ;;
@@ -147,6 +156,25 @@ module Result_spec = struct
       (match (Attrs.find n.attrs On_focus_leave :> Attr.Private.t option) with
        | Some (On_focus_leave h) -> h ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_focus_leave handler" id ())
+    (* The answer is printed rather than returned, because it is the half of a key press
+       that has nowhere else to go: [incoming] hands back an effect, and
+       [Handled]/[Propagate] is not one -- it is a value that reaches GTK synchronously,
+       and headless there is no GTK. Printing it is what puts the decision in the golden;
+       without it a test could only see the effect, and [Handled] and [Propagate] would be
+       indistinguishable whenever the handler schedules the same effect for both. *)
+    | Key_press (id, event) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_key_pressed :> Attr.Private.t option) with
+       | Some (On_key_pressed { handler; _ }) ->
+         let response = handler event in
+         printf !"key_pressed %s -> %{sexp: Key_response.t}\n" id response;
+         Option.value (Key_response.effect response) ~default:Ui_effect.Ignore
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_key_pressed handler" id ())
+    | Key_release (id, event) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_key_released :> Attr.Private.t option) with
+       | Some (On_key_released { handler; _ }) -> handler event
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_key_released handler" id ())
   ;;
 end
 

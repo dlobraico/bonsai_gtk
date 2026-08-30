@@ -36,10 +36,12 @@ module Name = struct
       | On_position_changed
       | On_visible_child_changed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
-         output reorders. Task 5 adds [On_key_pressed] and [On_key_released] here. *)
+         output reorders. *)
       | On_click
       | On_focus_enter
       | On_focus_leave
+      | On_key_pressed
+      | On_key_released
     [@@deriving sexp_of, compare, equal, enumerate]
 
     (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
@@ -66,7 +68,9 @@ module Name = struct
          distinction, and it is the one place it is written down. *)
       | On_click
       | On_focus_enter
-      | On_focus_leave -> true
+      | On_focus_leave
+      | On_key_pressed
+      | On_key_released -> true
       | Margin_start
       | Margin_end
       | Margin_top
@@ -158,6 +162,20 @@ module Private = struct
         }
     | On_focus_enter of unit Handler.t
     | On_focus_leave of unit Handler.t
+    (* [phase] rides in the constructor for the same reason [On_click]'s does: it is a
+       property of the *controller*, and [Controllers.update] has to see it change without
+       the handler having to. The two key attrs share one [GtkEventControllerKey], so
+       there is exactly one phase to write and carrying it on both is what lets either
+       attr appear alone -- at the price of a rejection when both appear and disagree
+       ([Events.key_phase_rejection]). *)
+    | On_key_pressed of
+        { phase : Phase.t
+        ; handler : Key_response.handler
+        }
+    | On_key_released of
+        { phase : Phase.t
+        ; handler : Key_event.t Handler.t
+        }
     | Many of t list
   [@@deriving sexp_of]
 end
@@ -213,6 +231,8 @@ let name = function
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
+  | On_key_pressed _ -> Some On_key_pressed
+  | On_key_released _ -> Some On_key_released
 ;;
 
 let rec equal a b =
@@ -259,6 +279,15 @@ let rec equal a b =
     && Handler.equal a.handler b.handler
   | On_focus_enter a, On_focus_enter b -> Handler.equal a b
   | On_focus_leave a, On_focus_leave b -> Handler.equal a b
+  (* Same rule as [On_click]: the controller property structurally, the handler
+     physically. [On_key_pressed]'s handler is not a [Handler.t] -- it returns a
+     [Key_response.t] rather than an effect -- but it is still a closure the view rebuilds
+     every frame, so [phys_equal] is the only honest comparison and [Handler.equal] is
+     spelled out here rather than reached for. *)
+  | On_key_pressed a, On_key_pressed b ->
+    Phase.equal a.phase b.phase && phys_equal a.handler b.handler
+  | On_key_released a, On_key_released b ->
+    Phase.equal a.phase b.phase && Handler.equal a.handler b.handler
   | Many a, Many b -> List.equal equal a b
   | _ -> false
 ;;
@@ -315,5 +344,7 @@ let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
 
 let on_focus_enter f = On_focus_enter f
 let on_focus_leave f = On_focus_leave f
+let on_key_pressed ?(phase = Phase.Bubble) handler = On_key_pressed { phase; handler }
+let on_key_released ?(phase = Phase.Bubble) handler = On_key_released { phase; handler }
 let many l = Many l
 let empty = Many []

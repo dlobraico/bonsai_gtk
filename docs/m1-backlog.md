@@ -234,18 +234,34 @@ Tests:
     `button` and `phase`, that dropping the attr removes it, that GTK and this library
     agree on what is attached — is `test/live/live_controllers.ml`, counting by the
     debugging name `Controllers` sets on each controller;
+  - the same *plumbing* for keys — that `Attr.on_key_pressed`/`on_key_released` attach one
+    shared `GtkEventControllerKey`, that it carries the `phase` the attrs asked for (read
+    back off the live controller), that dropping one attr empties one slot while dropping
+    both removes the controller, and that two attrs asking for different phases are
+    rejected at mount and at patch — is `test/live/live_controllers.ml` too. `armed=` on
+    every line is what distinguishes an attached controller from one that would actually
+    call a handler, which is otherwise unobservable for an event nothing can deliver;
   - the *handler* — that a middle click with shift reaches the application's closure with
-    the right `Click_event.t` — is `test/handle/test_handle.ml`, headlessly, through
-    `Bonsai_gtk_test.Action.Click_at`;
+    the right `Click_event.t`, and that a key handler consumes Escape and lets `x` through
+    — is `test/handle/test_handle.ml`, headlessly, through
+    `Bonsai_gtk_test.Action.{Click_at,Key_press,Key_release}`. `Key_press` prints the
+    `Key_response.t` the handler answered, because that half of a key press is a value
+    GTK reads synchronously and there is no GTK headless;
   - the *trampoline* between them — slots, the `in_patch` guard, the exception guard, and
     the value `Payload` hands back to GTK on each of those three paths — is
     `test/live/live_signals.ml`, which calls the callback `Signals.connect_all` built
-    rather than emitting through GTK.
-  - **Not covered:** that GTK actually routes a real button press to the gesture this
-    library attached. Compensating controls: the gallery's Input section, and the
-    real-display click-through below. Closing it properly needs an ocgtk fork patch
-    exposing a `GdkEvent` constructor or `gtk_test_widget_click` (neither is bound today).
-    Task 4; the same gap covers Task 5's key controllers.
+    rather than emitting through GTK; and the key spec's own mapping from
+    `Key_response.t` to that value is `Controllers.key_pressed_answer`, called directly in
+    `live_controllers.ml` over all four constructors.
+  - **Not covered:** that GTK actually routes a real button press, or a real keystroke, to
+    the controller this library attached — and, for keys specifically, **that propagation
+    works**: neither suite can show that a `Handled` Escape failed to reach a sibling, or
+    that a `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The
+    routing is GTK's, and every input to it is asserted; the routing itself is not.
+    Compensating controls: the gallery's Input section, and the real-display click-through
+    below. Closing it properly needs an ocgtk fork patch exposing a `GdkEvent` constructor
+    or `gtk_test_widget_click`/`gtk_test_widget_send_key` (none is bound today). Tasks 4
+    and 5.
 - Focus is the exception and *is* covered end to end: `Widget.grab_focus` on a presented
   window really drives `GtkEventControllerFocus`, and `live_controllers.ml` asserts the
   handler fires, that the reentrancy guard drops a focus change made during a patch, and
@@ -257,7 +273,9 @@ Tests:
   observes the Bonsai action queue's length. Task 1.
 - Real-display click-through of `examples/gallery.exe` — it has only ever been run under
   `xvfb`. Task 10. This is now also the compensating control for the missing synthetic
-  click above, so it should exercise a widget carrying `Attr.on_click`.
+  click *and* key press above, so it should exercise a widget carrying `Attr.on_click` and
+  one carrying `Attr.on_key_pressed` — the latter in `Capture` phase with a focusable
+  child below it, since a wrong phase is the failure mode a plumbing test cannot see.
 - `Live_tree.dump` collapses a placeholder `""`: a widget whose only text is empty prints
   the same as one with no text at all. Task 4.
 - `focusable`/`can_focus` are absent from `Live_tree.dump`; showing them needs a per-class

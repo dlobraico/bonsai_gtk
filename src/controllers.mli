@@ -76,6 +76,29 @@ val attached_count : t -> int
     disarm another's slots. *)
 val armed : t -> Attr.Name.t list
 
+(** What [Attr.on_key_pressed]'s handler answers GTK for this attr and this event: the
+    [bool] [key-pressed] returns, and the effect (if any) to schedule alongside it.
+
+    This is the spec's own [fire], named so that a test can call it. It is the one link
+    between {!Bonsai_gtk_vtree.Key_response} and GTK's return value that nothing else
+    reaches: no key press can be synthesised through this binding, so without this the
+    mapping [Handled -> true] would be asserted by nothing at all — and inverted, a
+    handler that consumed Escape would let it through to whatever was below.
+
+    The [attr] is expected to be an [Attr.on_key_pressed]; anything else answers
+    {!key_pressed_declined}, which is the arm a slot holding some other attr would take
+    and is unreachable in practice. Exposed for [test/live/live_controllers.ml]. *)
+val key_pressed_answer : Attr.t -> Key_event.t -> bool * unit Ui_effect.t option
+
+(** [Gdk_constants.event_propagate] — the answer GTK gets when the application has said
+    nothing: an empty slot, an emission during a patch, or a handler that raised.
+
+    It must be the {i inert} one. The opposite would make a widget whose handler raised
+    swallow every keystroke that reached it, and a window with a broken handler would
+    silently eat the whole application's keyboard. Exposed so a test can pin it against
+    GDK rather than against the literal [false]. *)
+val key_pressed_declined : bool
+
 (** Whether a controller [Widget.observe_controllers] reported is one this module
     attached, by the debugging name it sets on every controller it creates.
 

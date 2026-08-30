@@ -18,10 +18,12 @@ type t =
   ; widget : Widget.t
   ; mutable click : W.Gesture_click.t attached option
   ; mutable focus : W.Event_controller_focus.t attached option
-  (* Task 5 adds [mutable key : W.Event_controller_key.t attached option]. *)
+  ; mutable key : W.Event_controller_key.t attached option
   }
 
-let create ctx ~node_path widget = { ctx; node_path; widget; click = None; focus = None }
+let create ctx ~node_path widget =
+  { ctx; node_path; widget; click = None; focus = None; key = None }
+;;
 
 (* GTK's own debugging label, and the only way to tell a controller this library attached
    from one the widget class attached itself: a [GtkButton] ships with a
@@ -62,6 +64,7 @@ let attached t (family : Events.Family.t) =
   match family with
   | Click -> Option.map t.click ~f:(fun a -> a.slots)
   | Focus -> Option.map t.focus ~f:(fun a -> a.slots)
+  | Key -> Option.map t.key ~f:(fun a -> a.slots)
 ;;
 
 let clear t =
@@ -197,6 +200,106 @@ let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
   ]
 ;;
 
+(* The two key attrs on one [GtkEventControllerKey], and the only place in this library
+   where a handler's answer reaches C.
+
+   [key-pressed]'s callback returns a [bool] -- GTK routes the key on it -- so this is a
+   [Payload] spec whose ['r] is [bool] and whose [declined] is [event_propagate]. That
+   constant, rather than a bare [false], because the value is not "false" in any
+   interesting sense: it is GDK's name for "I did not handle this, keep going", and
+   getting it backwards would make a widget whose handler raised, or whose slot is empty,
+   swallow every keystroke in the application. Those are precisely the three paths
+   [Signals.dispatch_payload] returns [declined] on -- empty slot, emission during a
+   patch, [fire] raised -- and on all three the application has said nothing.
+
+   [keyval] and [keycode] are callback arguments, so unlike the click gesture there is
+   nothing to read off the controller while the event is current; the modifiers come in as
+   [~state] rather than being fetched. The payload is still assembled in [connect] because
+   that is where the conversion from [Gdk_enums.modifiertype] belongs -- [vtree] cannot
+   name that type. *)
+(* [GDK_EVENT_PROPAGATE]. Named rather than written [false] at the two places it is
+   needed, so that the spec's [declined] and this module's fallback are the same value by
+   construction; [test/live/live_controllers.ml] pins it against [Gdk_constants]. *)
+let key_pressed_declined = Gdk_constants.event_propagate
+
+(* The whole of the decision, lifted out of the spec so that it can be called. It is the
+   one link in the chain from [Key_response.t] to GTK's [key-pressed] return that no test
+   could otherwise reach: [Key_response.handled] is pinned in [test/test_attrs.ml],
+   [Signals.dispatch_payload]'s three [declined] paths in [live_signals.ml], and the
+   callback's [bool] return type by the compiler -- but the mapping between them was
+   reachable only through a key press, and there is no synthetic key press. Getting it
+   backwards would make [Handled] fail to stop propagation, which is the whole point of
+   the constructor. *)
+let key_pressed_answer (attr : Attr.t) (e : Key_event.t) =
+  match (attr :> Attr.Private.t) with
+  | On_key_pressed { handler; _ } ->
+    let response = handler e in
+    Key_response.handled response, Key_response.effect response
+  | _ -> key_pressed_declined, None
+;;
+
+let key_pressed_spec (kc : W.Event_controller_key.t) : Signals.spec =
+  Payload
+    { attr = Attr.Name.On_key_pressed
+    ; connect =
+        (fun _w ~callback ->
+          Signals.connected
+            kc
+            (W.Event_controller_key.on_key_pressed
+               kc
+               ~callback:(fun ~keyval ~keycode ~state ->
+                 callback
+                   ({ keyval; keycode; modifiers = modifiers_of_gdk state } : Key_event.t))))
+    ; fire = (fun _w attr e -> key_pressed_answer attr e)
+    ; declined = key_pressed_declined
+    }
+;;
+
+(* [key-released] returns [unit] to GTK -- a release cannot be consumed, the press it
+   follows was routed long ago -- so its handler is an ordinary [Handler.t] and there is
+   no unsafe answer to get wrong. It is still a [Payload] rather than a [Read_back]: the
+   keyval is a callback argument and nothing on the controller remembers it afterwards. *)
+let key_released_spec (kc : W.Event_controller_key.t) : Signals.spec =
+  Payload
+    { attr = Attr.Name.On_key_released
+    ; connect =
+        (fun _w ~callback ->
+          Signals.connected
+            kc
+            (W.Event_controller_key.on_key_released
+               kc
+               ~callback:(fun ~keyval ~keycode ~state ->
+                 callback
+                   ({ keyval; keycode; modifiers = modifiers_of_gdk state } : Key_event.t))))
+    ; fire =
+        (fun _w attr e ->
+          match (attr :> Attr.Private.t) with
+          | On_key_released { handler; _ } -> (), Some (handler e)
+          | _ -> (), None)
+    ; declined = ()
+    }
+;;
+
+let key_specs kc = [ key_pressed_spec kc; key_released_spec kc ]
+
+(* One controller, one phase, and two attrs that can each ask for one. The rejection is
+   [Events.key_phase_rejection] rather than a message built here, because
+   [Bonsai_gtk_test] refuses the same node with the same string -- see that function.
+
+   Raising from [configure] is raising from inside [update], which the patcher calls at
+   mount and on every patch: the same place, and the same [Invalid_argument] carrying the
+   node path, as every other structural rejection (spec §11). It runs before
+   [add_controller] on the attach path, so a rejected node leaves nothing attached. *)
+let configure_key (kc : W.Event_controller_key.t) attrs ~node_path =
+  Option.iter (Events.key_phase_rejection ~path:node_path attrs) ~f:invalid_arg;
+  match Events.key_phase attrs with
+  | Some phase ->
+    W.Event_controller.set_propagation_phase
+      (kc :> W.Event_controller.t)
+      (propagation_phase phase)
+  | None -> ()
+;;
+
 (* Both properties are re-applied unconditionally: they are plain GTK properties that the
    gesture re-reads per event, and comparing first would mean keeping the old attr around
    for no gain. A frame that dropped the attr does not get here at all -- [sync]'s
@@ -262,6 +365,18 @@ let update t attrs =
              phase in M2, so it stays in GTK's default (bubble) phase. *)
         ~configure:(fun _ _ -> ())
         ~name:"focus"
+        attrs
+    | Key ->
+      sync
+        t
+        ~wanted
+        ~get:(fun t -> t.key)
+        ~set:(fun t a -> t.key <- a)
+        ~make:W.Event_controller_key.new_
+        ~upcast:(fun kc -> (kc :> W.Event_controller.t))
+        ~specs:key_specs
+        ~configure:(fun kc attrs -> configure_key kc attrs ~node_path:t.node_path)
+        ~name:"key"
         attrs)
 ;;
 
@@ -287,7 +402,10 @@ let release t =
       t.click <- None
     | Focus ->
       Option.iter t.focus ~f:(fun a -> detach a (fun c -> (c :> W.Event_controller.t)));
-      t.focus <- None)
+      t.focus <- None
+    | Key ->
+      Option.iter t.key ~f:(fun a -> detach a (fun c -> (c :> W.Event_controller.t)));
+      t.key <- None)
 ;;
 
 (* Derived from the same [Events.Family.t] match as everything else here, so a family that

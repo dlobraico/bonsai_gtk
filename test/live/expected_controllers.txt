@@ -5,16 +5,22 @@ gc regression done
 On_click -> family=(Click) attached=(bonsai_gtk.click)
 On_focus_enter -> family=(Focus) attached=(bonsai_gtk.focus)
 On_focus_leave -> family=(Focus) attached=(bonsai_gtk.focus)
+On_key_pressed -> family=(Key) attached=(bonsai_gtk.key)
+On_key_released -> family=(Key) attached=(bonsai_gtk.key)
 every controller attr attaches a controller
-n1 baseline: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5 armed=(On_click On_focus_enter On_focus_leave)
+n1 baseline: gtk=(bonsai_gtk.key bonsai_gtk.focus bonsai_gtk.click) bonsai=3 total=6 armed=(On_click On_focus_enter On_focus_leave On_key_pressed On_key_released)
 n1 focus from presenting the window: focus-enter
 n1 focus parked off the target: focus-leave
 n1 baseline focus: focus-enter,focus-leave
-n1 click family dropped: gtk=(bonsai_gtk.focus) bonsai=1 total=4 armed=(On_focus_enter On_focus_leave)
+n1 click family dropped: gtk=(bonsai_gtk.key bonsai_gtk.focus) bonsai=2 total=5 armed=(On_focus_enter On_focus_leave On_key_pressed On_key_released)
 n1 focus in the same frame that dropped on_click: focus-enter,focus-leave
-n1 both back: gtk=(bonsai_gtk.click bonsai_gtk.focus) bonsai=2 total=5 armed=(On_click On_focus_enter On_focus_leave)
-n1 focus family dropped: gtk=(bonsai_gtk.click) bonsai=1 total=4 armed=(On_click)
+n1 all three back: gtk=(bonsai_gtk.click bonsai_gtk.key bonsai_gtk.focus) bonsai=3 total=6 armed=(On_click On_focus_enter On_focus_leave On_key_pressed On_key_released)
+n1 focus family dropped: gtk=(bonsai_gtk.click bonsai_gtk.key) bonsai=2 total=5 armed=(On_click On_key_pressed On_key_released)
 n1 focus after its own family was dropped: 
+n1 all three back again: gtk=(bonsai_gtk.focus bonsai_gtk.click bonsai_gtk.key) bonsai=3 total=6 armed=(On_click On_focus_enter On_focus_leave On_key_pressed On_key_released)
+n1 focus parked off the target again: 
+n1 key family dropped: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5 armed=(On_click On_focus_enter On_focus_leave)
+n1 focus in the same frame that dropped the key attrs: focus-enter,focus-leave
 n1 regression done
 (GtkWindow (title (controllers)) (css (background))
  (children
@@ -50,3 +56,29 @@ focus after the attrs came back: focus-enter
 before destroy: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5 armed=(On_click On_focus_enter On_focus_leave)
 after destroy: gtk=() total=3
 destroyed cleanly
+keys both attrs: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed On_key_released)
+keys both attrs: phase=CAPTURE
+keys released dropped: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed)
+keys released dropped: phase=CAPTURE
+keys pressed dropped: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_released)
+keys pressed dropped: phase=CAPTURE
+keys both dropped: gtk=() bonsai=0 total=3 armed=()
+keys both dropped: no key controller of ours
+keys re-added in bubble: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed On_key_released)
+keys re-added in bubble: phase=BUBBLE
+keys moved to target: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed On_key_released)
+keys moved to target: phase=TARGET
+keys nothing was delivered: 
+key lifecycle done
+mount rejected: phases/0/0: Attr.on_key_pressed asks for Capture and Attr.on_key_released for Bubble, but they share one GtkEventControllerKey and so one propagation phase
+phases agreeing: phase=CAPTURE
+patch rejected: phases/0/0: Attr.on_key_pressed asks for Capture and Attr.on_key_released for Target, but they share one GtkEventControllerKey and so one propagation phase
+phases after the rejected patch: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=()
+phases after the rejected patch: phase=CAPTURE
+phase rejection done
+Propagate -> handled=false performed=false
+Handled -> handled=true performed=false
+(Propagate_and <effect>) -> handled=false performed=true
+(Handled_and <effect>) -> handled=true performed=true
+declined=false event_propagate=false event_stop=true
+key answers done

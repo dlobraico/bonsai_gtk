@@ -47,6 +47,8 @@ module Name : sig
     | On_click
     | On_focus_enter
     | On_focus_leave
+    | On_key_pressed
+    | On_key_released
   [@@deriving sexp_of, compare, equal, enumerate]
 
   (** [true] for the handler-carrying names.
@@ -137,6 +139,14 @@ module Private : sig
         }
     | On_focus_enter of unit Handler.t
     | On_focus_leave of unit Handler.t
+    | On_key_pressed of
+        { phase : Phase.t
+        ; handler : Key_response.handler
+        }
+    | On_key_released of
+        { phase : Phase.t
+        ; handler : Key_event.t Handler.t
+        }
     | Many of t list
 
   val sexp_of_t : t -> Sexp.t
@@ -383,6 +393,41 @@ val on_focus_enter : unit Handler.t -> t
 (** Fires when focus leaves this widget and all of its children. The other half of
     {!on_focus_enter}, on the same controller and the same terms. *)
 val on_focus_leave : unit Handler.t -> t
+
+(** A [GtkEventControllerKey] on this widget.
+
+    The handler is not a {!Handler.t}: it returns a {!Key_response.t} rather than an
+    effect, because GTK asks a key press a {i question} — "did anything handle this?" —
+    and routes the event on the answer, synchronously, on its own stack, long before the
+    frame that an effect would run in. So the decision is a pure function of the event and
+    the consequence rides along: [Handled_and eff] stops the routing {i and} schedules
+    [eff].
+
+    [phase] defaults to {!Phase.Bubble}, GTK's own. Use {!Phase.Capture} for a
+    window-or-dialog-wide key: in bubble phase GTK runs the {i last} controller added
+    first, so any controller a child adds afterwards sees the key first and can swallow
+    it, and "afterwards" is not something a declarative tree controls. A [GtkPopover] has
+    its own surface and so is not below the window in the capture chain — an open popover
+    still takes its own Escape.
+
+    Both this and {!on_key_released} share one controller, so a widget carrying both pays
+    for one; giving them different phases is [Invalid_argument] at mount, because there is
+    only one phase to write.
+
+    Like {!on_click}, legal on {i any} node: it is not a signal of some widget class but a
+    controller the runtime attaches to whatever carries it, and it exists exactly as long
+    as the attr does.
+
+    The keyval is a plain [int]; {!Bonsai_gtk_vtree.Keyval} names the ones worth naming. *)
+val on_key_pressed : ?phase:Phase.t -> (Key_event.t -> Key_response.t) -> t
+
+(** Fires when a key is released over this widget. The other half of {!on_key_pressed}, on
+    the same [GtkEventControllerKey] and therefore the same phase.
+
+    This handler {i is} an ordinary {!Handler.t}: GTK's [key-released] callback returns
+    [unit], so there is nothing to answer and no [Key_response.t] to return. A release
+    cannot be consumed — by the time it happens the press has already been routed. *)
+val on_key_released : ?phase:Phase.t -> Key_event.t Handler.t -> t
 
 val many : t list -> t
 val empty : t

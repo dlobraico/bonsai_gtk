@@ -33,12 +33,18 @@ module Grid_cell = Bonsai_gtk_vtree.Grid_cell
 module Orientation = Bonsai_gtk_vtree.Orientation
 
 (** The event-controller vocabulary: where a controller sits in GTK's routing
-    ({!Bonsai_gtk_vtree.Attr.on_click}'s [~phase]), which modifier keys were down, and
-    what a click carries. *)
+    ({!Bonsai_gtk_vtree.Attr.on_click}'s and {!Bonsai_gtk_vtree.Attr.on_key_pressed}'s
+    [~phase]), which modifier keys were down, what a click carries, and what a key press
+    carries and answers. Re-exported here for an application that has already opened
+    [Bonsai_gtk]; a view function that wants to stay ocgtk-free names them through
+    [Bonsai_gtk_vtree] instead, which is the same module. *)
 module Phase = Bonsai_gtk_vtree.Phase
 
 module Modifiers = Bonsai_gtk_vtree.Modifiers
 module Click_event = Bonsai_gtk_vtree.Click_event
+module Keyval = Bonsai_gtk_vtree.Keyval
+module Key_event = Bonsai_gtk_vtree.Key_event
+module Key_response = Bonsai_gtk_vtree.Key_response
 
 (** The escape hatch, for GTK widgets this library has no {!Node} constructor for. An
     application supplies the module that creates and updates the widget; the patcher

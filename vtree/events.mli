@@ -26,6 +26,7 @@ module Family : sig
   type t =
     | Click (** [GtkGestureClick] *)
     | Focus (** [GtkEventControllerFocus] *)
+    | Key (** [GtkEventControllerKey] *)
   [@@deriving sexp_of, equal, compare, enumerate]
 end
 
@@ -60,6 +61,28 @@ val is_controller_attr : Attr.Name.t -> bool
     whether a family's controller should exist at all: it should, exactly while at least
     one of these attrs is present. *)
 val family_attrs : Family.t -> Attr.Name.t list
+
+(** The propagation phase the [GtkEventControllerKey] shared by {!Attr.on_key_pressed} and
+    {!Attr.on_key_released} should be given; [None] when the node carries neither.
+
+    Both attrs carry a phase, because either may appear alone, but there is only one
+    controller and therefore only one phase to write. When both are present and agree,
+    this is that phase. When they disagree this answers with {!Attr.on_key_pressed}'s,
+    which is a value no caller ever reaches: {!key_phase_rejection} is non-[None] for
+    exactly those attrs, and both consumers check it first. *)
+val key_phase : Attrs.t -> Phase.t option
+
+(** The [Invalid_argument] message for a node whose two key attrs ask for different
+    propagation phases; [None] otherwise.
+
+    Rendered here rather than at either call site, and for the reason
+    {!Placement.rejection} is: [Controllers] raises it at mount and at patch, when it has
+    to pick a phase and cannot, and [Bonsai_gtk_test] raises the same string at handle
+    time so that a headless suite cannot certify a view the runtime refuses. Picking one
+    of the two silently is the alternative, and it would give one of the attrs a routing
+    phase its author did not ask for -- in the [Capture]/[Bubble] case, the difference
+    between a dialog that takes Escape and one whose child swallows it. *)
+val key_phase_rejection : path:string -> Attrs.t -> string option
 
 (** [is_supported kind name] is [true] if [name] is not an event name, is a controller
     attr (legal everywhere), or is a signal this kind emits. A non-event name is always

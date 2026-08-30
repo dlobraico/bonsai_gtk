@@ -63,6 +63,34 @@ module Action : sig
 
         Unlike the click pair, focus {i is} genuinely drivable live ([Widget.grab_focus]
         on a presented window), so these have a live counterpart. *)
+    | Key_press of string * Key_event.t
+    (** test_id of a node carrying [Attr.on_key_pressed], and the key to deliver. Fires
+        that handler with exactly that event, prints the
+        {!Bonsai_gtk_vtree.Key_response.t} it answered, and performs the effect that
+        response carries (if any). The answer is printed because it is the half of a key
+        press that cannot be returned: [Handled] is a value GTK reads synchronously, and
+        headless there is no GTK — so without the print, [Handled] and [Propagate] would
+        be indistinguishable in a golden whenever the handler schedules the same effect
+        for both.
+
+        What this {i cannot} model is propagation. A real key press walks GTK's capture
+        and bubble chains and stops where a handler says [Handled]; here it is delivered
+        to one node, by [test_id], and the [Handled]/[Propagate] half of the answer is not
+        acted on — there is no chain to act on it in. So a test can show that a handler
+        decided to consume Escape and what that decision did to the model; it cannot show
+        that the keystroke then failed to reach a sibling. That half is a live test, or
+        the application.
+
+        {b And, as with the click pair, this is the only test there is for a key handler}:
+        the pinned ocgtk binding can synthesise no key press
+        ([Event_controller_key.forward] only re-routes an event a controller is already
+        handling), so what a live test proves is that the controller is attached, named,
+        detached, and given the phase the attr asked for — see
+        [test/live/live_controllers.ml]. The gap is in the backlog. *)
+    | Key_release of string * Key_event.t
+    (** test_id of a node carrying [Attr.on_key_released], and the key. Fires that handler
+        with exactly that event. Nothing is printed: [key-released] returns [unit] to GTK,
+        so there is no answer to record. *)
   [@@deriving sexp_of]
 end
 
@@ -99,8 +127,12 @@ module Handle = Bonsai_test.Handle
       rather than by convention. This one matters more than it looks: a misplaced
       placement attr is applied by nobody and read by nobody, so without this check a
       headless suite is the {i only} place it could ever have been caught, and it passed.
+    - [Bonsai_gtk_vtree.Events.key_phase_rejection], so a node whose [Attr.on_key_pressed]
+      and [Attr.on_key_released] ask for different propagation phases raises here too.
+      They share one [GtkEventControllerKey] and therefore one phase, so there is nothing
+      the runtime could mount; both sides call the same function for the string.
 
-    Both are checked on the first [Handle.show]/[Handle.recompute_view], and on every
+    All three are checked on the first [Handle.show]/[Handle.recompute_view], and on every
     later one.
 
     What is still only checked at mount is the structural half that needs the widget
@@ -110,6 +142,16 @@ module Handle = Bonsai_test.Handle
     a [Node.window] anywhere but the root. None of those stops a handle here, so a suite
     that is entirely headless can still certify a tree that raises the moment it is shown.
     The escape from that is a live test, or running the app.
+
+    The second known gap is {i routing}. Every action here is delivered to one node, named
+    by [Attr.test_id]; there is no widget hierarchy for an event to travel through. So a
+    [Click_at] on a card does not also reach the container that would have handled it, a
+    [Key_press] that answers [Key_response.Handled] does not stop a sibling from seeing
+    the key, and [Attr.on_key_pressed]'s [~phase] — which decides only who sees a key
+    {i first} — has no effect at all here. What a test can show is that a handler made the
+    right decision and what that decision did to the model; that GTK then routes the event
+    accordingly is GTK's, and is not checked anywhere (see [docs/m1-backlog.md]), because
+    the pinned ocgtk binding can synthesise neither a click nor a key press.
 
     [Handle.do_actions] looks up every action in the call against *one* view snapshot —
     the tree [Handle.show]/[Handle.recompute_view] last computed — not the tree as it

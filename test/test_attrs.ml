@@ -152,3 +152,146 @@ let%expect_test "a click event sexps with its modifiers" =
      (meta false))
     |}]
 ;;
+
+(* The key attrs are values too, and the one thing a reader of a golden has to be able to
+   see is the [~phase]: it decides whether a dialog's Escape handler runs before or after
+   whatever its children attached, and nothing else prints it. *)
+let%expect_test "key attrs round-trip and diff" =
+  let pressed : Key_response.handler = fun _ -> Key_response.Propagate in
+  let released : Key_event.t Handler.t = fun _ -> noop in
+  let attrs =
+    Attrs.of_list
+      [ Attr.on_key_pressed ~phase:Capture pressed; Attr.on_key_released released ]
+  in
+  print_s [%sexp (attrs : Attrs.t)];
+  [%expect
+    {|
+    ((On_key_pressed (phase Capture) (handler <handler>))
+     (On_key_released (phase Bubble) (handler <handler>)))
+    |}];
+  (* Physically the same attrs diff to nothing; the handler alone changing is a Set. *)
+  let base = Attrs.of_list [ Attr.on_key_pressed pressed ] in
+  print_s
+    [%sexp
+      (Attrs.diff ~old:base ~new_:(Attrs.of_list [ Attr.on_key_pressed pressed ])
+       : Attrs.op list)];
+  [%expect {| () |}];
+  print_s
+    [%sexp
+      (Attrs.diff
+         ~old:base
+         ~new_:(Attrs.of_list [ Attr.on_key_pressed (fun _ -> Key_response.Handled) ])
+       : Attrs.op list)];
+  [%expect {| ((Set (On_key_pressed (phase Bubble) (handler <handler>)))) |}];
+  (* And [~phase] is part of the attr's identity, like [on_click]'s [~button]: it is a
+     property of the controller that [Controllers.update] re-reads, so moving it has to be
+     a [Set] even though the handler is physically unchanged. *)
+  print_s
+    [%sexp
+      (Attrs.diff
+         ~old:base
+         ~new_:(Attrs.of_list [ Attr.on_key_pressed ~phase:Capture pressed ])
+       : Attrs.op list)];
+  [%expect {| ((Set (On_key_pressed (phase Capture) (handler <handler>)))) |}]
+;;
+
+(* [Key_response.sexp_of_t] prints the effect as [<effect>] rather than trying to describe
+   it, which is what makes a golden comparing two responses compare the decision and not
+   two closures. The four constructors are the whole of what a handler can answer. *)
+let%expect_test "a key response sexps its decision and hides its effect" =
+  List.iter
+    [ Key_response.Propagate; Handled; Propagate_and noop; Handled_and noop ]
+    ~f:(fun r ->
+      print_s
+        [%sexp
+          (r : Key_response.t)
+          , `handled (Key_response.handled r : bool)
+          , `has_effect (Option.is_some (Key_response.effect r) : bool)]);
+  [%expect
+    {|
+    (Propagate (handled false) (has_effect false))
+    (Handled (handled true) (has_effect false))
+    ((Propagate_and <effect>) (handled false) (has_effect true))
+    ((Handled_and <effect>) (handled true) (has_effect true))
+    |}]
+;;
+
+(* A key event carries the logical keyval, the hardware keycode and the modifier state,
+   and [Keyval] is how a view names the first of the three without linking ocgtk. *)
+let%expect_test "a key event sexps with its keyval" =
+  print_s
+    [%sexp
+      ({ Key_event.keyval = Keyval.escape
+       ; keycode = 9
+       ; modifiers = { Modifiers.none with control = true }
+       }
+       : Key_event.t)];
+  [%expect
+    {|
+    ((keyval 65307) (keycode 9)
+     (modifiers
+      ((shift false) (control true) (alt false) (super false) (hyper false)
+       (meta false))))
+    |}];
+  (* The named keysyms, so that a change to one of them is a diff here as well as a
+     MISMATCH in [test/live/live_keyvals.ml] -- this file runs without a display and is
+     what a reader checks against X11's keysymdef.h. *)
+  print_s
+    [%sexp
+      (List.map
+         [ "escape", Keyval.escape
+         ; "return", Keyval.return
+         ; "kp_enter", Keyval.kp_enter
+         ; "tab", Keyval.tab
+         ; "iso_left_tab", Keyval.iso_left_tab
+         ; "space", Keyval.space
+         ; "backspace", Keyval.backspace
+         ; "delete", Keyval.delete
+         ; "up", Keyval.up
+         ; "down", Keyval.down
+         ; "left", Keyval.left
+         ; "right", Keyval.right
+         ; "home", Keyval.home
+         ; "end_", Keyval.end_
+         ; "page_up", Keyval.page_up
+         ; "page_down", Keyval.page_down
+         ; "slash", Keyval.slash
+         ; "f1", Keyval.f 1
+         ; "f12", Keyval.f 12
+         ; "of_char 'w'", Keyval.of_char 'w'
+         ; "of_char 'W'", Keyval.of_char 'W'
+         ; "of_char '/'", Keyval.of_char '/'
+         ]
+         ~f:(fun (name, v) -> name, sprintf "%#x" v)
+       : (string * string) list)];
+  [%expect
+    {|
+    ((escape 0xff1b) (return 0xff0d) (kp_enter 0xff8d) (tab 0xff09)
+     (iso_left_tab 0xfe20) (space 0x20) (backspace 0xff08) (delete 0xffff)
+     (up 0xff52) (down 0xff54) (left 0xff51) (right 0xff53) (home 0xff50)
+     (end_ 0xff57) (page_up 0xff55) (page_down 0xff56) (slash 0x2f) (f1 0xffbe)
+     (f12 0xffc9) ("of_char 'w'" 0x77) ("of_char 'W'" 0x57) ("of_char '/'" 0x2f))
+    |}]
+;;
+
+(* Both halves of {!Keyval}'s two partial functions raise rather than returning a keysym
+   that is merely plausible: outside printable ASCII a character's keysym is not its code
+   point, and an application comparing against a wrong one would simply never match. *)
+let%expect_test "Keyval.of_char and Keyval.f reject what they cannot answer" =
+  Expect_test_helpers_core.require_does_raise (fun () -> Keyval.of_char '\n');
+  [%expect
+    {|
+    (Invalid_argument
+     "Keyval.of_char: 0xa is not printable ASCII (0x20..0x7e), and its keysym is not its code point")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () -> Keyval.of_char '\255');
+  [%expect
+    {|
+    (Invalid_argument
+     "Keyval.of_char: 0xff is not printable ASCII (0x20..0x7e), and its keysym is not its code point")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () -> Keyval.f 0);
+  [%expect {| (Invalid_argument "Keyval.f: 0 is not in 1..12") |}];
+  Expect_test_helpers_core.require_does_raise (fun () -> Keyval.f 13);
+  [%expect {| (Invalid_argument "Keyval.f: 13 is not in 1..12") |}]
+;;

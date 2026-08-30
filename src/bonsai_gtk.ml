@@ -18,6 +18,9 @@ module Orientation = Bonsai_gtk_vtree.Orientation
 module Phase = Bonsai_gtk_vtree.Phase
 module Modifiers = Bonsai_gtk_vtree.Modifiers
 module Click_event = Bonsai_gtk_vtree.Click_event
+module Keyval = Bonsai_gtk_vtree.Keyval
+module Key_event = Bonsai_gtk_vtree.Key_event
+module Key_response = Bonsai_gtk_vtree.Key_response
 
 module Native = struct
   module type S = Native_gtk.S

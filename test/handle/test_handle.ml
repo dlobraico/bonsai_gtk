@@ -805,3 +805,253 @@ let%expect_test "a click action on a node with no click handler fails" =
     Bonsai_gtk_test.Handle.recompute_view handle);
   [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_click handler") |}]
 ;;
+
+(* Stavekeeper's [dialog.ml:37-51] in miniature: a sheet that consumes Escape in the
+   capture phase and lets everything else through. This is the shape that forced
+   [Key_response.t] -- closing the dialog is an effect, but "GTK, stop routing this" is an
+   answer that has to be given synchronously, and the handler has to give both.
+
+   The printed line is the answer; the diff is the effect. A headless test can see both,
+   and between them they are the whole of what an application writes. What it cannot see
+   is the routing itself -- see [Key_press]'s doc. *)
+let%expect_test "Escape is handled, other keys propagate" =
+  let app (graph @ local) =
+    let open_, set_open = Bonsai.state true graph in
+    let%arr open_ and set_open in
+    Node.window
+      ~title:"dialog"
+      (Node.box
+         ~orientation:Vertical
+         ~attrs:
+           [ Attr.test_id "sheet"
+           ; Attr.on_key_pressed ~phase:Capture (fun (e : Key_event.t) ->
+               if e.keyval = Keyval.escape
+               then Key_response.Handled_and (set_open false)
+               else Propagate)
+           ]
+         [ Node.label ~attrs:[ Attr.test_id "state" ] (if open_ then "open" else "closed")
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (dialog))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical))))
+         (attrs
+          ((Test_id sheet) (On_key_pressed (phase Capture) (handler <handler>))))
+         (children
+          (List
+           (((kind (Label ((text open)))) (attrs ((Test_id state)))
+             (children No_children))))))))))
+    |}];
+  let press keyval =
+    Bonsai_gtk_test.Handle.do_actions
+      handle
+      [ Key_press ("sheet", { keyval; keycode = 0; modifiers = Modifiers.none }) ]
+  in
+  press (Keyval.of_char 'x');
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| key_pressed sheet -> Propagate |}];
+  press Keyval.escape;
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+    key_pressed sheet -> (Handled_and <effect>)
+
+      ((kind (Window ((title (dialog))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical))))
+           (attrs
+            ((Test_id sheet) (On_key_pressed (phase Capture) (handler <handler>))))
+           (children
+            (List
+    -|       (((kind (Label ((text open)))) (attrs ((Test_id state)))
+    +|       (((kind (Label ((text closed)))) (attrs ((Test_id state)))
+               (children No_children))))))))))
+    |}]
+;;
+
+(* [Propagate_and] is the constructor a reader asks about, and the one that has no shorter
+   spelling: observing a key without consuming it. Without it an observer would have to
+   answer [Handled] and the keystroke would stop reaching whatever was meant to receive
+   it. *)
+let%expect_test "a key press can be observed without being consumed" =
+  let app (graph @ local) =
+    let log, set_log = Bonsai.state [] graph in
+    let%arr log and set_log in
+    Node.window
+      ~title:"observer"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.label
+             ~attrs:
+               [ Attr.test_id "watched"
+               ; Attr.on_key_pressed (fun (e : Key_event.t) ->
+                   Key_response.Propagate_and
+                     (set_log (sprintf "%#x ctrl=%b" e.keyval e.modifiers.control :: log)))
+               ; Attr.on_key_released (fun (e : Key_event.t) ->
+                   set_log (sprintf "up %#x" e.keyval :: log))
+               ]
+             "watched"
+         ; Node.label ~attrs:[ Attr.test_id "log" ] (String.concat ~sep:"," log)
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (observer))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Label ((text watched))))
+             (attrs
+              ((Test_id watched)
+               (On_key_pressed (phase Bubble) (handler <handler>))
+               (On_key_released (phase Bubble) (handler <handler>))))
+             (children No_children))
+            ((kind (Label ((text "")))) (attrs ((Test_id log)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Key_press
+        ( "watched"
+        , { Key_event.keyval = Keyval.of_char 'w'
+          ; keycode = 25
+          ; modifiers = { Modifiers.none with control = true }
+          } )
+    ];
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  (* No line is printed for the release: [key-released] returns [unit] to GTK, so there is
+     no answer to record. *)
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Key_release
+        ( "watched"
+        , { Key_event.keyval = Keyval.of_char 'w'
+          ; keycode = 25
+          ; modifiers = Modifiers.none
+          } )
+    ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+    key_pressed watched -> (Propagate_and <effect>)
+
+      ((kind (Window ((title (observer))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Label ((text watched))))
+               (attrs
+                ((Test_id watched)
+                 (On_key_pressed (phase Bubble) (handler <handler>))
+                 (On_key_released (phase Bubble) (handler <handler>))))
+               (children No_children))
+    -|        ((kind (Label ((text "")))) (attrs ((Test_id log)))
+    -|         (children No_children))))))))))
+    +|        ((kind (Label ((text "up 0x77,0x77 ctrl=true"))))
+    +|         (attrs ((Test_id log))) (children No_children))))))))))
+    |}]
+;;
+
+(* The two key attrs share one [GtkEventControllerKey] and so one propagation phase.
+   Asking for two is a node the runtime cannot mount, and this is the check that stops a
+   headless suite certifying it anyway: [Controllers.configure_key] and this handle both
+   render [Events.key_phase_rejection], so the message is identical rather than merely
+   similar. *)
+let%expect_test "two key attrs with different phases are rejected by the handle" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"phases"
+         (Node.label
+            ~attrs:
+              [ Attr.on_key_pressed ~phase:Capture (fun _ -> Key_response.Propagate)
+              ; Attr.on_key_released ~phase:Bubble (fun _ -> Ui_effect.Ignore)
+              ]
+            "sheet"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create app in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: Attr.on_key_pressed asks for Capture and Attr.on_key_released for Bubble, but they share one GtkEventControllerKey and so one propagation phase")
+    |}];
+  (* The same two attrs agreeing is fine, and either one alone is fine -- the phase only
+     has to be single-valued, not present twice. *)
+  let ok (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"phases"
+         (Node.label
+            ~attrs:
+              [ Attr.on_key_pressed ~phase:Capture (fun _ -> Key_response.Propagate)
+              ; Attr.on_key_released ~phase:Capture (fun _ -> Ui_effect.Ignore)
+              ]
+            "sheet"))
+  in
+  let handle = Bonsai_gtk_test.create ok in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (phases))))) (attrs ())
+     (children
+      (Single
+       (((kind (Label ((text sheet))))
+         (attrs
+          ((On_key_pressed (phase Capture) (handler <handler>))
+           (On_key_released (phase Capture) (handler <handler>))))
+         (children No_children))))))
+    |}]
+;;
+
+(* Same rule as every other action: a node that carries no such handler fails rather than
+   quietly doing nothing. *)
+let%expect_test "a key action on a node with no key handler fails" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window ~title:"no keys" (Node.label ~attrs:[ Attr.test_id "plain" ] "plain"))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title ("no keys"))))) (attrs ())
+     (children
+      (Single
+       (((kind (Label ((text plain)))) (attrs ((Test_id plain)))
+         (children No_children))))))
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions
+      handle
+      [ Key_press
+          ( "plain"
+          , { Key_event.keyval = Keyval.escape; keycode = 0; modifiers = Modifiers.none }
+          )
+      ];
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_key_pressed handler") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions
+      handle
+      [ Key_release
+          ( "plain"
+          , { Key_event.keyval = Keyval.escape; keycode = 0; modifiers = Modifiers.none }
+          )
+      ];
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_key_released handler") |}]
+;;

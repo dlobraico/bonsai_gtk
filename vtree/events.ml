@@ -49,18 +49,20 @@ let for_kind : Kind.t -> Attr.Name.t list = function
    [live_events.ml] pass (no impl declares them) -- and the handler would never run, on
    any widget, with no diagnostic anywhere. That is exactly the silent inertness
    [require_specs] exists to prevent, reintroduced through the door the controller
-   carve-out opens. Task 5 adds [Key] to {!Family.t} and its names here, and the compiler
-   asks for the rest. *)
+   carve-out opens. Adding [Key] here was four compile errors and no thought, which is
+   what the table was for. *)
 module Family = struct
   type t =
     | Click
     | Focus
+    | Key
   [@@deriving sexp_of, equal, compare, enumerate]
 end
 
 let controller_family : Attr.Name.t -> Family.t option = function
   | On_click -> Some Click
   | On_focus_enter | On_focus_leave -> Some Focus
+  | On_key_pressed | On_key_released -> Some Key
   | Margin_start
   | Margin_end
   | Margin_top
@@ -93,6 +95,53 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_revealed
   | On_position_changed
   | On_visible_child_changed -> None
+;;
+
+(* One [GtkEventControllerKey] serves both key attrs, so there is exactly one propagation
+   phase to write and two places that can ask for one. Two attrs asking for different
+   phases is a mistake with no good resolution -- picking either silently gives one of
+   them behaviour its author did not ask for -- so it is a rejection, like every other
+   structural mistake (spec §11).
+
+   It lives here rather than in [Controllers] for the reason [for_kind] and
+   [Placement.reader] do: the runtime is not the only thing that has to refuse this tree.
+   [Bonsai_gtk_test] refuses it too, from this same function, so a headless suite cannot
+   certify a view that raises the moment it is shown -- which is the whole point of
+   putting these tables in [vtree]. Both callers render {!key_phase_rejection}'s string,
+   so the two messages are identical outright rather than by convention. *)
+let key_phases attrs =
+  ( (match (Attrs.find attrs On_key_pressed :> Attr.Private.t option) with
+     | Some (On_key_pressed { phase; _ }) -> Some phase
+     | Some _ | None -> None)
+  , match (Attrs.find attrs On_key_released :> Attr.Private.t option) with
+    | Some (On_key_released { phase; _ }) -> Some phase
+    | Some _ | None -> None )
+;;
+
+let key_phase attrs =
+  match key_phases attrs with
+  | Some p, _ -> Some p
+  | None, r -> r
+;;
+
+(* Plain [sprintf] over a pre-rendered name rather than
+   [!"...%{sexp: Phase.t}..."]: ocamlformat rewrites a [\]-continued ppx_custom_printf
+   literal by joining the lines and keeping their indentation, so the message comes out
+   with a run of spaces down the middle of it. [Placement.rejection] is plain [sprintf]
+   for the same reason. *)
+let phase_name phase = Sexp.to_string (Phase.sexp_of_t phase)
+
+let key_phase_rejection ~path attrs =
+  match key_phases attrs with
+  | Some pressed, Some released when not (Phase.equal pressed released) ->
+    Some
+      (sprintf
+         "%s: Attr.on_key_pressed asks for %s and Attr.on_key_released for %s, but they \
+          share one GtkEventControllerKey and so one propagation phase"
+         path
+         (phase_name pressed)
+         (phase_name released))
+  | (Some _ | None), (Some _ | None) -> None
 ;;
 
 (* The controller attrs are legal on every kind: they are not any impl's signal, they are

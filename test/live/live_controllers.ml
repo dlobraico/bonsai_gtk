@@ -13,18 +13,23 @@ let cast = Bonsai_gtk.Private.Gtk_import.cast
 (* What this file can and cannot prove, stated once so that a reader of the golden is not
    misled by it.
 
-   {b There is no synthetic click in the pinned ocgtk binding.} There is no [GdkEvent]
-   constructor for any event subtype; [Gobject.Signal.emit_by_name] takes no arguments and
-   returns unit, so it cannot deliver [~n_press ~x ~y]; and [Event_controller_key.forward]
-   only re-routes an event a controller is already handling. So no test anywhere can make
-   GTK route a real button press to a [GtkGestureClick] this library attached. What this
-   file proves for {b click} is therefore the plumbing: that the attr attaches a
-   controller, that dropping it removes one, that the gesture's button and phase reach
-   GTK, and that the widget survives both. The handler half is proved headlessly, in
-   [test/handle/test_handle.ml]'s "a click action carries the button and the modifiers",
-   and the trampoline that stands between them -- slots, the [in_patch] guard, the
-   exception guard, the value handed back to GTK -- in [live_signals.ml]. The gap between
-   those and "GTK really routes a middle click here" is real and is in the backlog.
+   {b There is no synthetic click or key press in the pinned ocgtk binding.} There is no
+   [GdkEvent] constructor for any event subtype; [Gobject.Signal.emit_by_name] takes no
+   arguments and returns unit, so it cannot deliver [~n_press ~x ~y] or
+   [~keyval ~keycode ~state]; and [Event_controller_key.forward] only re-routes an event a
+   controller is {i already handling}, which is a thing that can only be true inside a
+   handler this file cannot cause to run. So no test anywhere can make GTK route a real
+   button press or keystroke to a controller this library attached. What this file proves
+   for {b click} and {b key} is therefore the plumbing: that the attr attaches a
+   controller, that dropping it removes one, that the gesture's button and the
+   controller's propagation phase reach GTK, that the slot is armed (which is a different
+   fact from the controller being attached, and the only one that says the handler would
+   be called), and that the widget survives all of it. The handler half is proved
+   headlessly, in [test/handle/test_handle.ml]'s "a click action carries the button and
+   the modifiers" and "Escape is handled, other keys propagate", and the trampoline that
+   stands between them -- slots, the [in_patch] guard, the exception guard, the value
+   handed back to GTK -- in [live_signals.ml]. The gap between those and "GTK really
+   routes a middle click, or an Escape, here" is real and is in the backlog.
 
    {b Focus is different}: [Widget.grab_focus] is a real focus-chain operation, so on a
    presented window it drives [GtkEventControllerFocus] for real. The focus half of this
@@ -92,6 +97,35 @@ let click_gesture_props label w =
       | `TARGET -> "TARGET"
     in
     printf "%s: button=%d phase=%s\n" label (W.Gesture_single.get_button (cast o)) phase
+;;
+
+(* The same read-back for the key controller, and it matters more than the gesture's: a
+   key controller in the wrong phase is the failure stavekeeper's [dialog.ml] comment is
+   entirely about. In BUBBLE, GTK runs the *last* controller added first, so a controller
+   a child adds later sees Escape first and swallows it, and the dialog never closes. With
+   no key press deliverable, this read-back is the only evidence there is that
+   [Attr.on_key_pressed ~phase:Capture] reaches GTK at all.
+
+   It also asserts there is exactly one of ours: both key attrs share a single
+   [GtkEventControllerKey], and a second one would be a widget paying twice and, in
+   capture phase, two handlers racing for the same key. *)
+let key_controller_props label w =
+  match
+    List.filter (ours w) ~f:(fun c ->
+      String.equal (Gobject.Type.name (Gobject.get_type c)) "GtkEventControllerKey")
+  with
+  | [] -> printf "%s: no key controller of ours\n" label
+  | _ :: _ :: _ as all ->
+    printf "%s: %d key controllers of ours!\n" label (List.length all)
+  | [ o ] ->
+    let phase =
+      match W.Event_controller.get_propagation_phase o with
+      | `NONE -> "NONE"
+      | `CAPTURE -> "CAPTURE"
+      | `BUBBLE -> "BUBBLE"
+      | `TARGET -> "TARGET"
+    in
+    printf "%s: phase=%s\n" label phase
 ;;
 
 (* The window's box's n'th child, as both the live record and the GTK widget. *)
@@ -215,6 +249,8 @@ let each_controller_attr : (Attr.Name.t * Attr.t) list =
   [ On_click, Attr.on_click (fun _ -> Ui_effect.Ignore)
   ; On_focus_enter, Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
   ; On_focus_leave, Attr.on_focus_leave (fun () -> Ui_effect.Ignore)
+  ; On_key_pressed, Attr.on_key_pressed (fun _ -> Key_response.Propagate)
+  ; On_key_released, Attr.on_key_released (fun _ -> Ui_effect.Ignore)
   ]
 ;;
 
@@ -254,7 +290,7 @@ let () =
 ;;
 
 (* Regression for N1: removing one controller family must not disarm the families beside
-   it, in either direction.
+   it, in any direction.
 
    [Controllers.update] visits the families in [Events.Family.all] order and each family's
    own [sync] is the only thing that re-arms it, so an emptying that happens *between* two
@@ -263,17 +299,19 @@ let () =
    while keeping [on_click] left the gesture attached with an empty slot, so a middle
    click between that frame and the next render reached nothing. It was invisible because
    no click can be delivered -- hence [Controllers.armed], which is the only way to tell a
-   gesture that will call something from one that will not.
+   controller that will call something from one that will not.
 
-   Both directions, because the order of [Events.Family.all] decides which family is the
-   victim and Task 5 appends a third: the click-dropped direction is asserted through the
-   focus handlers actually firing, *in the same frame as the patch* (no second render
-   intervenes), and the focus-dropped direction through the click slot still being armed,
-   which is all that can be observed of it. *)
+   All three directions, because the order of [Events.Family.all] decides which family is
+   the victim: [Key] was appended to it, which moves the order again and makes the
+   click-dropped direction the widest of the three (both of the families after it would go
+   dark). The click-dropped direction is asserted through the focus handlers actually
+   firing, *in the same frame as the patch* (no second render intervenes), and through the
+   key slots still being armed; the other two through the slots, which is all that can be
+   observed of a controller nothing can deliver an event to. *)
 let () =
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
   let ctx = presenting_ctx scheduler in
-  let view ~with_click ~with_focus =
+  let view ~with_click ~with_focus ~with_key =
     Node.window
       ~title:"n1"
       (Node.box
@@ -302,6 +340,20 @@ let () =
                             record "focus-leave";
                             Ui_effect.Ignore))
                      else None)
+                  ; (if with_key
+                     then
+                       Some
+                         (Attr.on_key_pressed (fun _ ->
+                            record "key-pressed";
+                            Key_response.Handled))
+                     else None)
+                  ; (if with_key
+                     then
+                       Some
+                         (Attr.on_key_released (fun _ ->
+                            record "key-released";
+                            Ui_effect.Ignore))
+                     else None)
                   ])
              ~label:"target"
              ()
@@ -327,7 +379,11 @@ let () =
     pump ()
   in
   let live =
-    P.mount ctx ~path:"n1" ~is_root:true (view ~with_click:true ~with_focus:true)
+    P.mount
+      ctx
+      ~path:"n1"
+      ~is_root:true
+      (view ~with_click:true ~with_focus:true ~with_key:true)
   in
   P.run_fixups ctx;
   controllers "n1 baseline" (nth live 0) (nth live 0).widget;
@@ -342,22 +398,38 @@ let () =
   drain "n1 focus parked off the target";
   focus_round live;
   drain "n1 baseline focus";
-  (* Direction 1: drop the click family, keep focus. The focus attrs are byte-identical
-     across this frame, so anything that stops them firing came from the click family's
-     removal. Driven immediately, before any further render. *)
-  let live = patch live (view ~with_click:false ~with_focus:true) in
+  (* Direction 1: drop the click family, keep focus and key. Click is first in
+     [Family.all], so under the round-1 bug this is the frame that wiped both of the
+     others. The focus and key attrs are byte-identical across it, so anything that stops
+     them firing -- or empties their slots -- came from the click family's removal. Driven
+     immediately, before any further render. *)
+  let live = patch live (view ~with_click:false ~with_focus:true ~with_key:true) in
   controllers "n1 click family dropped" (nth live 0) (nth live 0).widget;
   focus_round live;
   drain "n1 focus in the same frame that dropped on_click";
-  (* Direction 2: back to both, then drop the focus family and keep click. Nothing can
-     deliver a click, so the assertion is the slot: [armed=(On_click)] is a gesture that
-     will call the handler, [armed=()] is one that is attached and inert. *)
-  let live = patch live (view ~with_click:true ~with_focus:true) in
-  controllers "n1 both back" (nth live 0) (nth live 0).widget;
-  let live = patch live (view ~with_click:true ~with_focus:false) in
+  (* Direction 2: back to all three, then drop the focus family. Nothing can deliver a
+     click or a key, so the assertion is the slots:
+     [armed=(On_click On_key_pressed On_key_released)] is a widget whose handlers would be
+     called, [armed=()] one whose controllers are attached and inert. *)
+  let live = patch live (view ~with_click:true ~with_focus:true ~with_key:true) in
+  controllers "n1 all three back" (nth live 0) (nth live 0).widget;
+  let live = patch live (view ~with_click:true ~with_focus:false ~with_key:true) in
   controllers "n1 focus family dropped" (nth live 0) (nth live 0).widget;
   focus_round live;
   drain "n1 focus after its own family was dropped";
+  (* Direction 3: back to all three, then drop the key family -- the one this task added,
+     and the one at the end of [Family.all], so it is the direction a future family
+     appended after it would break first. Focus is driven for real in the same frame, and
+     the click slot has to still be armed. *)
+  let live = patch live (view ~with_click:true ~with_focus:true ~with_key:true) in
+  controllers "n1 all three back again" (nth live 0) (nth live 0).widget;
+  ignore (W.Widget.grab_focus (nth live 1).widget : bool);
+  pump ();
+  drain "n1 focus parked off the target again";
+  let live = patch live (view ~with_click:true ~with_focus:true ~with_key:false) in
+  controllers "n1 key family dropped" (nth live 0) (nth live 0).widget;
+  focus_round live;
+  drain "n1 focus in the same frame that dropped the key attrs";
   P.destroy ctx live;
   printf "n1 regression done\n"
 ;;
@@ -536,4 +608,220 @@ let () =
     (names target)
     (List.length (all_controllers target));
   printf "destroyed cleanly\n"
+;;
+
+(* The key family's own lifecycle, and the two facts about it that are directly
+   observable: the phase GTK was actually given, and which slots are armed.
+
+   Both key attrs share one [GtkEventControllerKey], so the interesting frames are the
+   ones where only one of them is present -- the controller has to stay, with one slot
+   emptied, rather than being removed and rebuilt. That is [sync]'s [Some _, true] branch
+   with an attr genuinely disappearing, and [Controllers.armed] is what tells the two
+   apart. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx = presenting_ctx scheduler in
+  let view ?(phase = Phase.Capture) ~with_pressed ~with_released () =
+    Node.window
+      ~title:"keys"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.button
+             ~attrs:
+               (List.filter_opt
+                  [ (if with_pressed
+                     then
+                       Some
+                         (Attr.on_key_pressed ~phase (fun _ ->
+                            record "key-pressed";
+                            Key_response.Handled))
+                     else None)
+                  ; (if with_released
+                     then
+                       Some
+                         (Attr.on_key_released ~phase (fun _ ->
+                            record "key-released";
+                            Ui_effect.Ignore))
+                     else None)
+                  ])
+             ~label:"target"
+             ()
+         ; Node.button ~label:"other" ()
+         ])
+  in
+  let patch live v =
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"keys" ~is_root:true live v)
+    in
+    P.run_fixups ctx;
+    live
+  in
+  let live =
+    P.mount
+      ctx
+      ~path:"keys"
+      ~is_root:true
+      (view ~with_pressed:true ~with_released:true ())
+  in
+  P.run_fixups ctx;
+  controllers "keys both attrs" (nth live 0) (nth live 0).widget;
+  key_controller_props "keys both attrs" (nth live 0).widget;
+  (* One attr of the shared family going away is not the family going away: the controller
+     stays, and exactly one slot empties. A rebuild would show up as the same [bonsai=1]
+     with both slots armed. *)
+  let live = patch live (view ~with_pressed:true ~with_released:false ()) in
+  controllers "keys released dropped" (nth live 0) (nth live 0).widget;
+  key_controller_props "keys released dropped" (nth live 0).widget;
+  let live = patch live (view ~with_pressed:false ~with_released:true ()) in
+  controllers "keys pressed dropped" (nth live 0) (nth live 0).widget;
+  (* [on_key_released] alone still carries the phase, which is why both attrs have a
+     [?phase] rather than only [on_key_pressed]: with only the release attr present there
+     would otherwise be no way to say where the controller sits. *)
+  key_controller_props "keys pressed dropped" (nth live 0).widget;
+  (* Both gone: the controller is removed, not merely disarmed. *)
+  let live = patch live (view ~with_pressed:false ~with_released:false ()) in
+  controllers "keys both dropped" (nth live 0) (nth live 0).widget;
+  key_controller_props "keys both dropped" (nth live 0).widget;
+  (* And a later frame gets a fresh one, configured from the attrs of *that* frame -- the
+     phase is re-read, not remembered. *)
+  let live = patch live (view ~phase:Bubble ~with_pressed:true ~with_released:true ()) in
+  controllers "keys re-added in bubble" (nth live 0) (nth live 0).widget;
+  key_controller_props "keys re-added in bubble" (nth live 0).widget;
+  (* A phase change on a controller that is already attached re-applies the property
+     rather than rebuilding: same [GtkEventControllerKey], new phase. *)
+  let live = patch live (view ~phase:Target ~with_pressed:true ~with_released:true ()) in
+  controllers "keys moved to target" (nth live 0) (nth live 0).widget;
+  key_controller_props "keys moved to target" (nth live 0).widget;
+  (* Nothing fired throughout: no key press is deliverable through this binding, and the
+     drain is here so that a future binding that *can* deliver one turns this line into a
+     failing diff rather than passing silently. *)
+  drain "keys nothing was delivered";
+  P.destroy ctx live;
+  printf "key lifecycle done\n"
+;;
+
+(* Two key attrs asking for different propagation phases is a node that cannot be mounted:
+   one [GtkEventControllerKey], one phase, and picking either silently would give one attr
+   routing its author did not ask for. Raised from [Controllers], with the node path, like
+   every other structural rejection; [test/handle/test_handle.ml] pins that
+   [Bonsai_gtk_test] refuses the same tree with the same string, which is what stops a
+   headless suite certifying it. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx = presenting_ctx scheduler in
+  let view ~pressed_phase ~released_phase =
+    Node.window
+      ~title:"phases"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.button
+             ~attrs:
+               [ Attr.on_key_pressed ~phase:pressed_phase (fun _ ->
+                   Key_response.Propagate)
+               ; Attr.on_key_released ~phase:released_phase (fun _ -> Ui_effect.Ignore)
+               ]
+             ~label:"target"
+             ()
+         ])
+  in
+  (match
+     P.mount
+       ctx
+       ~path:"phases"
+       ~is_root:true
+       (view ~pressed_phase:Capture ~released_phase:Bubble)
+   with
+   | live ->
+     printf "NOT REJECTED at mount\n";
+     P.destroy ctx live
+   | exception Invalid_argument msg -> printf "mount rejected: %s\n" msg);
+  (* And at patch, on the frame the disagreement appears -- a conditionally-added [~phase]
+     reaches a widget that mounted without it, which is the same reason
+     [Signals.require_specs] runs on patch as well as on mount. *)
+  let live =
+    P.mount
+      ctx
+      ~path:"phases"
+      ~is_root:true
+      (view ~pressed_phase:Capture ~released_phase:Capture)
+  in
+  P.run_fixups ctx;
+  key_controller_props "phases agreeing" (nth live 0).widget;
+  (match
+     Scheduler.with_patch_guard scheduler (fun () ->
+       P.patch
+         ctx
+         ~path:"phases"
+         ~is_root:true
+         live
+         (view ~pressed_phase:Capture ~released_phase:Target))
+   with
+   | _ -> printf "NOT REJECTED at patch\n"
+   | exception Invalid_argument msg -> printf "patch rejected: %s\n" msg);
+  (* The rejected patch left the controller where it was, in the phase the last accepted
+     frame gave it: [configure] runs before anything is written on the attach path, and on
+     the re-configure path the setter is never reached.
+
+     The slots *are* empty, and that is recorded rather than hidden: [Controllers.update]
+     empties every slot once up front and re-arms each family from its own [sync], so a
+     raise partway through leaves the families it had not reached yet disarmed. That is
+     not a live hazard -- an exception inside a frame stops the driver for good (spec
+     §11), so there is no next frame for a disarmed slot to matter in -- but it is the
+     state, and a golden that showed [armed=(On_key_pressed On_key_released)] here would
+     be describing a rollback this library does not do. *)
+  controllers "phases after the rejected patch" (nth live 0) (nth live 0).widget;
+  key_controller_props "phases after the rejected patch" (nth live 0).widget;
+  P.destroy ctx live;
+  printf "phase rejection done\n"
+;;
+
+(* The value [Attr.on_key_pressed]'s handler hands back to GTK.
+
+   This is the one link in the chain that nothing else can reach. [Key_response.handled]
+   is pinned headlessly in [test/test_attrs.ml]; [Signals.dispatch_payload]'s three
+   [declined] paths in [live_signals.ml]; and that the trampoline's result becomes
+   [key-pressed]'s return is the compiler's job, since
+   [Event_controller_key.on_key_pressed]'s callback is typed [... -> bool] and the spec's
+   ['r] is fixed to [bool] by [declined]. What sits between them is
+   [Controllers.key_pressed_answer], and with no synthetic key press there is no way to
+   observe it through GTK -- so it is called directly, over all four responses.
+
+   Inverted, this is the Critical: a [Handled] that answered [false] would consume
+   nothing, and stavekeeper's Escape would close the dialog *and* reach whatever was
+   underneath. *)
+let () =
+  let touched = ref false in
+  let touch = Ui_effect.of_sync_fun (fun () -> touched := true) () in
+  (* One printer for all four, so the two halves of the decision -- what GTK is told, and
+     what Bonsai is asked to do -- are visibly independent rather than each response
+     needing its own reading. *)
+  let answer response =
+    touched := false;
+    let handled, effect =
+      Controllers.key_pressed_answer
+        (Attr.on_key_pressed (fun _ -> response))
+        { Key_event.keyval = Keyval.escape; keycode = 9; modifiers = Modifiers.none }
+    in
+    Option.iter effect ~f:(fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise);
+    printf
+      !"%{sexp: Key_response.t} -> handled=%b performed=%b\n"
+      response
+      handled
+      !touched
+  in
+  answer Key_response.Propagate;
+  answer Key_response.Handled;
+  answer (Key_response.Propagate_and touch);
+  answer (Key_response.Handled_and touch);
+  (* And the inert answer is GDK's own constant, not a [false] that happens to match: an
+     empty slot, an emission during a patch and a handler that raised all take this path,
+     and the opposite value would make a broken handler swallow the application's
+     keyboard. *)
+  printf
+    "declined=%b event_propagate=%b event_stop=%b\n"
+    Controllers.key_pressed_declined
+    Ocgtk_gdk.Gdk_constants.event_propagate
+    Ocgtk_gdk.Gdk_constants.event_stop;
+  printf "key answers done\n"
 ;;
