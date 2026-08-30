@@ -257,6 +257,20 @@ val search_entry
     The four margins are GTK's, and are padding inside the view rather than margin outside
     it -- {!Attr.margin} is the outside one.
 
+    {b [text] must be valid UTF-8 and must not contain a NUL byte.} A [GtkTextBuffer] can
+    hold nothing else, and the two ways of asking it to fail differently and badly: GTK
+    empties the buffer and then refuses to insert text that is not valid UTF-8 (so the
+    previous contents are lost and a [Gtk-CRITICAL] appears on stderr), and it silently
+    stores only the prefix before a NUL. So the library validates first and {i refuses}
+    the write: the view keeps what it was showing, and the runtime reports the node's path
+    and the reason once — once per offending text, not once per frame. The model is not
+    wedged; the next text GTK will take is written normally.
+
+    That matters most where it is least visible. A read-only pane rendering bytes off disk
+    — a log tail, a file preview — is both the likeliest source of such text and the one
+    place no user edit can ever correct it. Decode at the edge where the bytes enter the
+    application rather than relying on the widget.
+
     There is no [Attr.on_activate]: Enter inserts a newline in a text view rather than
     submitting, and GTK emits nothing for it. {!Attr.on_changed} is the only signal, and
     it is emitted by the {i buffer} rather than by the view -- which is invisible from

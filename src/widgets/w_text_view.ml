@@ -84,6 +84,13 @@ module Cache = Stdlib.Ephemeron.K1.Make (struct
 type cached =
   { mutable text : string
   ; mutable stale : bool
+  ; (* The exact text a write was last refused for, kept so that the decision is made once
+       rather than on every frame -- see [set_text_if_needed]. *)
+    mutable refused : string option
+  ; (* A refusal the patcher has not yet reported. Taken (and cleared) by
+       [Patcher.enqueue_fixups], which is the one place that holds both this widget and
+       the path of the node it came from. *)
+    mutable unreported : string option
   }
 
 let cache : cached Cache.t = Cache.create 8
@@ -95,9 +102,24 @@ let state w =
   match Cache.find_opt cache w with
   | Some st -> st
   | None ->
-    let st = { text = ""; stale = true } in
+    let st = { text = ""; stale = true; refused = None; unreported = None } in
     Cache.replace cache w st;
     st
+;;
+
+(* The message for a refused write, if there is one that has not been reported yet.
+
+   Called by the patcher, once per text view per frame, because a [Widget_impl] is handed
+   a widget and a kind and knows neither where it is in the tree nor how the runtime
+   reports. Cleared by the read, so one refusal is reported once however many frames it
+   survives. *)
+let take_report w =
+  let st = state w in
+  match st.unreported with
+  | None -> None
+  | Some message ->
+    st.unreported <- None;
+    Some message
 ;;
 
 let refresh w st =
@@ -130,6 +152,39 @@ let holds w st text =
        true))
 ;;
 
+(* Whether GTK will store [text] at all, and the reason if not.
+
+   [gtk_text_buffer_set_text] deletes the whole buffer and then inserts, and
+   [gtk_text_buffer_emit_insert] guards the insert with
+   [g_return_if_fail (g_utf8_validate (text, len, NULL))]. So handing it text that is not
+   valid UTF-8 lands the delete and refuses the insert: the buffer ends up {i empty} --
+   not partly written -- with a [Gtk-CRITICAL] on stderr and the previous contents gone.
+   Measured, not read: ["caf\xe9 latte"] leaves a buffer that held ["a good note"] holding
+   [""].
+
+   The NUL check is separate and is not redundant defence. [set_text]'s [-1] means
+   "NUL-terminated", so GTK stops at the first NUL and stores the prefix -- silently, with
+   no critical and no error. [g_utf8_validate] with an explicit length happens to reject
+   NUL bytes on this GLib, so [validate] alone would catch it today; naming the case
+   separately is what keeps the {i silent} shape from coming back if that ever changes,
+   and lets the message say which of the two happened.
+
+   O(len), and only on a frame that was about to write -- which already pays O(len) for
+   the write. An idle frame never reaches this. *)
+let unwritable text =
+  if String.mem text '\000'
+  then
+    Some
+      "text contains a NUL byte, which GTK would silently truncate at; the write was \
+       refused and the buffer was left as it was"
+  else if not (Glib.Utf8.validate text)
+  then
+    Some
+      "text is not valid UTF-8, which GTK refuses to insert *after* emptying the buffer; \
+       the write was refused and the buffer was left as it was"
+  else None
+;;
+
 (* Controlled, on spec §6.5's rule: written only when the buffer's current text differs
    from the model's, never when the previous node's did.
 
@@ -157,25 +212,47 @@ let set_text_if_needed w text =
   let st = state w in
   if holds w st text
   then false
+  else if (* Already decided, and already reported. The refusal is remembered against
+             the *text* rather than against the widget, and the string is adopted so that
+             the frames after it answer in a pointer comparison -- otherwise a model that
+             keeps asking for the same unstorable text would re-validate it, and emit a
+             message, on every frame forever. A model that changes to a different
+             unstorable text is a new datum and is validated and reported again. *)
+          match st.refused with
+          | Some refused -> phys_equal refused text || String.equal refused text
+          | None -> false
+  then false
   else (
-    let b = buffer w in
-    let offset = W.Text_buffer.get_cursor_position b in
-    (* [-1] is GTK's "the string is NUL-terminated". Not a character count: passing one
-       would truncate any text containing a multi-byte character. [String.length text] is
-       the other correct spelling and differs only for a text with an embedded NUL, which
-       a [GtkTextBuffer] cannot hold either way. *)
-    W.Text_buffer.set_text b text (-1);
-    (* Re-fetch: no [Text_iter] is held across the write -- every iter is a GC-managed
-       copy that edits invalidate -- and [get_iter_at_offset] clamps an offset past the
-       end, which is the right answer when the model shortened the text.
+    match unwritable text with
+    | Some reason ->
+      (* Refused. The buffer is untouched, so the cache -- which describes the buffer --
+         is untouched too, and the library's belief stays true. That is the half the first
+         round got wrong: caching what was *attempted* left [holds] answering [true]
+         against a buffer that held something else, permanently under [~editable:false],
+         where no user edit will ever re-read it. *)
+      st.refused <- Some text;
+      st.unreported <- Some reason;
+      false
+    | None ->
+      let b = buffer w in
+      let offset = W.Text_buffer.get_cursor_position b in
+      (* [-1] is GTK's "the string is NUL-terminated". Not a character count: passing one
+         would truncate any text containing a multi-byte character. [String.length text]
+         is the other correct spelling and differs only for a text with an embedded NUL,
+         which a [GtkTextBuffer] cannot hold either way. *)
+      W.Text_buffer.set_text b text (-1);
+      (* Re-fetch: no [Text_iter] is held across the write -- every iter is a GC-managed
+         copy that edits invalidate -- and [get_iter_at_offset] clamps an offset past the
+         end, which is the right answer when the model shortened the text.
 
-       The write emitted [changed] synchronously (twice, over non-empty text: a delete and
-       an insert), so [st.stale] is [true] by now; the assignment below is what puts the
-       cache back, and it has to come after the write rather than before it. *)
-    W.Text_buffer.place_cursor b (W.Text_buffer.get_iter_at_offset b offset);
-    st.text <- text;
-    st.stale <- false;
-    true)
+         The write emitted [changed] synchronously (twice, over non-empty text: a delete
+         and an insert), so [st.stale] is [true] by now; the assignment below is what puts
+         the cache back, and it has to come after the write rather than before it. *)
+      W.Text_buffer.place_cursor b (W.Text_buffer.get_iter_at_offset b offset);
+      st.text <- text;
+      st.stale <- false;
+      st.refused <- None;
+      true)
 ;;
 
 let changed : Signals.spec =
@@ -193,14 +270,26 @@ let changed : Signals.spec =
              The cache is invalidated here rather than in [fire], because it has to be
              invalidated on {i every} emission -- including the ones [Signals.dispatch]
              drops for [in_patch] and the ones that reach an empty slot, which are still
-             edits. The closure captures the record and not the buffer, so it adds no
+             edits.
+
+             [(state w).stale] rather than a record captured here, which is what [fire] on
+             the next lines already does. Capturing would be faster by one ephemeron
+             lookup per emission and would be the cache's only *silent* failure shape: if
+             the entry for [w] were ever dropped while the widget lived, [state w] would
+             mint a second record, this callback would go on invalidating the first, and
+             [holds] would read a clean record a frame behind -- a text view that quietly
+             stops being controlled. It cannot happen today (the key is held both by
+             [live.widget] and by this closure, which [connect_all] roots in the
+             GClosure), but that reasoning is three hops long and lives nowhere near here.
+             task-9-review.md M1.
+
+             The closure captures neither the record nor the buffer, so it adds no
              reference of its own to the object it is connected to. *)
           let b = buffer w in
-          let st = state w in
           Signals.connected
             b
             (W.Text_buffer.on_changed b ~callback:(fun () ->
-               st.stale <- true;
+               (state w).stale <- true;
                callback ())))
     ; fire =
         (fun w attr ->

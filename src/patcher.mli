@@ -12,6 +12,17 @@ type ctx = private
       The runtime uses it to present the window (and to hold onto it: GTK windows are not
       owned by a parent widget). Called at mount only — a patched window is the same
       window. *)
+  ; report : node_path:string -> string -> unit
+  (** Where a diagnostic that is {i not} an exception goes: the model asked for something
+      the widget cannot hold, the frame carries on, and somebody has to be told. Today's
+      only caller is a {!Bonsai_gtk_vtree.Node.text_view} whose [~text] GTK will not store
+      (see {!Bonsai_gtk_vtree.Node.text_view}); it is a hook rather than an [eprintf] at
+      the call site so that a test can capture the message instead of racing stderr
+      against a golden, and so that a later milestone can route these somewhere an
+      application can see.
+
+      Distinct from {!Signals.ctx.on_exn}, which reports an exception raised while
+      {i dispatching} a signal — and which a widget impl cannot reach in any case. *)
   ; stacks : (string, Widget.t) Hashtbl.t
   (** The live [GtkStack]s of this tree, by their {!Bonsai_gtk_vtree.Node.stack} [~name].
       A [stack_switcher] cannot hold a widget — the vtree has no way to name one — so it
@@ -37,7 +48,15 @@ and stack_claim = private
   ; claimant : Widget.t
   }
 
-val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> ctx
+(** [report] defaults to an [eprintf] on the library's usual [bonsai_gtk: ] channel; pass
+    one to capture the messages instead. The trailing [unit] is what makes the optional
+    argument reachable. *)
+val create_ctx
+  :  ?report:(node_path:string -> string -> unit)
+  -> signals:Signals.ctx
+  -> on_window_created:(Widget.t -> unit)
+  -> unit
+  -> ctx
 
 (** Runs everything the pass just finished deferred, then empties the queue — including
     when a fixup raises, since the queue describes one pass and carrying its work into the

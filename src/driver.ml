@@ -152,6 +152,7 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
                 (Exn.to_string exn))
         }
       ~on_window_created
+      ()
   in
   let t =
     { bonsai

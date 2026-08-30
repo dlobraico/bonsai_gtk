@@ -120,6 +120,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let live =
     P.mount
@@ -180,6 +181,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let row key =
     match key with
@@ -657,6 +659,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let live =
     P.mount
@@ -704,6 +707,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   (* stavekeeper's [build_grid], prop for prop, as the baseline; [view] then varies the
      geometry so that the "grid view / list view" patch below is a diff of these. *)
@@ -1147,6 +1151,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let live =
     P.mount
@@ -1195,6 +1200,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let page ?tab key =
     let attrs =
@@ -1553,6 +1559,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let live =
     P.mount
@@ -1699,6 +1706,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let key i = sprintf "k%d" i in
   let cards = List.init n ~f:(fun i -> Node.label ~key:(key i) (Int.to_string i)) in

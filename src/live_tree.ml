@@ -29,6 +29,33 @@ let policy_name : Gtk_enums.policytype -> string = function
   | `EXTERNAL -> "external"
 ;;
 
+(* The first [characters] characters of [text], or [None] if there are no more than that.
+
+   A byte prefix would cut a multi-byte character in half, which the sexp printer then
+   renders as escaped continuation bytes -- so this counts the same unit GTK does, by the
+   same rule [W_entry.capped] uses: a byte is a continuation byte exactly when its top two
+   bits are [10], and every other byte starts a character. It does not validate; a
+   malformed sequence counts as more characters than it should, which is the answer GTK's
+   own byte walk gives too.
+
+   Only a dump reads this, so the walk's cost is a test-time cost. *)
+let utf8_prefix text ~characters =
+  let len = String.length text in
+  let rec go i chars =
+    if i >= len
+    then None
+    else if chars >= characters
+    then Some (String.prefix text i)
+    else (
+      let j = ref (i + 1) in
+      while !j < len && Char.to_int text.[!j] land 0xc0 = 0x80 do
+        incr j
+      done;
+      go !j (chars + 1))
+  in
+  go 0 0
+;;
+
 let wrap_mode_name : Gtk_enums.wrapmode -> string = function
   | `NONE -> "none"
   | `CHAR -> "char"
@@ -241,11 +268,14 @@ let rec dump (w : Widget.t) : Sexp.t =
         reading it is [get_bounds] followed by [get_text], the same two calls
         [w_text_view.ml] makes.
 
-        {b The text is truncated at 60 characters.} A golden with a paragraph in it is
-        unreadable and would churn on every wording change -- and the truncation means
-        this dump cannot pin a long text at all. That is deliberate rather than a gap:
-        [test/live/live_text.ml] prints the text itself, in full, for the claims that are
-        about the text. What the dump is for is the props beside it.
+        {b The text is truncated at 60 characters}, counted the way GTK counts them and
+        not in bytes: a byte prefix can cut a multi-byte character in half, and the sexp
+        printer then escapes the stray continuation bytes into the golden
+        (task-9-review.md M3). A golden with a paragraph in it is unreadable and would
+        churn on every wording change -- and the truncation means this dump cannot pin a
+        long text at all. That is deliberate rather than a gap: [test/live/live_text.ml]
+        prints the text itself, in full, for the claims that are about the text. What the
+        dump is for is the props beside it.
 
         The buffer read is not cheap (it copies, and the binding leaks the copy), so this
         is a dump-time cost only -- nothing on a frame path reads a buffer this way. *)
@@ -255,7 +285,9 @@ let rec dump (w : Widget.t) : Sexp.t =
        let start_, end_ = W.Text_buffer.get_bounds b in
        let text = W.Text_buffer.get_text b start_ end_ true in
        let shown =
-         if String.length text <= 60 then text else String.prefix text 60 ^ "..."
+         match utf8_prefix text ~characters:60 with
+         | None -> text
+         | Some cut -> cut ^ "..."
        in
        [ [%sexp `text (shown : string)] ]
        @ (match W.Text_view.get_wrap_mode v with

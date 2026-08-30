@@ -4,6 +4,9 @@
    no-cursor tab-moves-focus (left-margin 6) (right-margin 7) (top-margin 8)
    (bottom-margin 9) (css (view monospace)) (cursor text))))
 (GtkWindow (title (text)) (css (background)) hidden
+ (children
+  (GtkTextView (text "a styled note") (wrap char) (css (view)) (cursor text))))
+(GtkWindow (title (text)) (css (background)) hidden
  (children (GtkTextView (text "a styled note") (css (view)) (cursor text))))
 after typing: text="aXY styled note" cursor=3
 model wins: text="a styled note" cursor=3 (the patch wrote: true, reached Bonsai: 0)
@@ -11,8 +14,12 @@ same-length rewrite: text="A STYLED NOTE" cursor=5 (the patch wrote: true, reach
 shorter rewrite: text="short" cursor=5 (the patch wrote: true, reached Bonsai: 0)
 echo is a no-op: text="short" cursor=2 (the patch wrote: false, reached Bonsai: 0)
 ten idle frames wrote: 0 (text="short" cursor=2)
-model rewrites: text="rewritten from the model" cursor=2 (the patch wrote: true, reached Bonsai: 0)
+selection held: true
+echo again, with a selection standing: text="short" cursor=1 (the patch wrote: false, reached Bonsai: 0)
+selection after an echo: true
+model rewrites: text="rewritten from the model" cursor=1 (the patch wrote: true, reached Bonsai: 0)
 reached Bonsai across every patch above: 0
+selection after a write: false
 a changed emitted outside a patch reaches Bonsai: 1
 a changed emitted on the destroyed view's buffer reaches Bonsai: 0
 slots re-armed after the destroy: (On_changed)
@@ -37,6 +44,12 @@ dump truncates:
    (text "word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 ...")
    (wrap word) (css (view)) (cursor text))))
 the buffer holds it in full: true
+(GtkWindow (title (long)) (css (background)) hidden
+ (children
+  (GtkTextView
+   (text
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\195\169...")
+   (css (view)) (cursor text))))
 accented: bytes=16 characters=13 round-trips: true
 accented rewrite: text="H\195\137LLO W\195\150RLD \195\132" cursor=7
 driver, after mount: "" (handler saw 0)
@@ -45,3 +58,12 @@ driver, after the frame the edit armed: "ok"
 driver, user typed too much, before the frame: "ok far too long"
 driver, after the frame the refusal armed: "ok" (handler saw (ok"ok far too long"))
 driver, one more frame: "ok" (handler saw 0 more)
+mounted: "a good note" (reports ())
+latin-1: buffer "a good note" (reports ((bad/0"text is not valid UTF-8, which GTK refuses to insert *after* emptying the buffer; the write was refused and the buffer was left as it was")))
+latin-1, five idle frames later: buffer "a good note" (reports ())
+embedded NUL: buffer "a good note" (reports ((bad/0"text contains a NUL byte, which GTK would silently truncate at; the write was refused and the buffer was left as it was")))
+embedded NUL, five idle frames later: buffer "a good note" (reports ())
+a valid text after two refusals: "caf\195\169 latte" (reports ())
+latin-1 again: buffer "caf\195\169 latte" (reports ((bad/0"text is not valid UTF-8, which GTK refuses to insert *after* emptying the buffer; the write was refused and the buffer was left as it was")))
+latin-1 again, five idle frames later: buffer "caf\195\169 latte" (reports ())
+mounted with unstorable text: "" (reports ((born/0"text is not valid UTF-8, which GTK refuses to insert *after* emptying the buffer; the write was refused and the buffer was left as it was")))

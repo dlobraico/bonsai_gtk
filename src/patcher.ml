@@ -5,6 +5,13 @@ open Gtk_import
 type ctx =
   { signals : Signals.ctx
   ; on_window_created : Widget.t -> unit
+  ; (* Where a diagnostic that is not an exception goes: the model asked for something the
+       widget cannot hold, the frame carries on, and somebody has to be told. Distinct
+       from [Signals.ctx.on_exn], which reports an exception raised while {i dispatching}
+       a signal and is not reachable from a widget impl anyway. Optional on [create_ctx]
+       with an [eprintf] default, so that the runtime gets the library's usual channel and
+       a test can capture the message instead of racing stderr against a golden. *)
+    report : node_path:string -> string -> unit
   ; (* Live [GtkStack]s by their [Node.stack ~name]. A [stack_switcher] cannot hold a
        widget -- the vtree has no way to name one -- so it names a stack and is wired up
        after the pass that mounts them both. *)
@@ -24,9 +31,12 @@ and stack_claim =
   ; claimant : Widget.t
   }
 
-let create_ctx ~signals ~on_window_created =
+let default_report ~node_path message = eprintf "bonsai_gtk: %s: %s\n%!" node_path message
+
+let create_ctx ?(report = default_report) ~signals ~on_window_created () =
   { signals
   ; on_window_created
+  ; report
   ; stacks = Hashtbl.create (module String)
   ; stack_claims = Queue.create ()
   ; fixups = Queue.create ()
@@ -150,6 +160,9 @@ type interest =
   | List_box of Kind.list_box_props
   | Flow_box of Kind.flow_box_props
   | Notebook of Kind.notebook_props
+  (* Carries nothing: what the patcher does for a text view is not to write anything but
+     to say where a refused write happened, and only the widget is needed to ask. *)
+  | Text_view
 
 let interest_of_kind (kind : Kind.t) =
   match kind with
@@ -160,6 +173,7 @@ let interest_of_kind (kind : Kind.t) =
   | List_box p -> List_box p
   | Flow_box p -> Flow_box p
   | Notebook p -> Notebook p
+  | Text_view _ -> Text_view
   | Label _
   | Button _
   | Toggle_button _
@@ -168,7 +182,6 @@ let interest_of_kind (kind : Kind.t) =
   | Entry _
   | Password_entry _
   | Search_entry _
-  | Text_view _
   | Spin_button _
   | Scale _
   | Progress_bar _
@@ -200,6 +213,17 @@ let interest_of_kind (kind : Kind.t) =
 let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
   match interest with
   | Nothing | Window -> ()
+  (* Not a fixup at all: nothing is deferred and nothing is written. This is the one place
+     that holds both a text view and the path of the node it came from, which is what a
+     refused write needs in order to say anything useful. Reported here rather than from
+     the impl because a [Widget_impl] is handed a widget and a kind and knows neither
+     where it is in the tree nor how the runtime reports.
+
+     One ephemeron lookup per text view per frame, and no allocation unless there is
+     something to say. Runs after [create] on a mount and after [reassert] on a patch and
+     on an idle frame, which are the three places a write can be refused. *)
+  | Text_view ->
+    Option.iter (W_text_view.take_report widget) ~f:(ctx.report ~node_path:path)
   | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected.
@@ -279,7 +303,7 @@ let note_interest
      Queue.enqueue
        ctx.stack_claims
        { claim_path = path; give_up; take = name; claimant = widget }
-   | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ -> ());
+   | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ | Text_view -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
@@ -516,7 +540,8 @@ and disarm (live : live) =
 and drop_stack_names ctx (live : live) =
   (match interest_of_kind live.node.kind with
    | Stack { name; _ } -> unregister_stack ctx ~name live.widget
-   | Nothing | Window | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ -> ());
+   | Nothing | Window | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ | Text_view ->
+     ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 
 and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =

@@ -406,12 +406,18 @@ Do not "fix" these when an expected file surprises you:
   none of them frees. Generator fix, like the `Val_GList_with` one above, not a hand
   patch.
 
-  `w_text_view.ml` works around it by never reading the buffer on a frame path: it caches
-  what it last wrote and invalidates the cache from `GtkTextBuffer::changed`, so a read
-  happens once per burst of user edits rather than sixty times a second. Without that, a
-  megabyte of notes open on screen would leak a megabyte a frame — 60 MB/s with the
-  application doing nothing. `Live_tree.dump`'s `GtkTextView` arm does read the buffer,
-  and is a test-only path.
+  `w_text_view.ml` works around it on the frame path only: it caches what it last wrote
+  and invalidates the cache from `GtkTextBuffer::changed`, so an *idle* frame reads
+  nothing at all. Without that, a megabyte of notes open on screen would leak a megabyte a
+  frame — 60 MB/s with the application doing nothing, which is the load-bearing half.
+
+  **It does not fix the edit path, and cannot.** Every `changed` that reaches an armed
+  slot outside a patch runs `fire` → a whole-buffer read, because `Attr.on_changed`'s
+  contract is to hand the handler the buffer's full text. So each keystroke in a 1 MB
+  document costs 0.42 ms and leaks 1 MB, and sustained typing leaks several MB a second.
+  That is the number to weigh when deciding how urgent the generator patch is; it is worse
+  than the idle-frame figure suggests, not better. `Live_tree.dump`'s `GtkTextView` arm
+  reads the buffer too, and is a test-only path.
 - **Handler ids come from one global counter, not a per-instance one** (measured on this
   GLib: two handlers on two different `GtkTextBuffer`s and one on a `GtkTextView` got
   118/119/120). So `signals.mli`'s worse case for disconnecting a handler id from the

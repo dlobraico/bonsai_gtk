@@ -57,6 +57,7 @@ let ctx_of scheduler ~scheduled =
           (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
       }
     ~on_window_created:(fun _ -> ())
+    ()
 ;;
 
 (* ------------------------------------------------------------------------------------ *)
@@ -95,6 +96,25 @@ let () =
       ~title:"text"
       (Node.text_view ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ] ~text ())
   in
+  (* [Wrap_mode.Char] on its own, because it is the one arm of the enum nothing else in
+     the suite reaches -- [None_] by absence, [Word] and [Word_char] in the blocks below
+     and in the gallery -- so [| Char -> `WORD] would otherwise pass the whole gate
+     (task-9-review.md M4). *)
+  let live =
+    P.patch
+      ctx
+      ~path:"root"
+      ~is_root:true
+      live
+      (Node.window
+         ~title:"text"
+         (Node.text_view
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~wrap:Char
+            ~text:"a styled note"
+            ()))
+  in
+  print_s (Live_tree.dump live.widget);
   let live = P.patch ctx ~path:"root" ~is_root:true live (plain ~text:"a styled note") in
   print_s (Live_tree.dump live.widget);
   (* A count of [changed] emissions on the buffer is how every "did the patch write"
@@ -134,14 +154,22 @@ let () =
      survives it. This is the case the policy is right about. *)
   place_cursor live 5;
   let live = observe "same-length rewrite" live (plain ~text:"A STYLED NOTE") in
-  (* Then a rewrite to something shorter than the caret's offset. GTK clamps the restored
-     offset to the end of the new text rather than raising, which is the right answer when
-     the model shortened the text. *)
+  (* Then a rewrite to something shorter than the caret's offset. What this line shows is
+     that [get_iter_at_offset] past the end does not raise -- and only that. It cannot
+     show the clamp: GTK clamps to the end of the new text, which is exactly where not
+     restoring the caret at all would leave it, so the two are indistinguishable by
+     construction and deleting the restore leaves this line byte-identical. The restore
+     itself is pinned by the three lines around it, each of which moves to 13 if it is
+     removed (task-9-review.md M2). *)
   place_cursor live 11;
   let live = observe "shorter rewrite" live (plain ~text:"short") in
   (* 4. The echo. The model renders text the buffer already holds: nothing is written and
      the caret does not move, which is the whole of what "controlled" costs when the model
-     agrees. *)
+     agrees.
+
+     [place_cursor] is what sets the caret here, so the selection claim below is made
+     separately rather than by selecting a range first -- a [select_range] would move the
+     caret to its second iter and take this line's [cursor=2] with it. *)
   place_cursor live 2;
   let live = observe "echo is a no-op" live (plain ~text:"short") in
   (* And an idle frame -- the physically same node, through [reassert_only], which is what
@@ -157,6 +185,23 @@ let () =
     (!writes - writes_before)
     (read live)
     (cursor live);
+  (* The selection, which is documented in two places and until now tested in none
+     (task-9-review.md M5). [set_text] collapses a selection even when the text it writes
+     is identical -- measured -- so "the echo writes nothing" is not a cost saving, it is
+     what keeps a selection standing under a model that echoes as you type. That is a
+     stronger promise than [Node.text_view]'s doc makes, and it is the case an application
+     actually hits. The write two blocks down is what drops it. *)
+  let selected () =
+    let held, _, _ = W.Text_buffer.get_selection_bounds (buffer live) in
+    held
+  in
+  W.Text_buffer.select_range
+    (buffer live)
+    (W.Text_buffer.get_iter_at_offset (buffer live) 1)
+    (W.Text_buffer.get_iter_at_offset (buffer live) 3);
+  printf "selection held: %b\n" (selected ());
+  let live = observe "echo again, with a selection standing" live (plain ~text:"short") in
+  printf "selection after an echo: %b\n" (selected ());
   (* 5. The reentrancy case. A programmatic write emits [changed] on the *buffer*,
      synchronously, from inside the patch -- the first signal in this library on a
      long-lived GObject that is not the widget to go through the [in_patch] guard. Nothing
@@ -164,6 +209,7 @@ let () =
   let scheduled_before = !scheduled in
   let live = observe "model rewrites" live (plain ~text:"rewritten from the model") in
   printf "reached Bonsai across every patch above: %d\n" (!scheduled - scheduled_before);
+  printf "selection after a write: %b\n" (selected ());
   (* Outside a patch the same signal does reach Bonsai, which is what makes the line above
      a guard rather than a broken connection. *)
   let scheduled_before = !scheduled in
@@ -400,6 +446,20 @@ let () =
   printf "dump truncates:\n";
   print_s (Live_tree.dump live.widget);
   printf "the buffer holds it in full: %b\n" (String.equal (read live) long);
+  (* The truncation counts characters, not bytes (task-9-review.md M3). This text puts a
+     two-byte character astride the 60-byte boundary: a byte prefix would cut it in half
+     and the sexp printer would escape the stray continuation byte into the golden. The
+     dump below ends on a whole character. *)
+  let astride = String.concat [ String.make 59 'x'; "\xc3\xa9"; String.make 20 'y' ] in
+  let live =
+    P.patch
+      ctx
+      ~path:"long"
+      ~is_root:true
+      live
+      (Node.window ~title:"long" (Node.text_view ~text:astride ()))
+  in
+  print_s (Live_tree.dump live.widget);
   (* A multi-byte text, because the caret is saved as a *character* offset and the buffer
      is addressed in characters while OCaml's string is bytes. Three of these characters
      are two bytes each. *)
@@ -509,4 +569,105 @@ let () =
     (driven_text ())
     (List.length !seen - before);
   Bonsai_gtk.Expert.Driver.stop d
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* Text GTK will not store, which is the case the first round shipped as a documented gap
+   and which nothing exercised (task-9-review.md I1).
+
+   Two shapes, and they fail differently. [gtk_text_buffer_set_text] deletes the whole
+   buffer and then inserts, and [gtk_text_buffer_emit_insert] has
+   [g_return_if_fail (g_utf8_validate (text, len, NULL))] -- so for text that is not valid
+   UTF-8 the delete lands and the insert does not, and the buffer ends up {i empty} rather
+   than partly written, with a [Gtk-CRITICAL] on stderr. For text with an embedded NUL the
+   [-1] length terminates at the NUL, GTK inserts the prefix, and there is no diagnostic
+   at all. Measured, both:
+
+   {v
+     model text          buffer after an unguarded set_text   diagnostic
+     "caf\xe9 latte"     ""                                   Gtk-CRITICAL
+     "ab\x00cd"          "ab"                                 none
+   v}
+
+   Cached as written, either one makes [holds] answer [true] forever, so the view stays
+   wrong for as long as the model asks for the same text -- and under [~editable:false],
+   which is both the likeliest source of such text (a log tail, a file preview) and the
+   one configuration where no user edit can ever heal it, permanently.
+
+   So the write is refused instead: the buffer keeps what it had, the cache keeps what the
+   buffer has, and the patcher reports once with the node's path. The refusal is
+   remembered against the text that caused it, so a model that keeps asking pays one
+   validation and one message rather than one of each per frame. *)
+let () =
+  let scheduled = ref 0 in
+  let reports = ref [] in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path message -> reports := (node_path, message) :: !reports)
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let view ~text = Node.window ~title:"bad" (Node.text_view ~editable:false ~text ()) in
+  let take_reports () =
+    let r = List.rev !reports in
+    reports := [];
+    Sexp.to_string [%sexp (r : (string * string) list)]
+  in
+  let live = P.mount ctx ~path:"bad" ~is_root:true (view ~text:"a good note") in
+  printf "mounted: %S (reports %s)\n" (read live) (take_reports ());
+  let idle live =
+    for _ = 1 to 5 do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:"bad" live;
+        P.run_fixups ctx)
+    done
+  in
+  let refuse label live text =
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"bad" ~is_root:true live (view ~text))
+    in
+    printf "%s: buffer %S (reports %s)\n" label (read live) (take_reports ());
+    idle live;
+    (* Five idle frames later: still the previous contents, and not one more message --
+       the refusal is remembered against the text, so the frames after it are free. *)
+    printf
+      "%s, five idle frames later: buffer %S (reports %s)\n"
+      label
+      (read live)
+      (take_reports ());
+    live
+  in
+  let live = refuse "latin-1" live "caf\xe9 latte" in
+  let live = refuse "embedded NUL" live "ab\x00cd" in
+  (* And the model is not wedged: the next text GTK {i will} take must land. This is the
+     line that stops the fix from being "never write again". *)
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"bad" ~is_root:true live (view ~text:"caf\xc3\xa9 latte"))
+  in
+  printf
+    "a valid text after two refusals: %S (reports %s)\n"
+    (read live)
+    (take_reports ());
+  (* A second refusal of the *same* text after a valid write in between is a new decision
+     and is reported again -- the memory is of a text, not of a widget. *)
+  let live = refuse "latin-1 again" live "caf\xe9 latte" in
+  P.destroy ctx live;
+  (* And at *mount*, which is the likeliest way an application meets this: a read-only
+     pane rendering bytes off disk, wrong from the first frame. [create] writes the text
+     and [note_interest] reports it, in that order, so the message carries the mounting
+     node's path like any other. The view comes up empty rather than wrong-looking,
+     because there was nothing there to keep. *)
+  let born = P.mount ctx ~path:"born" ~is_root:true (view ~text:"caf\xe9 latte") in
+  printf "mounted with unstorable text: %S (reports %s)\n" (read born) (take_reports ());
+  P.destroy ctx born
 ;;

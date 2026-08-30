@@ -51,6 +51,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let text_attrs = Attr.on_changed (fun _ -> Ui_effect.Ignore) in
   let view ~active =

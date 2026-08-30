@@ -170,6 +170,7 @@ let presenting_ctx scheduler =
           (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
       }
     ~on_window_created:(fun w -> W.Window.present (cast w))
+    ()
 ;;
 
 (* Regression for the [set_static_name] bug (review C1).
@@ -201,6 +202,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   (* A label, not a button: a label emits no signal at all, so a controller on one can
      only have come from the attr. *)
@@ -273,6 +275,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   List.iter each_controller_attr ~f:(fun (name, attr) ->
     (* A label again: it emits nothing, so anything attached came from the attr, and the
@@ -448,6 +451,7 @@ let () =
            the focus chain on a realized, mapped widget, so without this the focus
            assertions below would silently read nothing at all. *)
       ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
   in
   (* A button with a click gesture and a focus controller, and a second button to move the
      focus to. The gesture is on the button, not on the window, so the counts below show

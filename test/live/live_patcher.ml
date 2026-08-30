@@ -48,6 +48,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> print_endline "window created")
+      ()
   in
   let view label items =
     Node.window

@@ -55,6 +55,7 @@ let () =
             (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
         }
       ~on_window_created:(fun _ -> ())
+      ()
   in
   let tex = texture "\255\000\000\255\000\255\000\255\000\000\255\255\255\255\255\255" in
   let png = Stdlib.Filename.temp_file "bonsai_gtk" ".png" in
