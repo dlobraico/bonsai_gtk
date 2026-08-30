@@ -64,6 +64,18 @@ let string_property (w : Widget.t) ~name =
   Gobject.Value.get_string v
 ;;
 
+(* The rows of a [GtkListBox] that are selected. Walked with [get_row_at_index], which
+   reference-sinks its result, rather than with [get_selected_rows], which does not; see
+   [W_list_box.rows]. *)
+let selected_row_count (b : W.List_box.t) =
+  let rec go i n =
+    match W.List_box.get_row_at_index b i with
+    | None -> n
+    | Some row -> go (i + 1) (if W.List_box_row.is_selected row then n + 1 else n)
+  in
+  go 0 0
+;;
+
 let selection_mode_name : Gtk_enums.selectionmode -> string = function
   | `NONE -> "none"
   | `SINGLE -> "single"
@@ -417,10 +429,13 @@ let rec dump (w : Widget.t) : Sexp.t =
           then []
           else [ Sexp.Atom "activate-on-double-click" ])
        @ flag_prop "show-separators" (W.List_box.get_show_separators b)
-       @ int_prop
-           "selected-rows"
-           (List.length (W.List_box.get_selected_rows b))
-           ~default:0
+       (* Counted by walking the rows rather than with [get_selected_rows], which is
+          transfer-container and whose generated stub does not reference the rows it wraps
+          -- so calling it hands out one unbalanced unref per selected row and eventually
+          disposes a still-parented row. [W_list_box]'s [rows] carries the full account;
+          this matters here as much as anywhere, because [Live_tree.dump] is the function
+          a debugging session calls in a loop. *)
+       @ int_prop "selected-rows" (selected_row_count b) ~default:0
      | "GtkListBoxRow" ->
        let r : W.List_box_row.t = cast w in
        flag_prop "selected" (W.List_box_row.is_selected r)

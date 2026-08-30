@@ -421,6 +421,10 @@ and destroy ctx (live : live) =
   | Window _ -> W.Window.destroy (cast live.widget)
   | Stack { name; _ } -> unregister_stack ctx ~name live.widget
   | Native n -> Native_gtk.destroy_payload n live.widget
+  (* The rows never pass through [list_ops.remove] on this path -- the patcher tears a
+     subtree down by walking it, not by removing each child from its parent -- so their
+     [Child_keys] entries are dropped here instead; see [W_list_box.forget_rows]. *)
+  | List_box _ -> W_list_box.forget_rows live.widget
   | Label _
   | Button _
   | Toggle_button _
@@ -446,7 +450,6 @@ and destroy ctx (live : live) =
   | Grid _
   | Stack_switcher _
   | Stack_sidebar _
-  | List_box _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.

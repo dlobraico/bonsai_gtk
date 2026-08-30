@@ -80,6 +80,82 @@ let select_row_by_hand (live : P.live) key =
   | None -> printf "BUG: no row for key %s\n" key
 ;;
 
+let () = ignore (Ocgtk_gtk.GMain.init () : string array)
+
+(* Regression for the [get_selected_rows] use-after-free (review C1), and it runs before
+   everything else in this file for the reason [live_controllers.ml]'s heap-churn test
+   does: every selection line below is a read of the selection, so if that read is what
+   destroys the rows then the whole golden is measuring a tree that is quietly falling
+   apart.
+
+   [gtk_list_box_get_selected_rows] is transfer-container -- the [GList] is the caller's
+   to free, the rows in it are borrowed -- and ocgtk's generated stub wraps each row with
+   no [g_object_ref_sink] while the wrapper's finaliser unconditionally unrefs it
+   ([ml_list_box_gen.c:229-238]). So every call handed out one unbalanced unref per
+   selected row, and [apply_selection] makes that call on every mount, every patch and
+   every no-change frame. Ten idle frames and one major collection were enough to dispose
+   a still-parented row: the selection emptied itself, GTK logged "has a parent GtkListBox
+   during dispose", and a couple of hundred reads took SIGSEGV.
+
+   The fork fixed the identical bug on [GtkFlowBoxChild] one file over
+   ([ml_flow_box_gen.c:222-233], whose comment describes exactly this); the [GtkListBox]
+   twin is unfixed in the pinned binding, which is why [W_list_box.selected_keys] walks
+   [get_row_at_index] + [is_selected] instead. See docs/m1-backlog.md.
+
+   The frames here are the real thing: [reassert_only] + [run_fixups] inside the patch
+   guard is what [Driver.frame] runs when a computation hands back the physically same
+   node, which is what an idle application does sixty times a second. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  let live =
+    P.mount
+      ctx
+      ~path:"gc"
+      ~is_root:true
+      (Node.window
+         ~title:"gc"
+         (Node.list_box
+            ~selection_mode:Multiple
+            ~selected:[ "a"; "b" ]
+            [ Node.label ~key:"a" "A"; Node.label ~key:"b" "B"; Node.label ~key:"c" "C" ]))
+  in
+  P.run_fixups ctx;
+  printf "gc: mounted, selected %s\n" (selected_keys live);
+  Out_channel.flush stdout;
+  for batch = 1 to 5 do
+    for _ = 1 to 50 do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:"gc" live;
+        P.run_fixups ctx)
+    done;
+    (* [full_major] rather than [minor]: the wrappers are custom blocks with finalisers,
+       and it is the finaliser running that does the damage. *)
+    Gc.full_major ();
+    printf
+      "gc: after %d frames + full_major, selected %s\n"
+      (batch * 50)
+      (selected_keys live);
+    (* Flushed per batch, because the failure this guards against is a {i crash}: with the
+       buffer held to exit, a regression prints nothing at all and the golden diff says
+       only "got signal SEGV". Flushed, it says how many frames it survived. *)
+    Out_channel.flush stdout
+  done;
+  (* The rows are still there and still parented, which is the half a selection count
+     alone would not show. *)
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live
+;;
+
 let drain () =
   while Glib.Main.pending () do
     ignore (Glib.Main.iteration false : bool)
@@ -87,7 +163,6 @@ let drain () =
 ;;
 
 let () =
-  ignore (Ocgtk_gtk.GMain.init () : string array);
   let scheduled = ref 0 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
   let ctx =
@@ -253,6 +328,35 @@ let () =
          ())
   in
   printf "selection with a ghost key: %s\n" (selected_keys live);
+  (* ... and *inert*, not merely harmless. [current] can only hold keys of rows that
+     exist, so comparing it against the unfiltered [~selected] would be false forever the
+     moment the model holds one extra id, and every frame would unselect everything and
+     re-select the survivors -- the very thing the sorting above exists to prevent. This
+     line reads 2 without the narrowing in [apply_selection] and 0 with it. *)
+  let before = !scheduled in
+  let live =
+    patch
+      live
+      (view
+         ~placeholder:(Node.label "nothing here")
+         ~selected:[ "a"; "ghost" ]
+         ~rows:[ "hdr"; "c"; "a"; "b" ]
+         ())
+  in
+  printf "writes on an identical frame with a ghost key held: %d\n" (!scheduled - before);
+  (* And the row is selected on the frame it arrives, without the model having changed its
+     mind: the filter lifted, not the selection. This is the same-frame rule the selection
+     fixup exists for, reached from the other direction than "add a row and select it". *)
+  let live =
+    patch
+      live
+      (view
+         ~placeholder:(Node.label "nothing here")
+         ~selected:[ "a"; "ghost" ]
+         ~rows:[ "hdr"; "c"; "a"; "ghost"; "b" ]
+         ())
+  in
+  printf "the ghost row arrived: %s\n" (selected_keys live);
   (* A multi-selection, and the order it is written in. GTK reports selected rows
      in *widget* order; the model listed them the other way round, and the two orderings
      of one selection must not look like a change -- or the fixup would write on every
@@ -308,6 +412,24 @@ let () =
       (view ~mode:Single ~selected:[ "c"; "a"; "b" ] ~rows:[ "hdr"; "c"; "a"; "b" ] ())
   in
   printf "three keys in Single mode: %s\n" (selected_keys live);
+  (* The two [Live_tree] spellings nothing else in this file reaches. GTK's own defaults
+     are [SINGLE] and single-click activation, so the dump suppresses both -- which means
+     the branches that print the *other* modes and [activate-on-double-click] are only
+     reachable from a node that asks for them, and they are the two properties a reader is
+     most likely to have backwards. *)
+  let live =
+    patch
+      live
+      (Node.window
+         ~title:"lists"
+         (Node.list_box
+            ~selection_mode:Browse
+            ~activate_on_single_click:false
+            ~show_separators:true
+            ~selected:[ "a" ]
+            [ Node.label ~key:"a" "A"; Node.label ~key:"b" "B" ]))
+  in
+  print_s (Live_tree.dump live.widget);
   (* A row whose kind changes is a different child to the reconciler: a fresh widget in a
      fresh wrapper, in the same position. *)
   let kinded live ~button =

@@ -624,12 +624,18 @@ val stack
     [Patcher.run_fixups] before reading the selection back. Pair it with
     {!Attr.on_row_activated} or {!Attr.on_selected_rows_changed}, or the control is inert.
 
-    {b A key in [~selected] that no row carries is ignored}, not an error. A selection is
-    plural, and a model that holds a selected id through a filter change is doing
-    something reasonable -- the row comes back when the filter does. Selecting nothing is
-    a legitimate state; selecting a row that is not there is not expressible. This is
-    deliberately {i unlike} {!stack}'s [~visible_child], which raises; both asymmetries
-    are documented on both constructors.
+    {b A key in [~selected] that no row carries is inert}, not an error -- and inert in
+    the strong sense: it is dropped before the model's selection is compared with the
+    widget's, so holding one costs nothing and provokes no write. If the row later
+    arrives, it is selected {i on the frame it arrives}, without the model having to
+    change its mind; that is the same-frame rule that makes this a post-pass fixup rather
+    than a [reassert].
+
+    A selection is plural, and a model that holds a selected id through a filter change is
+    doing something reasonable -- the row comes back when the filter does. Selecting
+    nothing is a legitimate state; selecting a row that is not there is not expressible.
+    This is deliberately {i unlike} {!stack}'s [~visible_child], which raises; both
+    asymmetries are documented on both constructors.
 
     [~selection_mode] and [~selected] can disagree, and {b GTK arbitrates}: three keys
     handed to a [Single] list box leaves whichever one GTK kept, and any key at all handed

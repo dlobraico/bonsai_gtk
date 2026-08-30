@@ -1,3 +1,18 @@
+gc: mounted, selected a,b
+gc: after 50 frames + full_major, selected a,b
+gc: after 100 frames + full_major, selected a,b
+gc: after 150 frames + full_major, selected a,b
+gc: after 200 frames + full_major, selected a,b
+gc: after 250 frames + full_major, selected a,b
+(GtkWindow (title (gc)) (css (background)) hidden
+ (children
+  (GtkListBox (selection-mode multiple) (selected-rows 2)
+   (children
+    (GtkListBoxRow selected (css (activatable))
+     (children (GtkLabel (text A))))
+    (GtkListBoxRow selected (css (activatable))
+     (children (GtkLabel (text B))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text C))))))))
 (GtkWindow (title (lists)) (css (background)) hidden
  (children
   (GtkListBox (selection-mode multiple) show-separators (selected-rows 1)
@@ -33,6 +48,8 @@ after the declining frame: b
 add-and-select: d
 selected row removed: (none)
 selection with a ghost key: a
+writes on an identical frame with a ghost key held: 0
+the ghost row arrived: a,ghost
 multi-selection: a,b
 same selection, listed the other way: a,b
 writes for a re-ordered but equal selection: 0
@@ -50,6 +67,14 @@ after the flags swapped: hdr
     (GtkListBoxRow (css (activatable)) (children (GtkLabel (text A))))
     (GtkListBoxRow (css (activatable)) (children (GtkLabel (text B))))))))
 three keys in Single mode: b
+(GtkWindow (title (lists)) (css (background)) hidden
+ (children
+  (GtkListBox (selection-mode browse) activate-on-double-click
+   show-separators (selected-rows 1) (css (separators))
+   (children
+    (GtkListBoxRow selected (css (activatable))
+     (children (GtkLabel (text A))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text B))))))))
 kind change replaced the wrapper: true
 kind change kept the selection: b
 (GtkWindow (title (lists)) (css (background)) hidden

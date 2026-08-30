@@ -9,9 +9,22 @@ let selection_mode : Selection_mode.t -> Gtk_enums.selectionmode = function
   | Multiple -> `MULTIPLE
 ;;
 
-(* One table for every list box in the process. Keyed on the [GtkListBoxRow] wrapper this
-   impl creates, never on the application's child widget: two list boxes may render the
-   same child node, and the wrapper is what GTK hands back. *)
+(* One table for every list box in the process, mapping each row's *child* to the key its
+   node carried. A row is looked up through [W.List_box_row.get_child].
+
+   Keyed on the child rather than on the [GtkListBoxRow] this impl makes, and that is a
+   lifetime requirement rather than a preference. [Child_keys] is an ephemeron over the
+   OCaml value, so an entry lives exactly as long as {i that value} is reachable -- and
+   the only OCaml value for a wrapper this impl makes is the transient one [wrap] returns,
+   which is unreachable the moment [wrap] does. Keyed on the wrapper, the table lost every
+   entry at the first major collection: the rows stayed selected and [selected_keys]
+   answered nothing, with no error anywhere. The child's OCaml value is the one the
+   patcher stores in [live.widget], so it is reachable for exactly as long as the node is,
+   which is the lifetime the table wants -- and is why [w_search_entry.ml]'s [Echo], keyed
+   on a widget the live tree holds, has always worked.
+
+   Uniqueness is unaffected by the change: two list boxes rendering the same child
+   {i node} still mount two distinct child widgets. *)
 let row_keys = Child_keys.create ()
 
 let row_key (node : Node.t) =
@@ -52,7 +65,7 @@ let wrap ~(node : Node.t) (child : Widget.t) =
      [set_header_func] is not in the binding. *)
   W.List_box_row.set_selectable row (selectable node);
   W.List_box_row.set_activatable row (activatable node);
-  Child_keys.set row_keys (row :> Widget.t) (row_key node);
+  Child_keys.set row_keys child (row_key node);
   row
 ;;
 
@@ -82,30 +95,84 @@ let row_of ~what (child : Widget.t) : W.List_box_row.t =
   | None -> invalid_argf "list box: %s has no parent" what ()
 ;;
 
+(* Every row, in GTK's own order.
+
+   {b Do not replace this with [W.List_box.get_selected_rows]}, however much shorter that
+   reads. [gtk_list_box_get_selected_rows] is transfer-container -- the [GList] is the
+   caller's to free, the rows in it are borrowed -- and ocgtk's generated stub wraps each
+   row with no [g_object_ref_sink] while the wrapper's finaliser unconditionally unrefs it
+   ([ml_list_box_gen.c:229-238]). Every call therefore hands out one unbalanced unref per
+   selected row, and since [apply_selection] reads the selection on every mount, every
+   patch and every no-change frame, an idle application disposes its own still-parented
+   rows within a few frames of a major collection: the selection empties itself, GTK logs
+   "has a parent GtkListBox during dispose", and the process segfaults shortly after.
+   [test/live/live_lists.ml]'s first block reproduces exactly that when this walk is put
+   back.
+
+   [get_row_at_index] does [g_object_ref_sink] its result ([ml_list_box_gen.c:258-265]),
+   so this walk is balanced. The fork already carries the identical fix for
+   [GtkFlowBoxChild] one file over ([ml_flow_box_gen.c:222-233], whose comment describes
+   this exact bug); the [GtkListBox] twin is unfixed in the pinned binding and is on the
+   backlog for Task 14. Until that lands, nothing in this library may call
+   [get_selected_rows]. *)
+let rows (b : W.List_box.t) =
+  let rec go i acc =
+    match W.List_box.get_row_at_index b i with
+    | None -> List.rev acc
+    | Some row -> go (i + 1) (row :: acc)
+  in
+  go 0 []
+;;
+
+(* The key a row was built from: through its child, because that is what the table is
+   keyed on. A row this impl made always has one. *)
+let key_of_row (row : W.List_box_row.t) =
+  Option.bind (W.List_box_row.get_child row) ~f:(Child_keys.find row_keys)
+;;
+
+let key_of_row_exn (row : W.List_box_row.t) =
+  match W.List_box_row.get_child row with
+  | Some child -> Child_keys.find_exn row_keys child ~what:"list box row"
+  | None ->
+    invalid_arg "list box row has no child (every row this impl makes is given one)"
+;;
+
 (* Every selected row, as the keys the nodes carried. Read through [Child_keys], because
    the question an application asks is about its own rows and GTK's answer is a list of
-   widgets it has never seen.
+   widgets it has never seen. In widget order, which is what
+   [Attr.on_selected_rows_changed]'s doc promises.
 
    A row GTK reports that this impl did not register cannot happen -- every row in a
    [GtkListBox] this library owns was made by [wrap] -- but dropping one is the right
    response if it ever does: this runs inside a signal emission, and under-reporting a
    selection is better than raising there. *)
 let selected_keys (w : Widget.t) =
-  W.List_box.get_selected_rows (cast w)
-  |> List.filter_map ~f:(fun row -> Child_keys.find row_keys (row :> Widget.t))
+  rows (cast w)
+  |> List.filter ~f:W.List_box_row.is_selected
+  |> List.filter_map ~f:key_of_row
 ;;
 
 let row_by_key (w : Widget.t) key =
-  let b : W.List_box.t = cast w in
-  let rec go i =
-    match W.List_box.get_row_at_index b i with
-    | None -> None
-    | Some row ->
-      if Option.exists (Child_keys.find row_keys (row :> Widget.t)) ~f:(String.equal key)
-      then Some row
-      else go (i + 1)
-  in
-  go 0
+  List.find
+    (rows (cast w))
+    ~f:(fun row -> Option.exists (key_of_row row) ~f:(String.equal key))
+;;
+
+(* Every row's entry dropped at once, for the list box that is going away whole. Its rows
+   never pass through [list_ops.remove] -- the patcher tears a subtree down by walking it,
+   not by removing each child from its parent -- so without this their entries would sit
+   in the process-wide table until the wrappers themselves were collected. The ephemeron
+   makes that bounded rather than a leak, but "the next GC" is no more a bound for a page
+   the user switched away from than it is for a row the user filtered out, which is the
+   argument [list_ops.remove] already makes.
+
+   Called from [Patcher.destroy], where the [GtkListBox] still holds its rows: the
+   children's own teardown detaches them from Bonsai without unparenting them. *)
+let forget_rows (w : Widget.t) =
+  List.iter
+    (rows (cast w))
+    ~f:(fun row ->
+      Option.iter (W.List_box_row.get_child row) ~f:(Child_keys.remove row_keys))
 ;;
 
 (* Controlled, on spec §6.5's rule and compared against the widget rather than the
@@ -126,11 +193,33 @@ let row_by_key (w : Widget.t) key =
    Sorting both sides before comparing is deliberate: GTK reports selected rows
    in *widget* order and the model lists them in whatever order it built. Two orderings of
    one selection must not look like a change, or this would write on every frame and the
-   user could never keep a multi-selection. *)
+   user could never keep a multi-selection.
+
+   Narrowing to the keys that resolve to a row before comparing is the same claim from the
+   other side, and it is what makes "a key naming no row is ignored" mean {i inert} rather
+   than merely {i harmless}. [current] can only hold keys of rows that exist, so comparing
+   it against the unfiltered [selected] is false forever the moment the model holds one
+   extra id -- and every frame would then [unselect_all] and re-select the whole surviving
+   selection, which is exactly what the sorting above exists to prevent, arriving by
+   another door. It is also the case ruling 4 went out of its way to bless: a model that
+   keeps a selected id through a filter change.
+
+   The row still comes back {i on the frame the row does}: a returning row makes [wanted]
+   grow, the comparison goes false once, and the fixup selects it -- the same-frame rule
+   [Node.stack ~visible_child] has, and the reason this is a fixup rather than a
+   [reassert].
+
+   What is deliberately {i not} narrowed is the write itself: [selected] is what gets
+   written, so ruling 5 is untouched -- what the model asked for reaches GTK, and what GTK
+   kept is what the next frame reads back. A model asking for something the mode cannot
+   hold (three keys in [Single], a [row_selectable false] row) therefore still rewrites on
+   every frame; that is documented on [Node.list_box] as a model to bring into line with
+   its mode, and it is not the same thing as a key that is simply not here yet. *)
 let apply_selection (w : Widget.t) ~selected =
   let sorted = List.sort ~compare:String.compare in
   let current = selected_keys w in
-  if not (List.equal String.equal (sorted current) (sorted selected))
+  let wanted = List.filter selected ~f:(fun key -> Option.is_some (row_by_key w key)) in
+  if not (List.equal String.equal (sorted current) (sorted wanted))
   then (
     let lb : W.List_box.t = cast w in
     (* A no-op in [Browse] mode, where GTK refuses to leave nothing selected; the
@@ -166,8 +255,7 @@ let row_activated : Signals.spec =
     ; fire =
         (fun _w attr row ->
           match (attr :> Attr.Private.t) with
-          | On_row_activated handler ->
-            (), Some (handler (Child_keys.find_exn row_keys row ~what:"list box row"))
+          | On_row_activated handler -> (), Some (handler (key_of_row_exn (cast row)))
           | _ -> (), None)
     ; declined = ()
     }
@@ -288,10 +376,18 @@ let impl : Widget_impl.t =
               ; remove =
                   (fun parent child ->
                     let row = row_of ~what:"the row being removed" child in
+                    (* [child] is the table's key, not [row]; see [row_keys]. *)
                     (* Dropped here rather than left to the GC: the table is shared by
                        every list box in the process, and a filtered list would otherwise
-                       accumulate entries until the rows themselves were collected. *)
-                    Child_keys.remove row_keys (row :> Widget.t);
+                       accumulate entries until the rows themselves were collected.
+
+                       *Before* the GTK call, and that order is load-bearing rather than
+                       tidy: GTK emits [selected-rows-changed] synchronously from the
+                       remove, and [selected_keys] drops the rows it cannot find -- so
+                       forgetting the key first is what stops a handler being handed the
+                       key of a row that has just left the tree. Moving this line down
+                       beside the rest of the teardown reintroduces exactly that. *)
+                    Child_keys.remove row_keys child;
                     W.List_box.remove (cast parent) (row :> Widget.t))
               ; updated =
                   (fun _parent ~old ~node child ->

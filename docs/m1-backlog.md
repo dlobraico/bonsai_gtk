@@ -360,3 +360,38 @@ Do not "fix" these when an expected file surprises you:
   - `Stack_page.set_title : t -> string option -> unit`, so a page that loses its
     `Attr.page_title` gets no switcher button rather than a blank clickable one.
     containers M1.
+- **`gtk_list_box_get_selected_rows`'s stub is missing `g_object_ref_sink`** — a
+  memory-safety defect, not a convenience one, and the most valuable of the fork patches
+  M2 has found. `ml_list_box_gen.c:229-238` does
+  `Val_GList_with(…, Val_GtkListBoxRow((gpointer)_tmp->data))` with no sink, while the
+  method is `transfer-ownership="container"` (`gir/Gtk-4.0.gir:89573`): the `GList` is the
+  caller's to free, the rows in it are borrowed. `ml_gobject_val_of_ext`'s contract
+  (`ml_gobject.c:373-388`) is that the caller must sink a transfer-none pointer first,
+  "since the wrapper's finalizer unconditionally `g_object_unref`s on GC" — so every call
+  hands out one unbalanced unref per selected row, and a few of them dispose a
+  still-parented row: the selection silently empties, GTK logs "has a parent GtkListBox
+  during dispose", and the process segfaults shortly after. Reproduced in ten idle frames
+  plus one major collection (task-6 review C1).
+
+  **The fork already carries the identical fix for the twin**: `ml_flow_box_gen.c:222-233`
+  sinks each `GtkFlowBoxChild` and its comment describes exactly this bug. The `GtkListBox`
+  one was simply not reached. `W_list_box.selected_keys` works around it by walking
+  `get_row_at_index` + `is_selected` (both correctly sinking), and `w_list_box.ml` says
+  nothing in this library may call `get_selected_rows` until the patch lands.
+
+  **The real fix belongs in the generator.** `grep -n 'Val_GList_with\|Val_GSList_with'`
+  over the generated stubs finds **47 sites, of which exactly one** — the hand-patched
+  FlowBox one — sinks its elements; the other 46 are the same shape and the same latent
+  bug. Nothing else in
+  this library uses one today (checked: our only other GObject enumeration is
+  `Widget.observe_controllers`, which returns a transfer-full `GListModel` and whose
+  `get_object` is transfer-full too, so both are balanced) — but Task 7's `FlowBox` and
+  anything reaching for `Gesture.get_sequences`, `Widget.list_mnemonic_labels` or
+  `TreeView.get_columns` walks straight into it. Generator fix > four hand patches.
+- **Rule of thumb this established, for any new binding call that returns objects:** read
+  the *stub*, not the GIR. A `Val_GList_with` site without `g_object_ref_sink`, or any
+  `Val_*` wrapping a transfer-none pointer, is an unbalanced unref that GC turns into a
+  use-after-free — and neither the type checker nor a short-lived test will show it,
+  because nothing collects before exit. `test/live/live_lists.ml`'s first block is the
+  shape of test that does: N frames, a `Gc.full_major`, and an assertion that the widgets
+  are still there.
