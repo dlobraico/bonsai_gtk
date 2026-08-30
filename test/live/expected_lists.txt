@@ -46,8 +46,9 @@ rows after the middle row went away: HEADER,C,A,B
 after the user clicked: c,b
 after the declining frame: b
 add-and-select: d
-selected row removed: (none)
-the handler saw, as the row left: (none)
+two selected before the removal: a,d
+selected row removed: a
+the handler saw, as the row left: a
 selection with a ghost key: a
 writes on an identical frame with a ghost key held: 0
 the ghost row arrived: a,ghost
@@ -139,9 +140,9 @@ fb after the middle card went away: C,A,B
 fb after the user clicked: a,b
 fb after the declining frame: b
 fb add-and-select: d
-fb selected card removed: (none)
-fb the handler saw, as the card left: (none)
-fb selection with the removed key still held: a
+fb two selected before the removal: a,d
+fb selected card removed: a
+fb the handler saw, as the card left: a
 fb writes on an identical frame with the removed key held: 0
 fb the removed card came back: a,d
 fb multi-selection: a,b
@@ -158,9 +159,22 @@ fb asking a None_ grid for a selection: (none)
     (GtkFlowBoxChild (children (GtkLabel (text A))))
     (GtkFlowBoxChild (children (GtkLabel (text D))))
     (GtkFlowBoxChild (children (GtkLabel (text B))))))))
+fb in Browse mode: a
+(GtkWindow (title (grid)) (css (background)) hidden
+ (children
+  (GtkFlowBox (selection-mode browse) activate-on-double-click
+   (min-children-per-line 1) (max-children-per-line 10) (row-spacing 28)
+   (column-spacing 20) (selected-children 1) (css (horizontal))
+   (children (GtkFlowBoxChild (children (GtkLabel (text C))))
+    (GtkFlowBoxChild selected (children (GtkLabel (text A))))
+    (GtkFlowBoxChild (children (GtkLabel (text D))))
+    (GtkFlowBoxChild (children (GtkLabel (text B))))))))
+fb Browse asked for an empty selection: a
 fb activation delivered the key: d
 fb handlers fired during teardown: 0
 fb driver, after mount: a
 fb driver, after the user clicked: b
 fb driver, after the frame the click armed: a (Bonsai saw 1)
 fb driver, after one more frame: a (Bonsai saw 1)
+bench: n=1000, selected 200 of 200
+bench: 200 idle frames, under 2 ms each: true

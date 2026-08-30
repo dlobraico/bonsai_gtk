@@ -452,9 +452,12 @@ val on_child_activated : (Key.t -> unit Ui_effect.t) -> t
     selected child, in the widget's order -- the same shape and the same rules as
     {!on_selected_rows_changed}, over [selected-children-changed].
 
-    It fires when a selected child is {i removed}, too, with the reduced selection; the
-    key of the departing child is gone from the table before GTK is told to remove it, so
-    a handler is never handed the name of a child that has just left the tree.
+    It fires when a selected child is {i removed}, too, with the reduced selection: a
+    handler is never handed the name of a child that has just left the tree, because the
+    selection is read by walking the children the flow box still holds and GTK emits this
+    signal after unparenting the departing one. (The implementation also drops the child's
+    key before telling GTK to remove it, but that ordering is belt-and-braces -- it is the
+    walk that makes the guarantee.)
 
     Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
     node is mounted or patched. *)

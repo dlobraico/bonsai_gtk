@@ -145,6 +145,9 @@ let selected_keys (w : Widget.t) =
   |> List.filter_map ~f:key_of_row
 ;;
 
+(* One key, resolved by walking the list box. The selection fixup builds a table from its
+   own walk instead; see [apply_selection], and see [W_flow_box.child_by_key] for why
+   neither may be cached into a table that outlives the call. *)
 let row_by_key (w : Widget.t) key =
   List.find
     (rows (cast w))
@@ -210,8 +213,27 @@ let forget_rows (w : Widget.t) =
    its mode, and it is not the same thing as a key that is simply not here yet. *)
 let apply_selection (w : Widget.t) ~selected =
   let sorted = List.sort ~compare:String.compare in
-  let current = selected_keys w in
-  let wanted = List.filter selected ~f:(fun key -> Option.is_some (row_by_key w key)) in
+  (* One walk of the list box, and a key table built from it for this call only -- the
+     same change, for the same reason, as [W_flow_box.apply_selection], whose comment
+     carries the measurement. Resolving each key with [row_by_key] made this O(|selected|
+     x rows) on every mount, every patch and every no-change frame; a sidebar merely
+     happens to be small, and the code was identical.
+
+     Per call rather than per widget, and that is a safety property: the table is built
+     from the walk this function already does and dies with the call, so it cannot outlive
+     a removal and hand [select_row] a detached row. *)
+  let all = rows (cast w) in
+  let by_key = Hashtbl.create (module String) in
+  List.iter all ~f:(fun row ->
+    Option.iter (key_of_row row) ~f:(fun key ->
+      (* First wins, as [List.find] did; duplicate sibling keys are rejected by
+         [Reconcile.check_unique_keys] at mount and at patch. *)
+      ignore (Hashtbl.add by_key ~key ~data:row : [ `Ok | `Duplicate ])));
+  (* In widget order, because [all] is -- what [Attr.on_selected_rows_changed] promises. *)
+  let current =
+    List.filter all ~f:W.List_box_row.is_selected |> List.filter_map ~f:key_of_row
+  in
+  let wanted = List.filter selected ~f:(Hashtbl.mem by_key) in
   if not (List.equal String.equal (sorted current) (sorted wanted))
   then (
     let lb : W.List_box.t = cast w in
@@ -221,7 +243,8 @@ let apply_selection (w : Widget.t) ~selected =
        comparison reads back. See [Node.list_box]. *)
     W.List_box.unselect_all lb;
     List.iter selected ~f:(fun key ->
-      Option.iter (row_by_key w key) ~f:(fun row -> W.List_box.select_row lb (Some row))))
+      Option.iter (Hashtbl.find by_key key) ~f:(fun row ->
+        W.List_box.select_row lb (Some row))))
 ;;
 
 (* GTK hands this callback a [GtkListBoxRow] the application has never seen, and the row's

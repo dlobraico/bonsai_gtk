@@ -258,7 +258,7 @@ let grid (graph @ local) =
     ]
 ;;
 
-(* Page 4: the containers, including the overlay-over-a-spacer trick that caps a picture's
+(* Page 5: the containers, including the overlay-over-a-spacer trick that caps a picture's
    allocated size. *)
 let layout (graph @ local) =
   let expanded, set_expanded = Bonsai.state false graph in

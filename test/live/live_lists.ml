@@ -313,13 +313,25 @@ let () =
   printf "add-and-select: %s\n" (selected_keys live);
   (* 5. Removing the selected row. GTK drops the selection; the model still says "d", and
      the next frame must not resurrect a row that is gone. Nothing selected, no raise. *)
+  (* Two selected before it goes, so the line below distinguishes the reduced selection
+     from the empty one. *)
+  let live =
+    patch
+      live
+      (view
+         ~placeholder:(Node.label "nothing here")
+         ~selected:[ "a"; "d" ]
+         ~rows:[ "hdr"; "c"; "a"; "b"; "d" ]
+         ())
+  in
+  printf "two selected before the removal: %s\n" (selected_keys live);
   reported := [];
   let live =
     patch
       live
       (view
          ~placeholder:(Node.label "nothing here")
-         ~selected:[ "d" ]
+         ~selected:[ "a"; "d" ]
          ~rows:[ "hdr"; "c"; "a"; "b" ]
          ())
   in
@@ -814,8 +826,13 @@ let () =
      holds is by then a key naming no card -- inert -- and nothing selected is the answer
      both sides agree on. Nothing raises, and no dangling widget is reachable because
      nothing here holds a widget. *)
+  (* Two selected before the removal, so that the line below can tell "the reduced
+     selection" from "the empty selection" -- with only [d] selected both print [(none)]
+     and a handler that reported nothing at all would pass. *)
+  let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "b"; "d" ] ()) in
+  printf "fb two selected before the removal: %s\n" (card_keys live);
   reported := [];
-  let live = patch live (view ~selected:[ "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
   printf "fb selected card removed: %s\n" (card_keys live);
   (* What the handler was told while the card was leaving: the reduced selection, and
      never the name of the card on its way out. That is
@@ -836,16 +853,13 @@ let () =
        ~sep:" | "
        (List.rev_map !reported ~f:(fun keys ->
           if List.is_empty keys then "(none)" else String.concat ~sep:"," keys)));
-  (* 6. The stale key is {i inert}, not merely tolerated -- and the way to show that is a
-     frame in which the model holds the departed key {i and} a live one. [current] can
-     only hold keys of cards that exist, so comparing it against the unnarrowed
-     [~selected] is false forever the moment the model holds one extra id, and every frame
-     would then [unselect_all] and re-select the survivors. The first line is the
-     selection, the second is the number of writes an idle frame provoked; without the
-     narrowing in [apply_selection] the second reads 2 and the selection flickers off and
-     back on sixty times a second. *)
-  let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
-  printf "fb selection with the removed key still held: %s\n" (card_keys live);
+  (* 6. The stale key is {i inert}, not merely tolerated. [current] can only hold keys of
+     cards that exist, so comparing it against the unnarrowed [~selected] is false forever
+     the moment the model holds one extra id, and every frame would then [unselect_all]
+     and re-select the survivors -- so the frame below, which renders exactly what the
+     frame above did, is the one that has to be silent. Without the narrowing in
+     [apply_selection] it writes twice and the selection flickers off and back on sixty
+     times a second. *)
   let before = !scheduled in
   let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
   printf
@@ -880,6 +894,22 @@ let () =
   in
   printf "fb asking a None_ grid for a selection: %s\n" (card_keys live);
   print_s (Live_tree.dump live.widget);
+  (* [Browse] is the mode whose behaviour is worth pinning, and the only one that reaches
+     [Live_tree]'s [(selection-mode browse)] spelling. GTK keeps exactly one child
+     selected there and [unselect_all] is a no-op (measured), so a model that renders an
+     empty selection to a [Browse] grid is asking for something GTK does not do: the write
+     goes out as asked, GTK keeps what it kept, and the comparison differs again next
+     frame. That is the documented "a model that disagrees with its mode" case, and this
+     is what it looks like -- the selection does not empty, and nothing raises. *)
+  let live =
+    patch live (view ~mode:Browse ~selected:[ "a" ] ~cards:[ "c"; "a"; "d"; "b" ] ())
+  in
+  printf "fb in Browse mode: %s\n" (card_keys live);
+  print_s (Live_tree.dump live.widget);
+  let live =
+    patch live (view ~mode:Browse ~selected:[] ~cards:[ "c"; "a"; "d"; "b" ] ())
+  in
+  printf "fb Browse asked for an empty selection: %s\n" (card_keys live);
   (* 8. The activation handler, end to end through GTK's own emission chain. There is no
      synthetic click in the pinned binding, but [GtkFlowBoxChild::activate] is an action
      signal and it is what a click ends in: emitting it makes GTK emit [child-activated]
@@ -954,4 +984,78 @@ let () =
     (driven_keys ())
     !selection_seen;
   Bonsai_gtk.Expert.Driver.stop d
+;;
+
+(* The selection fixup's cost per idle frame, at the scale the flow box is the container
+   for. This is a regression rather than a benchmark: it asserts a bound with five times
+   the headroom, and its job is to fail if the shape of [apply_selection] ever goes back
+   to being quadratic in the selection.
+
+   The shape it guards against, and why the bound is where it is ([task-7-review.md]'s
+   I1): [apply_selection] runs from the fixup queue on every mount, every patch {i and}
+   every no-change frame through [reassert_only], so its cost is paid sixty times a second
+   by an application doing nothing. Resolving each key with a linear walk of the children
+   made that O(|selected| x n): measured on the shipped-then-fixed code at n=1000 with 200
+   selected, an {i idle} frame cost 16.5 ms -- the whole 16.7 ms budget, spent deciding
+   that nothing had changed -- and 500-of-500 cost 24 ms, at which point the driver cannot
+   reach 60 fps at all while the selection is held. With the per-call map the same frame
+   is 0.39 ms.
+
+   The frames are the real thing: [reassert_only] + [run_fixups] inside the patch guard is
+   what [Driver.frame] runs when a computation hands back the physically same node.
+
+   The golden gets the verdict rather than the number, because a timing is not
+   reproducible; the number goes to stderr, which is not compared, so a failure says how
+   far over it went rather than only [false]. *)
+let () =
+  let n = 1000 in
+  let sel = 200 in
+  let bound_ms = 2.0 in
+  let frames = 200 in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  let key i = sprintf "k%d" i in
+  let cards = List.init n ~f:(fun i -> Node.label ~key:(key i) (Int.to_string i)) in
+  (* Spread through the list rather than taken from the front, so that neither the walk
+     nor the map is flattered by locality. *)
+  let selected = List.init sel ~f:(fun i -> key (i * (n / sel))) in
+  let live =
+    P.mount
+      ctx
+      ~path:"bench"
+      ~is_root:true
+      (Node.window
+         ~title:"bench"
+         (Node.flow_box ~selection_mode:Multiple ~selected cards))
+  in
+  P.run_fixups ctx;
+  let selected_count = List.length (W_flow_box.selected_keys (flow_box live)) in
+  let start = Time_ns.now () in
+  for _ = 1 to frames do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"bench" live;
+      P.run_fixups ctx)
+  done;
+  let per_frame_ms =
+    Time_ns.Span.to_ms (Time_ns.diff (Time_ns.now ()) start) /. Int.to_float frames
+  in
+  (* The selection is still exactly the one asked for, which is what stops this from
+     measuring a fixup that has quietly stopped doing anything. *)
+  printf "bench: n=%d, selected %d of %d\n" n selected_count sel;
+  printf
+    "bench: %d idle frames, under %g ms each: %b\n"
+    frames
+    bound_ms
+    Float.(per_frame_ms < bound_ms);
+  eprintf "bench: %.3f ms per idle frame (bound %g)\n%!" per_frame_ms bound_ms;
+  P.destroy ctx live
 ;;

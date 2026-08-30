@@ -726,6 +726,14 @@ val list_box
     negative arrives as a very large positive one and nothing complains. Both are
     [Invalid_argument] from this constructor.
 
+    A [~min_children_per_line] {i above} the maximum is {b not} rejected, unlike the pair
+    {!scrolled_window} checks. GTK resolves it deterministically and in the caller's
+    favour -- the maximum wins, so [~min:6 ~max:3] lays out three per line, exactly as
+    [~min:0 ~max:3] does (measured) -- and the arrangement that produces it is a
+    reasonable one: a view that switches to a list by setting [~max_children_per_line:1]
+    while leaving a minimum from the grid view behind gets its list. Rejecting it would
+    turn a working pattern into an exception for the sake of tidiness.
+
     The geometry props are ordinary props, which is the point: switching one grid between
     a grid view and a list view is [~max_children_per_line:1 ~homogeneous:true] and two
     spacings in the next render — one diff, applied in one batch — rather than five

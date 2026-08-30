@@ -138,14 +138,19 @@ let selected_keys (w : Widget.t) =
   |> List.filter_map ~f:key_of_child
 ;;
 
-(* By walking the box rather than through a key-to-wrapper map, and that is worth one
-   sentence because the obvious optimisation is exactly the wrong one here:
-   [gtk_flow_box_select_child] handed a child that is {i not} in the box neither warns nor
-   refuses -- it sets the child's own selected flag, so [is_selected] then answers [true]
-   for a widget the box has never held (measured). A reverse map that outlived a removal
-   would therefore hand [apply_selection] a detached wrapper and get a silent, invisible
-   "selection" for it. Walking the box means a key that names a child that has left simply
-   does not resolve, which is what makes the ghost-key rule below mean anything. *)
+(* One key, resolved by walking the box. For the callers that ask about a single key; the
+   selection fixup builds a table instead, and the difference between the two is the point
+   of the next comment.
+
+   {b Never cache this into a table that outlives the call.} The obvious optimisation --
+   one key-to-wrapper map per flow box, maintained by [insert]/[remove] -- is unsafe here
+   in a way that is invisible: [gtk_flow_box_select_child] handed a child that is {i not}
+   in the box neither warns nor refuses. It sets the child's own selected flag, so
+   [is_selected] answers [true] for a widget the box has never held (measured). A map that
+   outlived a removal by even one frame would hand [apply_selection] a detached wrapper
+   and get a silent, invisible "selection" for it. Deriving the answer from the box means
+   a key naming a child that has left simply does not resolve, which is what makes the
+   ghost-key rule below mean anything. *)
 let child_by_key (w : Widget.t) key =
   List.find
     (children (cast w))
@@ -186,16 +191,48 @@ let forget_children (w : Widget.t) =
    version. *)
 let apply_selection (w : Widget.t) ~selected =
   let sorted = List.sort ~compare:String.compare in
-  let current = selected_keys w in
-  let wanted = List.filter selected ~f:(fun key -> Option.is_some (child_by_key w key)) in
+  (* One walk of the box, and a key table built from it {i for this call only}.
+
+     The table is what keeps this linear. Resolving each key with [child_by_key] made the
+     whole function O(|selected| x children), and it runs from the fixup queue on every
+     mount, every patch {i and} every no-change frame -- so an idle application paid it
+     sixty times a second. Measured at 1000 children with 200 selected: 16.5 ms per idle
+     frame, the entire frame budget spent deciding that nothing had changed; 500 of 500
+     cost 24 ms. With the table the same frame is 0.39 ms. [live_lists.ml]'s [bench] block
+     is the regression, and it reads [false] on the old shape.
+
+     {b Per call, and that is the safety property rather than a style choice.} It is built
+     from the walk this function already had to do and dies with the call, so it cannot
+     outlive a removal -- which is exactly what makes it a different thing from the
+     persistent map [child_by_key] warns against. A key naming a child that left the box
+     between two frames is absent from the {i next} frame's table, resolves to nothing,
+     and is inert; a persistent map would still hold its detached wrapper and hand it to
+     [select_child], which accepts it silently. *)
+  let all = children (cast w) in
+  let by_key = Hashtbl.create (module String) in
+  List.iter all ~f:(fun c ->
+    Option.iter (key_of_child c) ~f:(fun key ->
+      (* First wins, as [List.find] did. Duplicate sibling keys are rejected by
+         [Reconcile.check_unique_keys] at mount and at patch, so the two cannot differ
+         today; matching the old resolution is what keeps that from mattering if it ever
+         changes. *)
+      ignore (Hashtbl.add by_key ~key ~data:c : [ `Ok | `Duplicate ])));
+  (* In widget order, because [all] is: what [Attr.on_selected_children_changed] promises,
+     and what the sort below is there to make irrelevant to the comparison. *)
+  let current =
+    List.filter all ~f:W.Flow_box_child.is_selected |> List.filter_map ~f:key_of_child
+  in
+  let wanted = List.filter selected ~f:(Hashtbl.mem by_key) in
   if not (List.equal String.equal (sorted current) (sorted wanted))
   then (
     let fb : W.Flow_box.t = cast w in
     (* A no-op in [Browse] mode, where GTK refuses to leave nothing selected; the
        [select_child] below replaces the selection there instead. *)
     W.Flow_box.unselect_all fb;
+    (* The unnarrowed [selected], so that what the model asked for reaches GTK and what
+       GTK kept is what the next frame reads back. *)
     List.iter selected ~f:(fun key ->
-      Option.iter (child_by_key w key) ~f:(W.Flow_box.select_child fb)))
+      Option.iter (Hashtbl.find by_key key) ~f:(W.Flow_box.select_child fb)))
 ;;
 
 (* The payload is a [W.Flow_box_child.t] rather than an upcast [Widget.t]: [Signals]' ['p]
