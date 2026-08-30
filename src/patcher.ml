@@ -123,6 +123,7 @@ type live =
   ; defaults : Attr_apply.defaults
   ; slots : Signals.slots
   ; connections : Signals.connection list
+  ; controllers : Controllers.t
   ; mutable children : live Children.t
   }
 
@@ -296,6 +297,11 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
      that drift would otherwise be a handler that silently never fires. *)
   Signals.require_slots ~node_path:path ~impl_name:impl.name slots node.attrs;
   Signals.update_slots slots node.attrs;
+  (* The controller attrs are nobody's signal, so neither check above sees them: they are
+     legal on every kind and no impl declares a spec for one. What creates their slots is
+     this, from the attrs themselves. *)
+  let controllers = Controllers.create ctx.signals ~node_path:path widget in
+  Controllers.update controllers node.attrs;
   let children =
     mount_children
       ctx
@@ -307,7 +313,7 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
       impl.children
   in
   note_interest ctx ~path ~widget ~interest:(interest_of_kind node.kind) ~pass:`Mount;
-  { node; widget; impl; defaults; slots; connections; children }
+  { node; widget; impl; defaults; slots; connections; controllers; children }
 
 (* One shape, mounted. The three helpers below are what a top-level shape and a slot of
    that shape share: a slot is not a special case, it is the same code under a longer
@@ -395,6 +401,10 @@ and destroy ctx (live : live) =
      [remove]/[set_child], and a handler firing here would run against a node that is
      already gone. *)
   Signals.clear_slots live.slots;
+  (* [release] empties its own slots before it removes anything, so by the time
+     [gtk_widget_remove_controller] runs -- which can itself provoke a leave or a cancel
+     -- every slot on this widget, its own and its controllers', is already empty. *)
+  Controllers.release live.controllers;
   Signals.disconnect live.connections;
   Children.iter live.children ~f:(destroy ctx);
   match live.node.kind with
@@ -439,6 +449,11 @@ and destroy ctx (live : live) =
    ever appearing as a container child would be freed before the [remove] that names it. *)
 and disarm (live : live) =
   Signals.clear_slots live.slots;
+  (* The controllers' slots too, and not the controllers themselves: this is the
+     pre-unparent disarming, and the detaching belongs to [destroy], which runs after. A
+     click gesture or a focus controller is exactly the kind of thing GTK will emit from
+     during an unparent. *)
+  Controllers.clear live.controllers;
   Children.iter live.children ~f:disarm
 
 (* Every stack name a subtree holds, given up before the subtree is replaced.
@@ -500,6 +515,10 @@ and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
     Option.iter live.impl.reassert ~f:(fun f -> f live.widget node.kind);
     List.iter attr_ops ~f:(Attr_apply.apply ~defaults:live.defaults live.widget);
     Signals.update_slots live.slots node.attrs;
+    (* Beside [update_slots] and on the same terms: unconditional, because every frame
+       rebuilds its closures. This is also where a controller is created for an attr the
+       frame *added* and removed for one it dropped. *)
+    Controllers.update live.controllers node.attrs;
     live.children <- patch_children ctx ~path live node;
     (* Before [live.node <- node]: a renamed stack has to drop the name it was registered
        under, and that name is only on the *old* node. *)

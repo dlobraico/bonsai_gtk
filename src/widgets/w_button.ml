@@ -3,15 +3,16 @@ open Bonsai_gtk_vtree
 open Gtk_import
 
 let clicked : Signals.spec =
-  { attr = Attr.Name.On_clicked
-  ; connect =
-      (fun w ~callback -> Signals.connected w (W.Button.on_clicked (cast w) ~callback))
-  ; fire =
-      (fun _w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_clicked handler -> Some (handler ())
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_clicked
+    ; connect =
+        (fun w ~callback -> Signals.connected w (W.Button.on_clicked (cast w) ~callback))
+    ; fire =
+        (fun _w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_clicked handler -> Some (handler ())
+          | _ -> None)
+    }
 ;;
 
 (* Shared with [w_toggle_button.ml]: a [GtkToggleButton] *is* a [GtkButton], so its label

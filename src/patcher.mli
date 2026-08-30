@@ -86,6 +86,12 @@ type live =
       op restores to. *)
   ; slots : Signals.slots
   ; connections : Signals.connection list
+  ; controllers : Controllers.t
+  (** The event controllers this node's attributes ask for — a [GtkGestureClick] for
+      {!Bonsai_gtk_vtree.Attr.on_click], a [GtkEventControllerFocus] for the focus pair.
+      Unlike [slots], which is fixed at mount, this changes shape as the attrs do: a
+      controller is attached on the frame its first attr appears and removed on the frame
+      its last one goes. *)
   ; mutable children : live Children.t
   }
 
@@ -157,10 +163,11 @@ val patch : ctx -> path:string -> is_root:bool -> live -> Node.t -> live
 val reassert_only : ctx -> path:string -> live -> unit
 
 (** Tears [live] and its subtree down: empties the signal slots (so a signal GTK emits
-    during teardown cannot reach a handler), disconnects, and lets native implementations
-    release what they allocated. On the paths where the patcher unparents a subtree before
-    destroying it, the slots of the whole subtree are emptied before the unparenting
-    rather than here, so the guarantee holds in both orders. Windows are destroyed
-    outright; any other widget is merely detached from Bonsai and is expected to be
-    unparented by the caller (or by its parent going away). *)
+    during teardown cannot reach a handler), disconnects, removes and disconnects the
+    event controllers, and lets native implementations release what they allocated. On the
+    paths where the patcher unparents a subtree before destroying it, the slots of the
+    whole subtree — the widgets' own and their controllers' — are emptied before the
+    unparenting rather than here, so the guarantee holds in both orders. Windows are
+    destroyed outright; any other widget is merely detached from Bonsai and is expected to
+    be unparented by the caller (or by its parent going away). *)
 val destroy : ctx -> live -> unit

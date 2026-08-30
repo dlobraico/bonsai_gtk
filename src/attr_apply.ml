@@ -101,6 +101,11 @@ let set (w : Widget.t) (attr : Attr.t) =
   (* [Test_id] is inert at runtime; the [On_*] attrs are handled by [Signals]. [Many] is
      flattened away by [Attrs.of_list] and never reaches here.
 
+     The controller attrs ([On_click], [On_focus_enter], [On_focus_leave]) are inert here
+     for a different reason again: they are not a property of the widget at all but a
+     [GtkEventController] attached to it, created and removed by [Controllers] straight
+     from the node's attrs.
+
      [Measure_overlay], [Grid_cell] and [Page_title] are the container-placement attrs: a
      setting the *parent* holds about this child (an overlay's measure flag, a grid cell,
      a stack page's title), which no property of the child widget corresponds to. The
@@ -111,6 +116,9 @@ let set (w : Widget.t) (attr : Attr.t) =
   | Measure_overlay _
   | Grid_cell _
   | Page_title _
+  | On_click _
+  | On_focus_enter _
+  | On_focus_leave _
   | On_clicked _
   | On_toggled _
   | On_changed _
@@ -149,6 +157,12 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Measure_overlay
   | Grid_cell
   | Page_title
+  (* The controller attrs are [Controllers]' business, not a property of the widget:
+     unsetting one removes a controller, which [Controllers.update] does from the attrs
+     themselves rather than from an op. *)
+  | On_click
+  | On_focus_enter
+  | On_focus_leave
   | On_clicked
   | On_toggled
   | On_changed

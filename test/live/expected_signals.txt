@@ -6,3 +6,9 @@ after raising handler: 3
 after clear: 3
 missing slot: root/1: Button connected no signal for On_clicked, which Events says it emits (the widget impl and the table disagree)
 present slot: accepted
+returned declined, scheduled 0
+returned handled:b, scheduled 1
+returned declined, scheduled 1
+EXN at root/0: (Failure boom)
+returned declined, scheduled 1
+returned declined, scheduled 1

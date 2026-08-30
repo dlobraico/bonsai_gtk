@@ -19,19 +19,41 @@ type connection =
    buffer, a drop-down's model, an event controller -- and still be torn down correctly. *)
 let connected obj handler_id = { source = Gobject.coerce obj; handler_id }
 
+(* The two arms' records share [attr], [connect] and [fire] deliberately; see the mli. *)
+[@@@warning "-30"]
+
+(* Two shapes of GTK callback, and the second is existential in both directions: the
+   payload GTK hands in and the value it wants back are the spec's own business, so
+   [connect_all] can hold a list of them without knowing either. See the mli. *)
 type spec =
+  | Read_back of read_back
+  | Payload : ('p, 'r) payload -> spec
+
+and read_back =
   { attr : Attr.Name.t
   ; connect : Widget.t -> callback:(unit -> unit) -> connection
   ; fire : Widget.t -> Attr.t -> unit Ui_effect.t option
   }
 
-(* Task 4 turns [spec] into a variant; every reader that only wants the name goes through
-   this rather than through the field, so that change stays inside this module. *)
-let spec_attr spec = spec.attr
+and ('p, 'r) payload =
+  { attr : Attr.Name.t
+  ; connect : Widget.t -> callback:('p -> 'r) -> connection
+  ; fire : Widget.t -> Attr.t -> 'p -> 'r * unit Ui_effect.t option
+  ; declined : 'r
+  }
+
+[@@@warning "+30"]
+
+(* Every reader that only wants the name goes through this rather than through a field, so
+   that the variant stays inside this module. *)
+let spec_attr = function
+  | Read_back r -> r.attr
+  | Payload p -> p.attr
+;;
 
 type slots = (Attr.Name.t, Attr.t option ref) List.Assoc.t ref
 
-let dispatch ctx w slot spec =
+let dispatch ctx w slot (spec : read_back) =
   if ctx.in_patch ()
   then ()
   else (
@@ -43,19 +65,56 @@ let dispatch ctx w slot spec =
        | Some effect -> ctx.schedule effect))
 ;;
 
+(* The same five obligations as the read-back trampoline (spec §6.4), plus a sixth:
+   whatever happens, GTK gets a value back. An exception here must not cross into C, and
+   the value it returns instead has to be the *safe* one -- for a key controller that is
+   "propagate", because a handler that raised has certainly not handled the key.
+
+   Three paths return [declined], and they are the three on which the application has said
+   nothing: the slot is empty (no handler on this node), the emission arrived during a
+   patch (Bonsai must not be re-entered), or [fire] raised (which is reported and then
+   treated as no answer). Everything else returns what [fire] decided, synchronously,
+   while its effect -- if it produced one -- is scheduled like any other. *)
+let dispatch_payload ctx ~node_path ~declined ~fire w slot p =
+  match
+    if ctx.in_patch ()
+    then declined
+    else (
+      match !slot with
+      | None -> declined
+      | Some attr ->
+        let r, effect = fire w attr p in
+        Option.iter effect ~f:ctx.schedule;
+        r)
+  with
+  | r -> r
+  | exception exn ->
+    (try ctx.on_exn ~node_path exn with
+     | _ -> ());
+    declined
+;;
+
 let connect_all ctx ~node_path (w : Widget.t) specs : slots * connection list =
   let slots = ref [] in
   let connections =
     List.map specs ~f:(fun spec ->
       let slot = ref None in
-      slots := (spec.attr, slot) :: !slots;
-      spec.connect w ~callback:(fun () ->
-        (* This frame is called from C: no exception may cross it. *)
-        match dispatch ctx w slot spec with
-        | () -> ()
-        | exception exn ->
-          (try ctx.on_exn ~node_path exn with
-           | _ -> ())))
+      slots := (spec_attr spec, slot) :: !slots;
+      match spec with
+      | Read_back spec ->
+        spec.connect w ~callback:(fun () ->
+          (* This frame is called from C: no exception may cross it. *)
+          match dispatch ctx w slot spec with
+          | () -> ()
+          | exception exn ->
+            (try ctx.on_exn ~node_path exn with
+             | _ -> ()))
+      | Payload { connect; fire; declined; attr = _ } ->
+        (* No [try] around this one: [dispatch_payload] has to catch the exception itself,
+           because the frame owes GTK a value even when it raised and only the spec knows
+           which value is safe. *)
+        connect w ~callback:(fun p ->
+          dispatch_payload ctx ~node_path ~declined ~fire w slot p))
   in
   slots, connections
 ;;
@@ -120,7 +179,11 @@ let require_specs ~node_path kind attrs =
 let require_slots ~node_path ~impl_name (slots : slots) attrs =
   List.iter (Attrs.to_list attrs) ~f:(fun attr ->
     match Attr.name attr with
-    | Some name when Attr.Name.is_event name ->
+    (* Controller attrs are skipped: they are no impl's signal, so no slot for one lives
+       on the widget. [Controllers] builds their slots from the attr itself, on the frame
+       the attr appears, which is why "the attr is here but has no slot" is not a state
+       they can reach. *)
+    | Some name when Attr.Name.is_event name && not (Events.is_controller_attr name) ->
       if not (List.Assoc.mem !slots name ~equal:Attr.Name.equal)
       then
         invalid_argf

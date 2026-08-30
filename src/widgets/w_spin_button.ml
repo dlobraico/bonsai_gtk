@@ -5,19 +5,20 @@ open Gtk_import
 (* A [GtkSpinButton] is *not* a [GtkRange] — it owns its own [GtkAdjustment] and its own
    setters — so nothing here can be shared with [w_scale.ml] beyond the shape. *)
 let value_changed : Signals.spec =
-  { attr = Attr.Name.On_value_changed
-  ; connect =
-      (fun w ~callback ->
-        Signals.connected w (W.Spin_button.on_value_changed (cast w) ~callback))
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        (* The value read back off the widget, not one carried by the signal: GTK's
-           [value-changed] has no payload, and the widget's number is the clamped and
-           rounded one the user is actually looking at (spec §6.4). *)
-        | On_value_changed handler -> Some (handler (W.Spin_button.get_value (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_value_changed
+    ; connect =
+        (fun w ~callback ->
+          Signals.connected w (W.Spin_button.on_value_changed (cast w) ~callback))
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          (* The value read back off the widget, not one carried by the signal: GTK's
+             [value-changed] has no payload, and the widget's number is the clamped and
+             rounded one the user is actually looking at (spec §6.4). *)
+          | On_value_changed handler -> Some (handler (W.Spin_button.get_value (cast w)))
+          | _ -> None)
+    }
 ;;
 
 (* Controlled (spec §6.5), on the identical rule to [w_entry.ml]'s text and against

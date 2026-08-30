@@ -58,21 +58,23 @@ let was_our_own_write w text =
    entry's own; [changed] (immediate) reaches it through [GtkEditable] like the other two
    entries, and both are connected — see [Node.search_entry]'s doc for which to use. *)
 let search_changed : Signals.spec =
-  { attr = Attr.Name.On_search_changed
-  ; connect =
-      (fun w ~callback ->
-        Signals.connected w (W.Search_entry.on_search_changed (cast w) ~callback))
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_search_changed handler ->
-          let text = W.Editable.get_text (W_entry.editable w) in
-          (* The one case this cannot tell apart is a user who edits the box back to
-             exactly what the library last wrote, before the debounce elapses. That search
-             is dropped — and it would have reported the text the model already holds. *)
-          if was_our_own_write w text then None else Some (handler text)
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_search_changed
+    ; connect =
+        (fun w ~callback ->
+          Signals.connected w (W.Search_entry.on_search_changed (cast w) ~callback))
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_search_changed handler ->
+            let text = W.Editable.get_text (W_entry.editable w) in
+            (* The one case this cannot tell apart is a user who edits the box back to
+               exactly what the library last wrote, before the debounce elapses. That
+               search is dropped — and it would have reported the text the model already
+               holds. *)
+            if was_our_own_write w text then None else Some (handler text)
+          | _ -> None)
+    }
 ;;
 
 let impl : Widget_impl.t =

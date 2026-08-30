@@ -13,14 +13,15 @@ let orientation : Orientation.t -> Gtk_enums.orientation = function
    [position] is the documented exception to spec 6.5, so nothing here corrects the widget
    and a paned that carries no handler is not broken. *)
 let position_changed : Signals.spec =
-  { attr = Attr.Name.On_position_changed
-  ; connect = Signals.notify ~prop:"position"
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_position_changed handler -> Some (handler (W.Paned.get_position (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_position_changed
+    ; connect = Signals.notify ~prop:"position"
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_position_changed handler -> Some (handler (W.Paned.get_position (cast w)))
+          | _ -> None)
+    }
 ;;
 
 let impl : Widget_impl.t =

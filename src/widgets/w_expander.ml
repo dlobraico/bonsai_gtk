@@ -5,14 +5,16 @@ open Gtk_import
 (* [GtkExpander::activate] fires before [expanded] settles, so the handler would read the
    old value. [notify::expanded] fires after (spec 6.4). *)
 let expanded_changed : Signals.spec =
-  { attr = Attr.Name.On_expanded_changed
-  ; connect = Signals.notify ~prop:"expanded"
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_expanded_changed handler -> Some (handler (W.Expander.get_expanded (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_expanded_changed
+    ; connect = Signals.notify ~prop:"expanded"
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_expanded_changed handler ->
+            Some (handler (W.Expander.get_expanded (cast w)))
+          | _ -> None)
+    }
 ;;
 
 (* Controlled (spec 6.5), on the toggles' rule: compare against what the widget currently

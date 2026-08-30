@@ -65,34 +65,36 @@ let set_text_if_needed (e : W.Editable.t) text =
 ;;
 
 let changed : Signals.spec =
-  { attr = Attr.Name.On_changed
-  ; connect =
-      (fun w ~callback ->
-        (* The [GtkEditable] is where [changed] is emitted, so it is also what the
-           connection has to name -- even though [from_gobject] is a checked cast to the
-           same instance for all three entry kinds. *)
-        let e = editable w in
-        Signals.connected e (W.Editable.on_changed e ~callback))
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_changed handler -> Some (handler (W.Editable.get_text (editable w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_changed
+    ; connect =
+        (fun w ~callback ->
+          (* The [GtkEditable] is where [changed] is emitted, so it is also what the
+             connection has to name -- even though [from_gobject] is a checked cast to the
+             same instance for all three entry kinds. *)
+          let e = editable w in
+          Signals.connected e (W.Editable.on_changed e ~callback))
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_changed handler -> Some (handler (W.Editable.get_text (editable w)))
+          | _ -> None)
+    }
 ;;
 
 (* [activate] is on each concrete class rather than on [GtkEditable], so the connector is
    the one thing the three kinds cannot share. Each one passes a [connect] that names the
    object it connected to, the same as any other spec. *)
 let activate ~connect : Signals.spec =
-  { attr = Attr.Name.On_activate
-  ; connect
-  ; fire =
-      (fun _w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_activate handler -> Some (handler ())
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_activate
+    ; connect
+    ; fire =
+        (fun _w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_activate handler -> Some (handler ())
+          | _ -> None)
+    }
 ;;
 
 let impl : Widget_impl.t =

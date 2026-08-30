@@ -15,6 +15,9 @@ module Reveal_transition = Bonsai_gtk_vtree.Reveal_transition
 module Stack_transition = Bonsai_gtk_vtree.Stack_transition
 module Grid_cell = Bonsai_gtk_vtree.Grid_cell
 module Orientation = Bonsai_gtk_vtree.Orientation
+module Phase = Bonsai_gtk_vtree.Phase
+module Modifiers = Bonsai_gtk_vtree.Modifiers
+module Click_event = Bonsai_gtk_vtree.Click_event
 
 module Native = struct
   module type S = Native_gtk.S
@@ -38,6 +41,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private = struct
   module Attr_apply = Attr_apply
+  module Controllers = Controllers
   module Gtk_import = Gtk_import
   module Live_tree = Live_tree
   module Native_gtk = Native_gtk

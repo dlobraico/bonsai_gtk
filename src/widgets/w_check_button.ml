@@ -3,16 +3,17 @@ open Bonsai_gtk_vtree
 open Gtk_import
 
 let toggled : Signals.spec =
-  { attr = Attr.Name.On_toggled
-  ; connect =
-      (fun w ~callback ->
-        Signals.connected w (W.Check_button.on_toggled (cast w) ~callback))
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_toggled handler -> Some (handler (W.Check_button.get_active (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_toggled
+    ; connect =
+        (fun w ~callback ->
+          Signals.connected w (W.Check_button.on_toggled (cast w) ~callback))
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_toggled handler -> Some (handler (W.Check_button.get_active (cast w)))
+          | _ -> None)
+    }
 ;;
 
 (* Controlled, on the same rule (and for the same reason) as [w_toggle_button.ml]'s. *)

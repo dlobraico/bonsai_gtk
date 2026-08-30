@@ -11,14 +11,15 @@ open Gtk_import
    ocgtk exposes no [on_notify_active], so this goes through the generic marshaller by
    detailed name, which carries no payload — hence the getter in [fire] (spec §6.4). *)
 let toggled : Signals.spec =
-  { attr = Attr.Name.On_toggled
-  ; connect = Signals.notify ~prop:"active"
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_toggled handler -> Some (handler (W.Switch.get_active (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_toggled
+    ; connect = Signals.notify ~prop:"active"
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_toggled handler -> Some (handler (W.Switch.get_active (cast w)))
+          | _ -> None)
+    }
 ;;
 
 (* [active] is what the user asked for, [state] what the app has actually done about it.

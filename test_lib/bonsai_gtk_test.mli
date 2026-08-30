@@ -40,6 +40,29 @@ module Action : sig
         user dragged it to. Fires that handler with exactly that bool; the node's own
         [expanded] prop is not consulted, so a test can show a model that declines to
         open. *)
+    | Click_at of string * Click_event.t
+    (** test_id of a node carrying [Attr.on_click], and the click to deliver. Fires that
+        handler with exactly that event; nothing is derived from the node, and in
+        particular the [button] the attr was constructed with is {i not} consulted — a
+        headless test that delivers button 3 to a [~button:1] gesture is testing its own
+        handler, not GTK's filtering, and pretending otherwise would make the action's
+        behaviour depend on a detail no headless model has. Build the event with
+        {!Bonsai_gtk_vtree.Click_event}'s record and {!Bonsai_gtk_vtree.Modifiers.none}.
+
+        {b This is the only test there is for a click handler.} The pinned ocgtk binding
+        can neither construct a [GdkEvent] nor emit a signal with arguments, so no live
+        test can deliver a real click; what a live test proves is that the gesture is
+        attached and detached (see [test/live/live_controllers.ml]). The gap between "this
+        handler does the right thing" and "GTK routes a real button-2 press to it" is
+        real, and is in the backlog. *)
+    | Focus_enter of string
+    | Focus_leave of string
+    (** test_id of a node carrying the matching attr. Two actions rather than one for a
+        focus {i move}: the handlers are independent, and a test that cares about the
+        order of a leave and an enter says so by ordering the actions.
+
+        Unlike the click pair, focus {i is} genuinely drivable live ([Widget.grab_focus]
+        on a presented window), so these have a live counterpart. *)
   [@@deriving sexp_of]
 end
 

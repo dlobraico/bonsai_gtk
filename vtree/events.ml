@@ -30,8 +30,55 @@ let for_kind : Kind.t -> Attr.Name.t list = function
     []
 ;;
 
+(* The controller attrs are legal on every kind: they are not any impl's signal, they are
+   a [GtkEventController] the runtime attaches to whatever widget carries the attr. So
+   [is_supported] short-circuits on them rather than consulting [for_kind], and no impl
+   may declare one in its [Widget_impl.signals] -- [test/live/live_events.ml] asserts
+   that, because an impl that did would connect a second handler nobody removes.
+
+   Exhaustive on purpose, like [Attr.Name.is_event]: Task 5's key attrs are controller
+   attrs too, and a name added to the wrong branch here would be rejected on every kind
+   (or accepted on all of them) with nothing to say why. *)
+let is_controller_attr : Attr.Name.t -> bool = function
+  | On_click | On_focus_enter | On_focus_leave -> true
+  | Margin_start
+  | Margin_end
+  | Margin_top
+  | Margin_bottom
+  | Halign
+  | Valign
+  | Hexpand
+  | Vexpand
+  | Sensitive
+  | Visible
+  | Tooltip
+  | Width_request
+  | Height_request
+  | Opacity
+  | Focusable
+  | Can_focus
+  | Widget_name
+  | Cursor_name
+  | Test_id
+  | Measure_overlay
+  | Grid_cell
+  | Page_title
+  | On_clicked
+  | On_toggled
+  | On_changed
+  | On_activate
+  | On_search_changed
+  | On_value_changed
+  | On_expanded_changed
+  | On_revealed
+  | On_position_changed
+  | On_visible_child_changed -> false
+;;
+
 let is_supported kind name =
-  (not (Attr.Name.is_event name)) || List.mem (for_kind kind) name ~equal:Attr.Name.equal
+  (not (Attr.Name.is_event name))
+  || is_controller_attr name
+  || List.mem (for_kind kind) name ~equal:Attr.Name.equal
 ;;
 
 (* [Attrs.to_list] yields the css classes (which carry no name) and then the keyed attrs

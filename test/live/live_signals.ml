@@ -70,3 +70,79 @@ let () =
   | () -> printf "present slot: accepted\n"
   | exception Invalid_argument m -> printf "present slot: %s (wrong)\n" m
 ;;
+
+(* [Payload]'s trampoline, and the value it hands back to GTK.
+
+   No signal this binding exposes both takes arguments and returns a value in a way a test
+   can emit: there is no [GdkEvent] constructor, and [Gobject.Signal.emit_by_name] carries
+   no arguments and returns unit. So the trampoline is exercised where it is actually
+   built rather than through GTK -- [Signals.connect_all] hands the callback it wrapped to
+   the spec's [connect], and this spec keeps that callback instead of handing it on. What
+   is under test is therefore the *real* trampoline a [GtkGestureClick] or a
+   [GtkEventControllerKey] receives, called directly, and each of the three paths on which
+   it owes GTK the [declined] answer is a line in the golden.
+
+   The connection it returns still names a real object with a real handler id, because
+   [connect_all] hands it back for teardown; nothing is emitted through it. *)
+let () =
+  let scheduled = ref 0 in
+  let in_patch = ref false in
+  let ctx : Signals.ctx =
+    { schedule = (fun _ -> incr scheduled)
+    ; in_patch = (fun () -> !in_patch)
+    ; on_exn =
+        (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+    }
+  in
+  let button = (W.Button.new_with_label "b" :> Bonsai_gtk.Widget.t) in
+  (* Where [connect_all]'s wrapped callback ends up. *)
+  let trampoline = ref None in
+  let spec : Signals.spec =
+    Payload
+      { attr = Attr.Name.On_changed
+      ; connect =
+          (fun w ~callback ->
+            trampoline := Some callback;
+            Signals.connected
+              w
+              (W.Button.on_clicked
+                 (Bonsai_gtk.Private.Gtk_import.cast w)
+                 ~callback:(fun () -> ())))
+      ; fire =
+          (fun _w attr p ->
+            match (attr :> Attr.Private.t) with
+            | On_changed handler -> "handled:" ^ p, Some (handler p)
+            | _ -> "wrong-attr", None)
+      ; declined = "declined"
+      }
+  in
+  let slots, _ = Signals.connect_all ctx ~node_path:"root/0" button [ spec ] in
+  let fire p =
+    let r = (Option.value_exn !trampoline) p in
+    printf "returned %s, scheduled %d\n" r !scheduled
+  in
+  (* Path 1: the slot is empty, so the application has said nothing and GTK gets the inert
+     answer. *)
+  fire "a";
+  Signals.update_slots
+    slots
+    (Attrs.of_list [ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]);
+  (* The handler's decision reaches GTK synchronously; its effect is scheduled as usual. *)
+  fire "b";
+  (* Path 2: an emission during a patch. Bonsai is not re-entered, so no effect is
+     scheduled and the answer is again the inert one -- which for a key controller is what
+     keeps a patch from swallowing the user's keystrokes. *)
+  in_patch := true;
+  fire "c";
+  in_patch := false;
+  (* Path 3: [fire] raised. The exception is reported and does not cross into C, and the
+     answer is [declined] rather than anything derived from the handler -- a handler that
+     raised has certainly not handled the event. *)
+  Signals.update_slots
+    slots
+    (Attrs.of_list [ Attr.on_changed (fun _ -> failwith "boom") ]);
+  fire "d";
+  (* And [clear_slots] disarms a payload spec exactly as it does a read-back one. *)
+  Signals.clear_slots slots;
+  fire "e"
+;;

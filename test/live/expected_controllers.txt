@@ -1,0 +1,31 @@
+(GtkWindow (title (controllers)) (css (background))
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (target)) (css (text-button))
+     (children (GtkLabel (text target))))
+    (GtkButton (label (other)) (css (text-button))
+     (children (GtkLabel (text other))))))))
+mounted target: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2
+mounted other: gtk=() bonsai=0
+mounted gesture: button=2 phase=CAPTURE
+focus into target: focus-enter
+focus to other: focus-leave
+focus during a patch: 
+focus away again: focus-leave
+click attr dropped: gtk=(bonsai_gtk.focus) bonsai=1
+focus attrs dropped, click back: gtk=(bonsai_gtk.click) bonsai=1
+focus after its attrs were dropped: 
+both attrs back: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2
+re-added gesture: button=2 phase=CAPTURE
+focus after the attrs came back: focus-enter
+(GtkWindow (title (controllers)) (css (background))
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkButton (label (target)) (css (text-button))
+     (children (GtkLabel (text target))))
+    (GtkButton (label (other)) (css (text-button))
+     (children (GtkLabel (text other))))))))
+after destroy: gtk=0
+destroyed cleanly

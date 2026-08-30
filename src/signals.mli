@@ -29,19 +29,57 @@ type connection
     Every {!spec.connect} ends in this. *)
 val connected : 'a Gobject.obj -> Gobject.Signal.handler_id -> connection
 
-(** One GTK signal a widget impl knows how to connect, and the attr that carries its
-    handler. *)
+(* The two arms' records share [attr], [connect] and [fire] deliberately: they are two
+   spellings of one concept and renaming either set would make the pair harder to read
+   than the shadowing is. Warning 30 says so, and is switched off over the declaration
+   rather than library-wide. *)
+[@@@warning "-30"]
+
+(** One GTK signal a widget impl (or an event controller) knows how to connect, and the
+    attr that carries its handler.
+
+    [Read_back] is the ordinary shape: GTK's callback carries nothing and the value the
+    user just changed lives on the widget, so [fire] reads it back with the class getter.
+    Every M1 signal is one of these, and so is every [notify::] one, whose generic
+    marshaller carries nothing at all.
+
+    [Payload] is for the signals whose arguments cannot be recovered afterwards. Three
+    exist in M2: [GtkListBox::row-activated] (the row is gone by the time anything could
+    look for it), [GtkGestureClick::pressed] (the coordinates are not stored anywhere),
+    and [GtkEventControllerKey::key-pressed] (the keyval, and a [bool] GTK wants back).
+    ['p] is the payload the [connect] closure assembles — it may combine the callback's
+    arguments with things read off the object, which is how a click's [button] and
+    [modifiers] get in — and ['r] is what the callback returns to GTK. Both are
+    existential: a [spec list] holds specs with different payloads and different return
+    types, and nothing outside the spec ever names either.
+
+    [fire] returning ['r * unit Ui_effect.t option] rather than ['r Ui_effect.t] is the
+    load-bearing shape. The return value has to reach GTK {i synchronously}, on the C
+    stack, and a Bonsai effect is scheduled and performed later; so the decision ("do I
+    consume this key") is made from the event, purely, in the trampoline, and the
+    consequence (a state update) is an effect like any other.
+
+    [declined] is the return value for the emissions that reach no handler: an empty slot,
+    an emission during a patch, or a [fire] that raised. It must be the {i inert} answer
+    for the signal — [false] ("not handled") for a key controller — because those three
+    cases are precisely the ones where the application has said nothing, and the opposite
+    answer would make a widget with no handler swallow every key it sees. It is data on
+    the spec because the safe answer differs per signal and nothing else knows it. *)
 type spec =
+  | Read_back of read_back
+  | Payload : ('p, 'r) payload -> spec
+
+and read_back =
   { attr : Attr.Name.t
   ; connect : Widget.t -> callback:(unit -> unit) -> connection
   (** Connect [callback] and return the resulting {!connection}.
 
       The object connected to need {i not} be the widget: it is whatever GObject actually
-      emits the signal — a [GtkEditable] delegate, and in later milestones a
-      [GtkTextBuffer], a list model, or an event controller attached to the widget. What
-      is required is that the returned {!connection} name that object, because that is
-      what teardown disconnects from. Build it with {!connected} and the returned id,
-      never by pairing an id with a different object. *)
+      emits the signal — a [GtkEditable] delegate, an event controller [Controllers]
+      attached, and in later milestones a [GtkTextBuffer] or a list model. What is
+      required is that the returned {!connection} name that object, because that is what
+      teardown disconnects from. Build it with {!connected} and the returned id, never by
+      pairing an id with a different object. *)
   ; fire : Widget.t -> Attr.t -> unit Ui_effect.t option
   (** Turn the attr currently in the slot into the effect to schedule. [None] if the attr
       is not the one this spec handles, or if this particular emission is not one the
@@ -55,6 +93,25 @@ type spec =
       nothing. *)
   }
 
+and ('p, 'r) payload =
+  { attr : Attr.Name.t
+  ; connect : Widget.t -> callback:('p -> 'r) -> connection
+  (** Connect [callback] and return the resulting {!connection}, as {!read_back.connect}
+      does — and additionally {i assemble the payload}. Anything the event carries that is
+      not a callback argument has to be read here, while the event is still current: a
+      click's button and modifier state are on the gesture and its controller during the
+      emission and gone the moment the callback returns, so a [fire] that tried to read
+      them would get nothing. That is why this half of the spec is a closure over the
+      object rather than a pure function of the arguments. *)
+  ; fire : Widget.t -> Attr.t -> 'p -> 'r * unit Ui_effect.t option
+  (** The value to hand back to GTK now, and the effect to schedule (if any). [None] for
+      the effect on the same terms as {!read_back.fire}'s: the attr is not the one this
+      spec handles, or this emission is not one the application should hear about. *)
+  ; declined : 'r
+  }
+
+[@@@warning "+30"]
+
 (** The mutable cells the connected callbacks read their handler out of. Kept per widget
     for the widget's lifetime: GTK handlers are connected exactly once, at creation, and a
     re-render only rewrites the cells. *)
@@ -65,7 +122,13 @@ type slots
     {!update_slots} — call it with the node's attrs right after creating the widget.
 
     Each callback is exception-guarded: nothing raised by [in_patch], [fire], or
-    [schedule] escapes into GTK's C frame. *)
+    [schedule] escapes into GTK's C frame. A {!Payload} spec's callback additionally
+    returns its [declined] value on that path, since the frame owes GTK an answer whatever
+    happened.
+
+    Used for a widget's own signals (from [Widget_impl.signals], at mount) and for the
+    signals of an event controller [Controllers] attached (whose [connect] ignores the
+    widget it is handed and connects to the controller instead). *)
 val connect_all
   :  ctx
   -> node_path:string
@@ -90,8 +153,8 @@ val clear_slots : slots -> unit
     controlled widget). *)
 val notify : prop:string -> Widget.t -> callback:(unit -> unit) -> connection
 
-(** The {!Attr.Name.t} a spec carries. Task 4 turns {!spec} into a variant; readers that
-    only want the name go through this so that change stays inside this module. *)
+(** The {!Attr.Name.t} a spec carries, whichever arm it is. Readers that only want the
+    name go through this rather than matching, so the variant stays inside this module. *)
 val spec_attr : spec -> Attr.Name.t
 
 (** Raises [Invalid_argument] if [attrs] carries an event attr ({!Attr.Name.is_event})
@@ -114,9 +177,10 @@ val spec_attr : spec -> Attr.Name.t
     so no slot exists for a name no spec claims). *)
 val require_specs : node_path:string -> Kind.t -> Attrs.t -> unit
 
-(** Raises [Invalid_argument] if [attrs] carries an event attr for which [slots] holds no
-    slot — that is, if {!Bonsai_gtk_vtree.Events} says this kind emits the signal but the
-    widget impl declared no {!spec} for it.
+(** Raises [Invalid_argument] if [attrs] carries an event attr — other than a controller
+    attr, whose slots belong to [Controllers] rather than to the widget — for which
+    [slots] holds no slot — that is, if {!Bonsai_gtk_vtree.Events} says this kind emits
+    the signal but the widget impl declared no {!spec} for it.
 
     That combination cannot happen while the two agree, and [test/live/live_events.ml]
     checks that they do — but only under [BONSAI_GTK_LIVE_TESTS=1]. This runs on every

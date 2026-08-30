@@ -223,13 +223,41 @@ Tests:
   Adding `t_of_sexp` later means keeping the dropped defaults recoverable. Task 2.
 
 ## Tests worth adding
+- **No synthetic click or key press exists in the pinned ocgtk binding, so no test
+  anywhere delivers one.** There is no `GdkEvent` constructor for any event subtype
+  (checked every `*event*.mli` under `gdk/generated/` for `new_`/`alloc`);
+  `Gobject.Signal.emit_by_name` and `.notify` take no arguments and return unit, so
+  neither can carry a click's `~n_press ~x ~y` or a key press's `~keyval ~keycode
+  ~state`; and `Event_controller_key.forward` only re-routes an event a controller is
+  already processing. What is covered instead, and what the gap therefore is:
+  - the *plumbing* — that `Attr.on_click` attaches a `GtkGestureClick` with the right
+    `button` and `phase`, that dropping the attr removes it, that GTK and this library
+    agree on what is attached — is `test/live/live_controllers.ml`, counting by the
+    debugging name `Controllers` sets on each controller;
+  - the *handler* — that a middle click with shift reaches the application's closure with
+    the right `Click_event.t` — is `test/handle/test_handle.ml`, headlessly, through
+    `Bonsai_gtk_test.Action.Click_at`;
+  - the *trampoline* between them — slots, the `in_patch` guard, the exception guard, and
+    the value `Payload` hands back to GTK on each of those three paths — is
+    `test/live/live_signals.ml`, which calls the callback `Signals.connect_all` built
+    rather than emitting through GTK.
+  - **Not covered:** that GTK actually routes a real button press to the gesture this
+    library attached. Compensating controls: the gallery's Input section, and the
+    real-display click-through below. Closing it properly needs an ocgtk fork patch
+    exposing a `GdkEvent` constructor or `gtk_test_widget_click` (neither is bound today).
+    Task 4; the same gap covers Task 5's key controllers.
+- Focus is the exception and *is* covered end to end: `Widget.grab_focus` on a presented
+  window really drives `GtkEventControllerFocus`, and `live_controllers.ml` asserts the
+  handler fires, that the reentrancy guard drops a focus change made during a patch, and
+  that a removed controller stops firing. Task 4.
 - GC/lifetime: remove a keyed child, `Gc.full_major`, assert the widget was finalized —
   the spec's central ownership assumption, still unwritten (carried from M0).
 - After-display spin regression (needs a frame counter under `Private`) — carried from M0.
 - `Driver.schedule_event`'s broken guard is exercised but not asserted: nothing public
   observes the Bonsai action queue's length. Task 1.
 - Real-display click-through of `examples/gallery.exe` — it has only ever been run under
-  `xvfb`. Task 10.
+  `xvfb`. Task 10. This is now also the compensating control for the missing synthetic
+  click above, so it should exercise a widget carrying `Attr.on_click`.
 - `Live_tree.dump` collapses a placeholder `""`: a widget whose only text is empty prints
   the same as one with no text at all. Task 4.
 - `focusable`/`can_focus` are absent from `Live_tree.dump`; showing them needs a per-class

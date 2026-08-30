@@ -32,6 +32,14 @@ module Stack_transition = Bonsai_gtk_vtree.Stack_transition
 module Grid_cell = Bonsai_gtk_vtree.Grid_cell
 module Orientation = Bonsai_gtk_vtree.Orientation
 
+(** The event-controller vocabulary: where a controller sits in GTK's routing
+    ({!Bonsai_gtk_vtree.Attr.on_click}'s [~phase]), which modifier keys were down, and
+    what a click carries. *)
+module Phase = Bonsai_gtk_vtree.Phase
+
+module Modifiers = Bonsai_gtk_vtree.Modifiers
+module Click_event = Bonsai_gtk_vtree.Click_event
+
 (** The escape hatch, for GTK widgets this library has no {!Node} constructor for. An
     application supplies the module that creates and updates the widget; the patcher
     treats it like any other node, keyed and diffed alongside the rest of the tree. *)
@@ -110,6 +118,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private : sig
   module Attr_apply = Attr_apply
+  module Controllers = Controllers
   module Gtk_import = Gtk_import
   module Live_tree = Live_tree
   module Native_gtk = Native_gtk

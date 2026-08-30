@@ -5,7 +5,8 @@
   live_signals
   live_controls
   live_containers
-  live_events)
+  live_events
+  live_controllers)
  (libraries
   core
   bonsai
@@ -14,6 +15,7 @@
   virtual_dom.ui_effect
   ocgtk.gtk
   ocgtk.gdk
+  ocgtk.gio
   ocgtk.common)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))
@@ -93,3 +95,15 @@
     output_events.txt
     (run %{exe:live_events.exe}))
    (diff expected_events.txt output_events.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_controllers.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_controllers.txt
+    (run %{exe:live_controllers.exe}))
+   (diff expected_controllers.txt output_controllers.txt))))

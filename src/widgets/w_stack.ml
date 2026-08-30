@@ -101,17 +101,18 @@ let select (w : Widget.t) ~visible_child =
 (* ocgtk generates no [on_notify_visible_child_name]; the detailed name goes through the
    generic marshaller (spec §6.4). *)
 let visible_child_changed : Signals.spec =
-  { attr = Attr.Name.On_visible_child_changed
-  ; connect = Signals.notify ~prop:"visible-child-name"
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_visible_child_changed handler ->
-          (* [None] only while the stack is empty, which the user cannot click their way
-             into; nothing to report then. *)
-          Option.map (W.Stack.get_visible_child_name (cast w)) ~f:handler
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_visible_child_changed
+    ; connect = Signals.notify ~prop:"visible-child-name"
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_visible_child_changed handler ->
+            (* [None] only while the stack is empty, which the user cannot click their way
+               into; nothing to report then. *)
+            Option.map (W.Stack.get_visible_child_name (cast w)) ~f:handler
+          | _ -> None)
+    }
 ;;
 
 let impl : Widget_impl.t =

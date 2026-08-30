@@ -153,7 +153,7 @@ let%expect_test "is_event over every name" =
     (events
      (On_clicked On_toggled On_changed On_activate On_search_changed
       On_value_changed On_expanded_changed On_revealed On_position_changed
-      On_visible_child_changed))
+      On_visible_child_changed On_click On_focus_enter On_focus_leave))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect
@@ -169,7 +169,12 @@ let%expect_test "is_event over every name" =
 (* Every event name some kind can carry has to be one [Attr.Name.is_event] agrees is an
    event, or [Events.unsupported] would never look at it and the table entry would be
    dead. The converse -- an event name no kind emits -- is legal only until the widget
-   that emits it lands, so it is printed rather than asserted. *)
+   that emits it lands, so it is printed rather than asserted.
+
+   The controller attrs are the third case and are excluded from both halves: they are
+   events that appear in no [for_kind] row *by design*, because they are legal everywhere.
+   Excluding them here rather than widening the golden is the point -- a real signal name
+   that fell out of every row would still show up. *)
 let%expect_test "the table and [is_event] cover the same names" =
   let in_table =
     List.concat_map all_kinds ~f:Events.for_kind |> Attr.Name.Set.of_list |> Set.to_list
@@ -178,10 +183,47 @@ let%expect_test "the table and [is_event] cover the same names" =
     [%sexp
       `not_events (List.filter in_table ~f:(Fn.non Attr.Name.is_event) : Attr.Name.t list)];
   [%expect {| (not_events ()) |}];
+  print_s
+    [%sexp
+      `controller_attrs_in_a_for_kind_row
+        (List.filter in_table ~f:Events.is_controller_attr : Attr.Name.t list)];
+  [%expect {| (controller_attrs_in_a_for_kind_row ()) |}];
   let emitted_by_nobody =
     List.filter Attr.Name.all ~f:(fun n ->
-      Attr.Name.is_event n && not (List.mem in_table n ~equal:Attr.Name.equal))
+      Attr.Name.is_event n
+      && (not (Events.is_controller_attr n))
+      && not (List.mem in_table n ~equal:Attr.Name.equal))
   in
-  print_s [%sexp `event_names_no_kind_emits (emitted_by_nobody : Attr.Name.t list)];
-  [%expect {| (event_names_no_kind_emits ()) |}]
+  print_s [%sexp `signal_names_no_kind_emits (emitted_by_nobody : Attr.Name.t list)];
+  [%expect {| (signal_names_no_kind_emits ()) |}]
+;;
+
+(* The other half of the same fact, and the one an application depends on: a controller
+   attr is accepted on *every* kind, including the ones that emit no signal at all and
+   including [Node.native], where every signal attr is rejected (spec §6.6). Asserted over
+   the full kind list rather than a sample, so a kind added with a hand-written
+   [is_supported] arm could not slip past. *)
+let%expect_test "every controller attr is supported on every kind" =
+  let controller_attrs = List.filter Attr.Name.all ~f:Events.is_controller_attr in
+  print_s [%sexp (controller_attrs : Attr.Name.t list)];
+  [%expect {| (On_click On_focus_enter On_focus_leave) |}];
+  let refused =
+    List.concat_map all_kinds ~f:(fun kind ->
+      List.filter_map controller_attrs ~f:(fun name ->
+        if Events.is_supported kind name then None else Some (Kind.name kind, name)))
+  in
+  print_s [%sexp `refused (refused : (string * Attr.Name.t) list)];
+  [%expect {| (refused ()) |}];
+  (* And a click attr on a label -- which emits nothing -- really does pass the same
+     [unsupported] gate the runtime and the handle both call. *)
+  let attrs = Attrs.of_list [ Attr.on_click (fun _ -> Ui_effect.Ignore) ] in
+  print_s [%sexp (Events.unsupported (Node.label "x").kind attrs : Attr.Name.t option)];
+  [%expect {| () |}];
+  print_s
+    [%sexp
+      (Events.unsupported
+         (Node.native { Native.name = "thing"; payload = Native.Unit }).kind
+         attrs
+       : Attr.Name.t option)];
+  [%expect {| () |}]
 ;;

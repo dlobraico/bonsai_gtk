@@ -18,9 +18,20 @@ open! Core
     at mount if the two ever do drift. Do not weaken either. *)
 val for_kind : Kind.t -> Attr.Name.t list
 
-(** [is_supported kind name] is [true] if [name] is not an event name, or is one this kind
-    emits. A non-event name is always supported: this answers "may this attr be here", and
-    layout attrs may be anywhere. *)
+(** [true] for the event attrs that are not any widget class's signal but an event
+    controller the runtime attaches to whatever widget carries the attr: {!Attr.on_click},
+    {!Attr.on_focus_enter}, {!Attr.on_focus_leave}.
+
+    They are legal on every kind, so they never appear in {!for_kind} and {!is_supported}
+    short-circuits on them. They are also not connected by any widget impl --
+    [Controllers] creates their slots from the attr itself, on the frame the attr appears
+    -- so [Signals.require_slots] skips them, and [test/live/live_events.ml] asserts that
+    no impl declares one. *)
+val is_controller_attr : Attr.Name.t -> bool
+
+(** [is_supported kind name] is [true] if [name] is not an event name, is a controller
+    attr (legal everywhere), or is a signal this kind emits. A non-event name is always
+    supported: this answers "may this attr be here", and layout attrs may be anywhere. *)
 val is_supported : Kind.t -> Attr.Name.t -> bool
 
 (** The first event attr in [attrs] that [kind] cannot emit, in [Attr.Name] order. [None]

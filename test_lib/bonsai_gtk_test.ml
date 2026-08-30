@@ -10,6 +10,9 @@ module Action = struct
     | Set_value of string * float
     | Search_changed of string * string
     | Set_expanded of string * bool
+    | Click_at of string * Click_event.t
+    | Focus_enter of string
+    | Focus_leave of string
   [@@deriving sexp_of]
 end
 
@@ -121,6 +124,29 @@ module Result_spec = struct
        | Some (On_expanded_changed h) -> h expanded
        | _ ->
          failwithf "Bonsai_gtk_test: node %s has no on_expanded_changed handler" id ())
+    (* Nothing is derived from the node, and in particular the [button] the attr was
+       constructed with is *not* consulted: a headless test that delivers button 3 to a
+       [~button:1] gesture is testing its own handler, not GTK's filtering, and pretending
+       otherwise would make the action's behaviour depend on a detail no headless model
+       has. The same reason [Set_text] does not consult [text]. *)
+    | Click_at (id, event) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_click :> Attr.Private.t option) with
+       | Some (On_click { handler; _ }) -> handler event
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_click handler" id ())
+    (* Two actions rather than one for a focus *move*, because the two handlers are
+       independent: the widget focus leaves and the widget focus enters are different
+       nodes, and a test that cares about the order says so by ordering the actions. *)
+    | Focus_enter id ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_focus_enter :> Attr.Private.t option) with
+       | Some (On_focus_enter h) -> h ()
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_focus_enter handler" id ())
+    | Focus_leave id ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_focus_leave :> Attr.Private.t option) with
+       | Some (On_focus_leave h) -> h ()
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_focus_leave handler" id ())
   ;;
 end
 

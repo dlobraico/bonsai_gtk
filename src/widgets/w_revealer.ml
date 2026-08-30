@@ -18,14 +18,15 @@ let transition : Reveal_transition.t -> Gtk_enums.revealertransitiontype = funct
 (* [child-revealed] is read-only and flips when the animation *finishes*, which is the
    useful moment: it is when a hidden subtree can be dropped from the model. *)
 let revealed : Signals.spec =
-  { attr = Attr.Name.On_revealed
-  ; connect = Signals.notify ~prop:"child-revealed"
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        | On_revealed handler -> Some (handler (W.Revealer.get_child_revealed (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_revealed
+    ; connect = Signals.notify ~prop:"child-revealed"
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_revealed handler -> Some (handler (W.Revealer.get_child_revealed (cast w)))
+          | _ -> None)
+    }
 ;;
 
 (* Against the widget's own [reveal-child], which is the *input* property and so is not

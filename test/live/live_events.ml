@@ -88,3 +88,28 @@ let () =
   printf "kinds checked: %d\n" (List.length all_kinds);
   printf "agreed\n"
 ;;
+
+(* No widget impl may declare a controller attr in its [Widget_impl.signals].
+
+   [Controllers] connects those, from the attr itself, on the frame the attr appears -- so
+   an impl that also declared one would connect a second handler to the *widget*, which
+   nothing ever removes (teardown disconnects what [Controllers] connected, not what the
+   impl did behind its back) and which would fire alongside the controller's. It would
+   also hide the mistake: [Signals.require_slots] skips controller attrs precisely because
+   no impl declares one, and a slot appearing under that name would make the skip look
+   unnecessary rather than wrong.
+
+   [Events.for_kind] already says none of them is any kind's signal and [live_events]'
+   comparison above already fails if an impl declares a name the table omits -- so this is
+   the same fact from the other side, stated where a reader looking for it will find it. *)
+let () =
+  List.iter all_kinds ~f:(fun kind ->
+    List.iter (Registry.for_kind kind).signals ~f:(fun spec ->
+      let name = Signals.spec_attr spec in
+      if Events.is_controller_attr name
+      then
+        print_s
+          [%message
+            "IMPL DECLARES A CONTROLLER ATTR" ~kind:(Kind.name kind) (name : Attr.Name.t)]));
+  printf "no impl declares a controller attr\n"
+;;

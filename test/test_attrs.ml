@@ -77,3 +77,78 @@ let%expect_test "M1 widget-wide attrs round-trip through of_list and diff" =
      (Unset Cursor_name))
     |}]
 ;;
+
+(* The controller attrs are values before they are behaviour: they round-trip through
+   [Attrs.of_list], they sexp with their controller-level settings visible (a reader of a
+   golden has to be able to see that [~button:2] made it in, since nothing else prints
+   it), and they diff on the same physical-handler rule as every other event attr. *)
+let%expect_test "controller attrs round-trip and diff" =
+  let click = Attr.on_click ~button:2 (fun _ -> noop) in
+  let attrs = Attrs.of_list [ click; Attr.on_focus_enter (fun () -> noop) ] in
+  print_s [%sexp (attrs : Attrs.t)];
+  [%expect
+    {|
+    ((On_click (button 2) (phase Bubble) (handler <handler>))
+     (On_focus_enter <handler>))
+    |}];
+  (* A handler that changed is a Set; a handler that is physically the same is not.
+     Handlers compare physically (spec §5.2), so a view that rebuilds its closures every
+     frame writes the slot every frame -- which is a slot write, not a GTK call. *)
+  print_s [%sexp (Attrs.diff ~old:attrs ~new_:(Attrs.of_list [ click ]) : Attrs.op list)];
+  [%expect {| ((Unset On_focus_enter)) |}];
+  (* Physically the same attr value diffs to nothing at all. *)
+  print_s
+    [%sexp
+      (Attrs.diff ~old:(Attrs.of_list [ click ]) ~new_:(Attrs.of_list [ click ])
+       : Attrs.op list)];
+  [%expect {| () |}]
+;;
+
+(* [button] and [phase] are properties of the *controller*, not of the handler, so a
+   change in either has to be a [Set] even when the handler is physically unchanged --
+   that is what [Controllers.update] re-reads them from. *)
+let%expect_test "a click attr's button and phase are part of its identity" =
+  let h : Click_event.t Handler.t = fun _ -> noop in
+  let base = Attrs.of_list [ Attr.on_click h ] in
+  print_s
+    [%sexp
+      (Attrs.diff ~old:base ~new_:(Attrs.of_list [ Attr.on_click h ]) : Attrs.op list)];
+  [%expect {| () |}];
+  print_s
+    [%sexp
+      (Attrs.diff ~old:base ~new_:(Attrs.of_list [ Attr.on_click ~button:3 h ])
+       : Attrs.op list)];
+  [%expect {| ((Set (On_click (button 3) (phase Bubble) (handler <handler>)))) |}];
+  print_s
+    [%sexp
+      (Attrs.diff ~old:base ~new_:(Attrs.of_list [ Attr.on_click ~phase:Capture h ])
+       : Attrs.op list)];
+  [%expect {| ((Set (On_click (button 0) (phase Capture) (handler <handler>)))) |}]
+;;
+
+(* [Modifiers.none] is what a headless test builds an event with, and what a real click
+   with nothing held down produces. *)
+let%expect_test "a click event sexps with its modifiers" =
+  print_s
+    [%sexp
+      ({ Click_event.button = 1
+       ; n_press = 2
+       ; x = 3.5
+       ; y = 4.5
+       ; modifiers = Modifiers.none
+       }
+       : Click_event.t)];
+  [%expect
+    {|
+    ((button 1) (n_press 2) (x 3.5) (y 4.5)
+     (modifiers
+      ((shift false) (control false) (alt false) (super false) (hyper false)
+       (meta false))))
+    |}];
+  print_s [%sexp ({ Modifiers.none with control = true; shift = true } : Modifiers.t)];
+  [%expect
+    {|
+    ((shift true) (control true) (alt false) (super false) (hyper false)
+     (meta false))
+    |}]
+;;

@@ -35,6 +35,11 @@ module Name = struct
       | On_revealed
       | On_position_changed
       | On_visible_child_changed
+      (* The controller attrs, after every signal name so that no existing [Attrs.diff]
+         output reorders. Task 5 adds [On_key_pressed] and [On_key_released] here. *)
+      | On_click
+      | On_focus_enter
+      | On_focus_leave
     [@@deriving sexp_of, compare, equal, enumerate]
 
     (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
@@ -50,7 +55,18 @@ module Name = struct
       | On_expanded_changed
       | On_revealed
       | On_position_changed
-      | On_visible_child_changed -> true
+      | On_visible_child_changed
+      (* The controller attrs are events too -- they carry a handler and a widget that
+         cannot deliver one is a mistake worth a diagnostic. What they are not is any
+         impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
+         on the widget, so the two mount-time checks treat them apart --
+         [Events.is_supported] short-circuits (they are legal on every kind) and
+         [Signals.require_slots] skips them (their slots belong to [Controllers], which
+         creates them from the attr itself). [Events.is_controller_attr] is that
+         distinction, and it is the one place it is written down. *)
+      | On_click
+      | On_focus_enter
+      | On_focus_leave -> true
       | Margin_start
       | Margin_end
       | Margin_top
@@ -131,6 +147,17 @@ module Private = struct
     | On_revealed of bool Handler.t
     | On_position_changed of int Handler.t
     | On_visible_child_changed of string Handler.t
+    (* [button] and [phase] ride in the constructor rather than being captured by the
+       handler because they are properties of the *controller*: [Controllers.update] has
+       to see a change in either without the handler having to change, and a view that
+       rebuilds its closures every frame changes the handler on every frame regardless. *)
+    | On_click of
+        { button : int
+        ; phase : Phase.t
+        ; handler : Click_event.t Handler.t
+        }
+    | On_focus_enter of unit Handler.t
+    | On_focus_leave of unit Handler.t
     | Many of t list
   [@@deriving sexp_of]
 end
@@ -183,6 +210,9 @@ let name = function
   | On_revealed _ -> Some On_revealed
   | On_position_changed _ -> Some On_position_changed
   | On_visible_child_changed _ -> Some On_visible_child_changed
+  | On_click _ -> Some On_click
+  | On_focus_enter _ -> Some On_focus_enter
+  | On_focus_leave _ -> Some On_focus_leave
 ;;
 
 let rec equal a b =
@@ -219,6 +249,16 @@ let rec equal a b =
   | On_revealed a, On_revealed b -> Handler.equal a b
   | On_position_changed a, On_position_changed b -> Handler.equal a b
   | On_visible_child_changed a, On_visible_child_changed b -> Handler.equal a b
+  (* The two controller properties compare structurally and the handler physically: a
+     frame that moves the gesture to another button, or into the capture phase, is a
+     change [Controllers.update] must see even though the closure is rebuilt (and so
+     unequal) on every frame anyway. *)
+  | On_click a, On_click b ->
+    Int.equal a.button b.button
+    && Phase.equal a.phase b.phase
+    && Handler.equal a.handler b.handler
+  | On_focus_enter a, On_focus_enter b -> Handler.equal a b
+  | On_focus_leave a, On_focus_leave b -> Handler.equal a b
   | Many a, Many b -> List.equal equal a b
   | _ -> false
 ;;
@@ -268,5 +308,12 @@ let on_expanded_changed f = On_expanded_changed f
 let on_revealed f = On_revealed f
 let on_position_changed f = On_position_changed f
 let on_visible_child_changed f = On_visible_child_changed f
+
+let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
+  On_click { button; phase; handler }
+;;
+
+let on_focus_enter f = On_focus_enter f
+let on_focus_leave f = On_focus_leave f
 let many l = Many l
 let empty = Many []

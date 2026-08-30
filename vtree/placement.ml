@@ -64,7 +64,10 @@ let reader : Attr.Name.t -> string option = function
   | On_expanded_changed
   | On_revealed
   | On_position_changed
-  | On_visible_child_changed -> None
+  | On_visible_child_changed
+  | On_click
+  | On_focus_enter
+  | On_focus_leave -> None
 ;;
 
 (* Derived from [reader] rather than written again, so the two cannot disagree about which

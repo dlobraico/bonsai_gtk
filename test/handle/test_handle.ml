@@ -603,3 +603,205 @@ let%expect_test "a Node.native carrying any event attr is rejected by the handle
     Bonsai_gtk_test.Handle.show handle);
   [%expect {| (Invalid_argument "root/0: Native:thing does not emit On_clicked") |}]
 ;;
+
+(* The controller attrs are legal on every kind -- they are not any impl's signal, they
+   are a [GtkEventController] the runtime attaches to whatever widget carries the attr --
+   so a [Node.label] carrying one is accepted where [Attr.on_clicked] on the same node is
+   not. *)
+let%expect_test "a controller attr is accepted on a kind that emits no signals" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"controllers"
+         (Node.label
+            ~attrs:
+              [ Attr.on_click (fun _ -> Ui_effect.Ignore)
+              ; Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
+              ]
+            "card"))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (controllers))))) (attrs ())
+     (children
+      (Single
+       (((kind (Label ((text card))))
+         (attrs
+          ((On_click (button 0) (phase Bubble) (handler <handler>))
+           (On_focus_enter <handler>)))
+         (children No_children))))))
+    |}]
+;;
+
+(* This is stavekeeper's [library_window.ml:166-185] in miniature -- middle click, or
+   button 1 with shift, pops the piece out -- and it is the whole reason the payload
+   carries [button] and [modifiers].
+
+   The click is delivered to the *handler*, not through GTK: there is no synthetic click
+   in the binding (see [test/live/live_controllers.ml]), so what a headless suite proves
+   is the half an application actually writes. *)
+let%expect_test "a click action carries the button and the modifiers" =
+  let app (graph @ local) =
+    let log, set_log = Bonsai.state [] graph in
+    let%arr log and set_log in
+    Node.window
+      ~title:"clicks"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.label
+             ~attrs:
+               [ Attr.test_id "card"
+               ; Attr.on_click (fun (e : Click_event.t) ->
+                   set_log
+                     (sprintf "b%d n%d shift=%b" e.button e.n_press e.modifiers.shift
+                      :: log))
+               ]
+             "card"
+         ; Node.label ~attrs:[ Attr.test_id "log" ] (String.concat ~sep:"," log)
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (clicks))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Label ((text card))))
+             (attrs
+              ((Test_id card)
+               (On_click (button 0) (phase Bubble) (handler <handler>))))
+             (children No_children))
+            ((kind (Label ((text "")))) (attrs ((Test_id log)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Click_at
+        ( "card"
+        , { Click_event.button = 2
+          ; n_press = 1
+          ; x = 0.
+          ; y = 0.
+          ; modifiers = { Modifiers.none with shift = true }
+          } )
+    ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (clicks))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Label ((text card))))
+               (attrs
+                ((Test_id card)
+                 (On_click (button 0) (phase Bubble) (handler <handler>))))
+               (children No_children))
+    -|        ((kind (Label ((text "")))) (attrs ((Test_id log)))
+    +|        ((kind (Label ((text "b2 n1 shift=true")))) (attrs ((Test_id log)))
+               (children No_children))))))))))
+    |}]
+;;
+
+(* Focus in and out of a node, headlessly. Both attrs ride on one controller live, but
+   headless they are two independent handlers and the actions are two. *)
+let%expect_test "focus actions fire the focus handlers" =
+  let app (graph @ local) =
+    let log, set_log = Bonsai.state [] graph in
+    let%arr log and set_log in
+    Node.window
+      ~title:"focus"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.button
+             ~attrs:
+               [ Attr.test_id "target"
+               ; Attr.on_focus_enter (fun () -> set_log ("enter" :: log))
+               ; Attr.on_focus_leave (fun () -> set_log ("leave" :: log))
+               ]
+             ~label:"target"
+             ()
+         ; Node.label ~attrs:[ Attr.test_id "log" ] (String.concat ~sep:"," log)
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (focus))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Button ((label (target)))))
+             (attrs
+              ((Test_id target) (On_focus_enter <handler>)
+               (On_focus_leave <handler>)))
+             (children (Single ())))
+            ((kind (Label ((text "")))) (attrs ((Test_id log)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Focus_enter "target" ];
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Focus_leave "target" ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (focus))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Button ((label (target)))))
+               (attrs
+                ((Test_id target) (On_focus_enter <handler>)
+                 (On_focus_leave <handler>)))
+               (children (Single ())))
+    -|        ((kind (Label ((text "")))) (attrs ((Test_id log)))
+    +|        ((kind (Label ((text leave,enter)))) (attrs ((Test_id log)))
+               (children No_children))))))))))
+    |}]
+;;
+
+(* An action naming a node that carries no such attr fails rather than doing nothing --
+   the same rule every other action follows. *)
+let%expect_test "a click action on a node with no click handler fails" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window ~title:"no click" (Node.label ~attrs:[ Attr.test_id "plain" ] "plain"))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title ("no click"))))) (attrs ())
+     (children
+      (Single
+       (((kind (Label ((text plain)))) (attrs ((Test_id plain)))
+         (children No_children))))))
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions
+      handle
+      [ Click_at
+          ( "plain"
+          , { Click_event.button = 1
+            ; n_press = 1
+            ; x = 0.
+            ; y = 0.
+            ; modifiers = Modifiers.none
+            } )
+      ];
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_click handler") |}]
+;;

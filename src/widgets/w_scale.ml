@@ -12,17 +12,18 @@ let orientation : Orientation.t -> Gtk_enums.orientation = function
    scale's own. [Range] has no [from_gobject], so the downcast is [Gtk_import.cast], which
    is sound because [Scale.t]'s phantom row already contains [`range]. *)
 let value_changed : Signals.spec =
-  { attr = Attr.Name.On_value_changed
-  ; connect =
-      (fun w ~callback ->
-        Signals.connected w (W.Range.on_value_changed (cast w) ~callback))
-  ; fire =
-      (fun w attr ->
-        match (attr :> Attr.Private.t) with
-        (* Read back off the widget for the same reason as [w_spin_button.ml]'s. *)
-        | On_value_changed handler -> Some (handler (W.Range.get_value (cast w)))
-        | _ -> None)
-  }
+  Read_back
+    { attr = Attr.Name.On_value_changed
+    ; connect =
+        (fun w ~callback ->
+          Signals.connected w (W.Range.on_value_changed (cast w) ~callback))
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          (* Read back off the widget for the same reason as [w_spin_button.ml]'s. *)
+          | On_value_changed handler -> Some (handler (W.Range.get_value (cast w)))
+          | _ -> None)
+    }
 ;;
 
 (* Controlled against the widget's live value, on the rule and with the exact-equality

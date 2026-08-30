@@ -44,11 +44,20 @@ module Name : sig
     | On_revealed
     | On_position_changed
     | On_visible_child_changed
+    | On_click
+    | On_focus_enter
+    | On_focus_leave
   [@@deriving sexp_of, compare, equal, enumerate]
 
-  (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
-      spec for, and which the patcher rejects at mount on a widget that declares none.
-      {!Bonsai_gtk_vtree.Events} is the table of which kind emits which. *)
+  (** [true] for the handler-carrying names.
+
+      Two kinds of them, and {!Bonsai_gtk_vtree.Events} tells them apart. Most are a
+      {i signal} of some widget class: a widget impl must declare a spec for one, the
+      patcher rejects it at mount on a widget that declares none, and [Events.for_kind] is
+      the table of which kind emits which. The rest -- the ones
+      [Events.is_controller_attr] answers [true] for -- are event controllers the runtime
+      attaches to whatever widget carries the attr, so they are legal on every kind and no
+      impl declares them. *)
   val is_event : t -> bool
 
   (** Every attribute name, for tests that must not be able to forget one. The M1 review
@@ -121,6 +130,13 @@ module Private : sig
     | On_revealed of bool Handler.t
     | On_position_changed of int Handler.t
     | On_visible_child_changed of string Handler.t
+    | On_click of
+        { button : int
+        ; phase : Phase.t
+        ; handler : Click_event.t Handler.t
+        }
+    | On_focus_enter of unit Handler.t
+    | On_focus_leave of unit Handler.t
     | Many of t list
 
   val sexp_of_t : t -> Sexp.t
@@ -335,6 +351,37 @@ val on_position_changed : (int -> unit Ui_effect.t) -> t
     page. Attaching it to a widget that emits no such signal raises [Invalid_argument]
     when the node is mounted or patched. *)
 val on_visible_child_changed : (string -> unit Ui_effect.t) -> t
+
+(** A [GtkGestureClick] on this widget.
+
+    [button] is which mouse button to listen for; [0] (the default) means all of them, and
+    the one that was pressed arrives in {!Click_event.button}. [phase] defaults to
+    {!Phase.Bubble}, GTK's own -- a gesture on a card in a selection container wants
+    bubble, so that the container's own selection gesture still runs.
+
+    Unlike every other event attr, this one is legal on {i any} node: it is not a signal
+    of some widget class but a controller the runtime attaches to whatever carries it. The
+    controller exists only while the attr does -- a frame that drops it removes the
+    controller, and a later frame that adds it back gets a fresh one.
+
+    The gesture does {i not} claim the event sequence, so a click also reaches whatever
+    else would have handled it. That is deliberate and is what lets a card carry a
+    middle-click handler without breaking its list box's click-to-select; an application
+    that wants to consume the click has no way to say so in M2, which is named in the
+    README's Limitations. *)
+val on_click : ?button:int -> ?phase:Phase.t -> Click_event.t Handler.t -> t
+
+val on_focus_enter : unit Handler.t -> t
+
+(** A [GtkEventControllerFocus] on this widget. [on_focus_enter] fires when focus moves
+    into the widget {i or any of its children} -- which is the useful sense for a
+    composite widget like a [GtkSearchEntry], whose own [has_focus] is always false
+    because its inner [GtkText] holds the focus.
+
+    Both are attached to one controller, so a widget carrying either pays for one. Like
+    {!on_click} they are legal on any node, and the controller lives exactly as long as
+    the last of the two attrs does. *)
+val on_focus_leave : unit Handler.t -> t
 
 val many : t list -> t
 val empty : t
