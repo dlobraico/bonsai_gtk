@@ -291,9 +291,9 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
        (children
         (GtkViewport
          (children
-          (GtkListBox (css (navigation-sidebar))
+          (GtkListBox (selected-rows 1) (css (navigation-sidebar))
            (children
-            (GtkListBoxRow (css (activatable))
+            (GtkListBoxRow selected (css (activatable))
              (children
               (GtkLabel (text Library) (halign start) (valign center))))
             (GtkListBoxRow (css (activatable))
@@ -327,12 +327,12 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
        (children
         (GtkViewport
          (children
-          (GtkListBox (css (navigation-sidebar))
+          (GtkListBox (selected-rows 1) (css (navigation-sidebar))
            (children
             (GtkListBoxRow (css (activatable))
              (children
               (GtkLabel (text Library!) (halign start) (valign center))))
-            (GtkListBoxRow (css (activatable))
+            (GtkListBoxRow selected (css (activatable))
              (children
               (GtkLabel (text Practice) (halign start) (valign center))))
             (GtkListBoxRow (css (activatable))
@@ -369,7 +369,7 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
        (children
         (GtkViewport
          (children
-          (GtkListBox (css (navigation-sidebar))
+          (GtkListBox (selected-rows 1) (css (navigation-sidebar))
            (children
             (GtkListBoxRow (css (activatable))
              (children
@@ -380,7 +380,7 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
             (GtkListBoxRow (css (activatable))
              (children
               (GtkLabel (text Setlists) (halign start) (valign center))))
-            (GtkListBoxRow (css (activatable))
+            (GtkListBoxRow selected (css (activatable))
              (children
               (GtkLabel (text Encores) (halign start) (valign center))))))))
         (GtkScrollbar (css (bottom horizontal))
@@ -410,12 +410,12 @@ rejected: root/0/0: Grid child has no Attr.grid_cell (every child of a Node.grid
        (children
         (GtkViewport
          (children
-          (GtkListBox (css (navigation-sidebar))
+          (GtkListBox (selected-rows 1) (css (navigation-sidebar))
            (children
             (GtkListBoxRow (css (activatable))
              (children
               (GtkLabel (text Practice) (halign start) (valign center))))
-            (GtkListBoxRow (css (activatable))
+            (GtkListBoxRow selected (css (activatable))
              (children
               (GtkLabel (text Setlists) (halign start) (valign center))))))))
         (GtkScrollbar (css (bottom horizontal))
@@ -448,7 +448,7 @@ rejected: rn/0/0: no Node.stack is named "old" (a stack_switcher/stack_sidebar m
    (children (GtkLabel (text c)) (GtkLabel (text a)) (GtkLabel (text b))))))
 stack wrapped in a frame; switcher drives the surviving stack: true
 rejected: twin/0/1/0: two Node.stacks are named "twin" in one tree
-rejected: keyless/0/0: Stack child has no ~key (a stack page's key is its GTK page name)
+rejected: Node.stack: child 0 has no ~key (a stack page's key is its GTK page name)
 rejected: dupkey/0: duplicate key a among one container's children (a key identifies a child among its siblings, so no two of them may share one)
 rejected: duppage/0: duplicate key detail among one container's children (a key identifies a child among its siblings, so no two of them may share one)
 rejected: patchdup/0: duplicate key a among one container's children (a key identifies a child among its siblings, so no two of them may share one)

@@ -64,6 +64,13 @@ let string_property (w : Widget.t) ~name =
   Gobject.Value.get_string v
 ;;
 
+let selection_mode_name : Gtk_enums.selectionmode -> string = function
+  | `NONE -> "none"
+  | `SINGLE -> "single"
+  | `BROWSE -> "browse"
+  | `MULTIPLE -> "multiple"
+;;
+
 let policy_prop name (p : Gtk_enums.policytype) =
   match p with
   | `AUTOMATIC -> []
@@ -387,6 +394,38 @@ let rec dump (w : Widget.t) : Sexp.t =
        flag_prop "has-stack" (Option.is_some (W.Stack_switcher.get_stack (cast w)))
      | "GtkStackSidebar" ->
        flag_prop "has-stack" (Option.is_some (W.Stack_sidebar.get_stack (cast w)))
+     (* No key is printed, here or on a row: this dump is about GTK, and a key is the
+        vtree's. A golden that showed keys would go green on an implementation that put
+        them in the wrong rows -- [live_lists.ml] prints [W_list_box.selected_keys]
+        instead, which is a read back through [Child_keys] and so does exercise the
+        mapping.
+
+        The rows themselves are children like any other, and so is a placeholder, which is
+        why neither is listed here. What a child's own dump cannot show is how many of
+        them GTK has selected: [GtkListBoxRow] prints its own [selected], but a count from
+        this side is what distinguishes "one row happens to be selected" from "the
+        selection is the one the model asked for" at a glance. *)
+     | "GtkListBox" ->
+       let b : W.List_box.t = cast w in
+       (* GTK's own defaults are [SINGLE] and [true]; both are printed when they are *not*
+          those, which is the rule every other property here follows and which is easy to
+          get backwards for these two. *)
+       (match W.List_box.get_selection_mode b with
+        | `SINGLE -> []
+        | m -> [ Sexp.List [ Atom "selection-mode"; Atom (selection_mode_name m) ] ])
+       @ (if W.List_box.get_activate_on_single_click b
+          then []
+          else [ Sexp.Atom "activate-on-double-click" ])
+       @ flag_prop "show-separators" (W.List_box.get_show_separators b)
+       @ int_prop
+           "selected-rows"
+           (List.length (W.List_box.get_selected_rows b))
+           ~default:0
+     | "GtkListBoxRow" ->
+       let r : W.List_box_row.t = cast w in
+       flag_prop "selected" (W.List_box_row.is_selected r)
+       @ (if W.List_box_row.get_selectable r then [] else [ Sexp.Atom "not-selectable" ])
+       @ if W.List_box_row.get_activatable r then [] else [ Sexp.Atom "not-activatable" ]
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

@@ -140,7 +140,63 @@ let numbers (graph @ local) =
     ]
 ;;
 
-(* Page 3: the containers, including the overlay-over-a-spacer trick that caps a picture's
+(* Page 3: a keyed list. Every row's identity is its [~key], which is what both handlers
+   speak in -- there is no array of rows beside the widget and no index to translate. The
+   header row is an ordinary row that refuses selection and activation. *)
+let lists (graph @ local) =
+  let chosen, set_chosen = Bonsai.state "sonatas" graph in
+  let starred, set_starred = Bonsai.state [ "sonatas" ] graph in
+  let%arr chosen and set_chosen and starred and set_starred in
+  let row key label = Node.label ~key ~xalign:0. ~attrs:[ Attr.margin 8 ] label in
+  Node.box
+    ~orientation:Horizontal
+    ~spacing:12
+    ~attrs:[ Attr.margin 12 ]
+    [ Node.frame
+        ~label:"Single, activated"
+        (Node.list_box
+           ~attrs:[ Attr.on_row_activated set_chosen; Attr.width_request 200 ]
+           ~selection_mode:Single
+           ~show_separators:true
+           ~selected:[ chosen ]
+           [ Node.label
+               ~key:"hdr"
+               ~xalign:0.
+               ~attrs:
+                 [ Attr.margin 8
+                 ; Attr.row_selectable false
+                 ; Attr.row_activatable false
+                 ; Attr.css_class "dim-label"
+                 ]
+               "COLLECTIONS"
+           ; row "sonatas" "Sonatas"
+           ; row "etudes" "Études"
+           ; row "preludes" "Preludes"
+           ])
+    ; Node.frame
+        ~label:"Multiple, selected"
+        (Node.list_box
+           ~attrs:[ Attr.on_selected_rows_changed set_starred; Attr.width_request 200 ]
+           ~selection_mode:Multiple
+           ~placeholder:(Node.label ~attrs:[ Attr.margin 12 ] "nothing to show")
+           ~selected:starred
+           [ row "sonatas" "Sonatas"; row "etudes" "Études"; row "preludes" "Preludes" ])
+    ; Node.box
+        ~orientation:Vertical
+        ~spacing:8
+        [ Node.label ~xalign:0. (sprintf "activated: %s" chosen)
+        ; Node.label
+            ~xalign:0.
+            (sprintf
+               "starred: %s"
+               (if List.is_empty starred
+                then "(none)"
+                else String.concat ~sep:", " starred))
+        ]
+    ]
+;;
+
+(* Page 4: the containers, including the overlay-over-a-spacer trick that caps a picture's
    allocated size. *)
 let layout (graph @ local) =
   let expanded, set_expanded = Bonsai.state false graph in
@@ -208,8 +264,9 @@ let app (graph @ local) =
   let page, set_page = Bonsai.state "controls" graph in
   let controls = controls graph in
   let numbers = numbers graph in
+  let lists = lists graph in
   let layout = layout graph in
-  let%arr page and set_page and controls and numbers and layout in
+  let%arr page and set_page and controls and numbers and lists and layout in
   Node.window
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
@@ -243,6 +300,11 @@ let app (graph @ local) =
                    ~attrs:[ Attr.page_title "Numbers" ]
                    ~orientation:Vertical
                    [ numbers ]
+               ; Node.box
+                   ~key:"lists"
+                   ~attrs:[ Attr.page_title "Lists" ]
+                   ~orientation:Vertical
+                   [ lists ]
                ; Node.box
                    ~key:"layout"
                    ~attrs:[ Attr.page_title "Layout" ]

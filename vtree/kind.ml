@@ -255,6 +255,21 @@ type stack_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [selected] is the model's selection, by row key, and carries no [@sexp_drop_if]: it is
+   a required labelled argument, so its value is always something the caller asked for.
+   The other three are GTK's own defaults -- and note that two of them are not the "off"
+   value a reader expects: a [GtkListBox] selects one row by default and activates on a
+   single click by default. *)
+type list_box_props =
+  { selection_mode : Selection_mode.t
+       [@sexp_drop_if Selection_mode.equal Defaults.List_box.selection_mode]
+  ; activate_on_single_click : bool
+       [@sexp_drop_if Bool.equal Defaults.List_box.activate_on_single_click]
+  ; show_separators : bool [@sexp_drop_if Bool.equal Defaults.List_box.show_separators]
+  ; selected : Key.t list
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -290,6 +305,7 @@ type t =
   | Stack of stack_props
   | Stack_switcher of stack_ref_props
   | Stack_sidebar of stack_ref_props
+  | List_box of list_box_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
@@ -322,6 +338,7 @@ let name = function
   | Stack _ -> "Stack"
   | Stack_switcher _ -> "StackSwitcher"
   | Stack_sidebar _ -> "StackSidebar"
+  | List_box _ -> "ListBox"
   | Center_box _ -> "CenterBox"
   | Paned _ -> "Paned"
   | Overlay _ -> "Overlay"
@@ -355,6 +372,7 @@ let same_kind a b =
   | Stack _, Stack _
   | Stack_switcher _, Stack_switcher _
   | Stack_sidebar _, Stack_sidebar _
+  | List_box _, List_box _
   | Center_box _, Center_box _
   | Paned _, Paned _
   | Overlay _, Overlay _
@@ -389,6 +407,7 @@ let equal_props a b =
   | Stack a, Stack b -> equal_stack_props a b
   | Stack_switcher a, Stack_switcher b | Stack_sidebar a, Stack_sidebar b ->
     equal_stack_ref_props a b
+  | List_box a, List_box b -> equal_list_box_props a b
   | Center_box a, Center_box b -> equal_center_box_props a b
   | Paned a, Paned b -> equal_paned_props a b
   | Overlay a, Overlay b -> equal_overlay_props a b

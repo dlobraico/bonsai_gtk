@@ -47,7 +47,14 @@ let () =
      [gdk_constants.mli] genuinely declares [val key_a] twice. So the capitals cannot be
      checked against the binding at all, and [of_char]'s doc says so. What is checked is
      that the lowercase letters, the digits and the punctuation agree, which is the same
-     claim over the range an application actually writes. *)
+     claim over the range an application actually writes.
+
+     One caveat on the letters, because a failure here is easy to misread: [K.key_a],
+     [K.key_z] and [K.key_w] are the *second* of the two declarations, and which one wins
+     is the order ocgtk's generator happened to emit them in. So a MISMATCH on a letter
+     means the generator reordered its output, not that {!Keyval}'s arithmetic is wrong --
+     [of_char 'a' = 97] would still be right. [key_0], [key_slash] and [key_space] have no
+     duplicate and are unambiguous; a MISMATCH on one of those is the table. *)
   check "of_char a" (Keyval.of_char 'a') K.key_a;
   check "of_char z" (Keyval.of_char 'z') K.key_z;
   check "of_char 0" (Keyval.of_char '0') K.key_0;

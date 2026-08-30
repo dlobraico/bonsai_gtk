@@ -34,6 +34,8 @@ module Name : sig
     | Measure_overlay
     | Grid_cell
     | Page_title
+    | Row_selectable
+    | Row_activatable
     | On_clicked
     | On_toggled
     | On_changed
@@ -44,6 +46,8 @@ module Name : sig
     | On_revealed
     | On_position_changed
     | On_visible_child_changed
+    | On_row_activated
+    | On_selected_rows_changed
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -122,6 +126,8 @@ module Private : sig
     | Measure_overlay of bool
     | Grid_cell of Grid_cell.t
     | Page_title of string
+    | Row_selectable of bool
+    | Row_activatable of bool
     | On_clicked of unit Handler.t
     | On_toggled of bool Handler.t
     | On_changed of string Handler.t
@@ -132,6 +138,8 @@ module Private : sig
     | On_revealed of bool Handler.t
     | On_position_changed of int Handler.t
     | On_visible_child_changed of string Handler.t
+    | On_row_activated of Key.t Handler.t
+    | On_selected_rows_changed of Key.t list Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -265,6 +273,29 @@ val grid_cell : column:int -> row:int -> ?width:int -> ?height:int -> unit -> t
     stack wraps around this child, not by the child. Inert outside a stack. *)
 val page_title : string -> t
 
+(** Whether this row of a {!Node.list_box} may be selected. [true] is GTK's own default.
+
+    A container-placement attr like {!page_title}: {!Node.list_box} wraps every child in a
+    [GtkListBoxRow] of its own, and this is a property of that wrapper rather than of the
+    child, so it rides on the child node's attrs and is read by the list box's impl -- on
+    insert, and again through [Widget_impl.list_ops.updated] when it changes.
+
+    [false] is what a header row is. ocgtk binds none of [GtkListBox]'s callback-taking
+    methods, [set_header_func] included, so a header in this library is an ordinary row
+    that refuses selection and activation -- which is what an application written against
+    GTK directly generally builds by hand anyway.
+
+    Inert outside a list box, and rejected there: a row attr on a box child is applied by
+    nobody and read by nobody, so it is [Invalid_argument] at mount and at handle time
+    like every other misplaced placement attr. *)
+val row_selectable : bool -> t
+
+(** Whether this row of a {!Node.list_box} may be activated -- whether clicking it (or
+    pressing Enter on it) emits [row-activated] and so reaches {!on_row_activated}. [true]
+    is GTK's own default. A container-placement attr on the same terms as
+    {!row_selectable}, and [false] on the same kind of row. *)
+val row_activatable : bool -> t
+
 val on_clicked : unit Ui_effect.t -> t
 
 (** Fires when the user flips a [toggle_button], [check_button] or [switch], carrying the
@@ -362,6 +393,40 @@ val on_position_changed : (int -> unit Ui_effect.t) -> t
     when the node is mounted or patched. *)
 val on_visible_child_changed : (string -> unit Ui_effect.t) -> t
 
+(** Fires when the user activates a row of a {!Node.list_box} -- a click if the list box
+    has [~activate_on_single_click] (GTK's default), a double click otherwise, or Enter on
+    the focused row. Carries the {i key} of the node that row was built from.
+
+    The key, and never the row or its index, is the point. GTK's [row-activated] hands its
+    callback a [GtkListBoxRow] the library made and the application has never seen, and
+    [GtkListBoxRow.get_index] answers in positions that move whenever the list is filtered
+    or sorted -- so an application written against GTK directly keeps an array beside the
+    list box and looks the row up in it. The runtime keeps that map instead
+    ([src/child_keys.ml]), and hands back the name the node already had.
+
+    A row with {!row_activatable} [false] never emits this, which is what makes a header
+    row inert rather than a click that reports a key nothing acts on.
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched. *)
+val on_row_activated : (Key.t -> unit Ui_effect.t) -> t
+
+(** Fires when a {!Node.list_box}'s selection changes, carrying the keys of {i every}
+    selected row, in the widget's order -- so a list box in [Multiple] mode reports the
+    whole selection rather than the row that just moved, and an emptied selection reports
+    [[]].
+
+    GTK's [selected-rows-changed] carries nothing; the selection is read back off the
+    widget and mapped through the same table {!on_row_activated} uses. It also fires for
+    the library's own writes, which the patcher's reentrancy guard drops -- so what
+    reaches the model is the user's doing.
+
+    [~selected] is {i controlled} (spec §6.5), so a list box that carries no
+    [on_selected_rows_changed] -- or whose model ignores it -- snaps back to the model's
+    selection on the next frame. Attaching it to a widget that emits no such signal raises
+    [Invalid_argument] when the node is mounted or patched. *)
+val on_selected_rows_changed : (Key.t list -> unit Ui_effect.t) -> t
+
 (** A [GtkGestureClick] on this widget.
 
     [button] is which mouse button to listen for; [0] (the default) means all of them, and
@@ -411,8 +476,11 @@ val on_focus_leave : unit Handler.t -> t
     still takes its own Escape.
 
     Both this and {!on_key_released} share one controller, so a widget carrying both pays
-    for one; giving them different phases is [Invalid_argument] at mount, because there is
-    only one phase to write.
+    for one; giving them different phases is [Invalid_argument], because there is only one
+    phase to write. Raised at mount, at patch (a conditionally-added [~phase] reaching a
+    widget mounted without one), and by [Bonsai_gtk_test]'s handle -- all three from
+    [Events.key_phase_rejection], so a headless suite cannot certify a view the runtime
+    refuses.
 
     Like {!on_click}, legal on {i any} node: it is not a signal of some widget class but a
     controller the runtime attaches to whatever carries it, and it exists exactly as long

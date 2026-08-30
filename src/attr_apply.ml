@@ -106,16 +106,19 @@ let set (w : Widget.t) (attr : Attr.t) =
      they are not a property of the widget at all but a [GtkEventController] attached to
      it, created and removed by [Controllers] straight from the node's attrs.
 
-     [Measure_overlay], [Grid_cell] and [Page_title] are the container-placement attrs: a
-     setting the *parent* holds about this child (an overlay's measure flag, a grid cell,
-     a stack page's title), which no property of the child widget corresponds to. The
-     parent's impl reads it off the child node through [Widget_impl.list_ops], so it is
-     inert here by construction rather than by omission -- and inert, rather than an
+     [Measure_overlay], [Grid_cell], [Page_title] and the two [Row_*] attrs are the
+     container-placement attrs: a setting the *parent* holds about this child (an
+     overlay's measure flag, a grid cell, a stack page's title, a list-box row's
+     selectable and activatable flags), which no property of the child widget corresponds
+     to. The parent's impl reads it off the child node through [Widget_impl.list_ops], so
+     it is inert here by construction rather than by omission -- and inert, rather than an
      error, on a widget whose parent is not the container that reads it. *)
   | Test_id _
   | Measure_overlay _
   | Grid_cell _
   | Page_title _
+  | Row_selectable _
+  | Row_activatable _
   | On_click _
   | On_focus_enter _
   | On_focus_leave _
@@ -131,6 +134,8 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_revealed _
   | On_position_changed _
   | On_visible_child_changed _
+  | On_row_activated _
+  | On_selected_rows_changed _
   | Many _ -> ()
 ;;
 
@@ -159,6 +164,8 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Measure_overlay
   | Grid_cell
   | Page_title
+  | Row_selectable
+  | Row_activatable
   (* The controller attrs are [Controllers]' business, not a property of the widget:
      unsetting one removes a controller, which [Controllers.update] does from the attrs
      themselves rather than from an op. *)
@@ -176,7 +183,9 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_expanded_changed
   | On_revealed
   | On_position_changed
-  | On_visible_child_changed -> ()
+  | On_visible_child_changed
+  | On_row_activated
+  | On_selected_rows_changed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

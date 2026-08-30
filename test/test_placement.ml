@@ -10,14 +10,18 @@ let%expect_test "which attrs are container-placement attrs, and who reads each" 
     [%sexp
       (List.map Placement.names ~f:(fun name -> name, Placement.reader name)
        : (Attr.Name.t * string option) list)];
-  [%expect {| ((Measure_overlay (Overlay)) (Grid_cell (Grid)) (Page_title (Stack))) |}];
+  [%expect
+    {|
+    ((Measure_overlay (Overlay)) (Grid_cell (Grid)) (Page_title (Stack))
+     (Row_selectable (ListBox)) (Row_activatable (ListBox)))
+    |}];
   (* Everything else is either an ordinary widget property or an event, and is legal
      anywhere. *)
   print_s
     [%sexp
       (List.count Attr.Name.all ~f:(fun name -> Option.is_none (Placement.reader name))
        : int)];
-  [%expect {| 34 |}]
+  [%expect {| 36 |}]
 ;;
 
 (* The two tables are inverses, and nothing else checks that: [read_by] is what the
@@ -29,13 +33,18 @@ let%expect_test "read_by and reader agree" =
     [ (Node.grid []).kind
     ; (Node.stack ~name:"s" ~visible_child:"a" []).kind
     ; (Node.overlay (Node.label "x")).kind
+    ; (Node.list_box ~selected:[] []).kind
     ]
   in
   print_s
     [%sexp
       (List.map containers ~f:(fun kind -> Kind.name kind, Placement.read_by kind)
        : (string * Attr.Name.t list) list)];
-  [%expect {| ((Grid (Grid_cell)) (Stack (Page_title)) (Overlay (Measure_overlay))) |}];
+  [%expect
+    {|
+    ((Grid (Grid_cell)) (Stack (Page_title)) (Overlay (Measure_overlay))
+     (ListBox (Row_selectable Row_activatable)))
+    |}];
   (* Every name a container reads names that container back... *)
   print_s
     [%sexp
@@ -43,7 +52,7 @@ let%expect_test "read_by and reader agree" =
          List.map (Placement.read_by kind) ~f:(fun name ->
            Option.equal String.equal (Placement.reader name) (Some (Kind.name kind))))
        : bool list)];
-  [%expect {| (true true true) |}];
+  [%expect {| (true true true true true) |}];
   (* ...and every name with a reader is read by exactly one of them, so no placement attr
      is left with nowhere legal to go. *)
   print_s
@@ -53,7 +62,11 @@ let%expect_test "read_by and reader agree" =
          , List.count containers ~f:(fun kind ->
              List.mem (Placement.read_by kind) name ~equal:Attr.Name.equal) ))
        : (Attr.Name.t * int) list)];
-  [%expect {| ((Measure_overlay 1) (Grid_cell 1) (Page_title 1)) |}]
+  [%expect
+    {|
+    ((Measure_overlay 1) (Grid_cell 1) (Page_title 1) (Row_selectable 1)
+     (Row_activatable 1))
+    |}]
 ;;
 
 (* A kind that reads none of them rejects all of them -- the wildcard arm, which is the

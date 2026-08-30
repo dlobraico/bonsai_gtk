@@ -36,6 +36,7 @@ let all_kinds : Kind.t list =
   ; (Node.stack ~name:"s" ~visible_child:"a" []).kind
   ; (Node.stack_switcher ~stack:"s" ()).kind
   ; (Node.stack_sidebar ~stack:"s" ()).kind
+  ; (Node.list_box ~selected:[] []).kind
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind
@@ -79,6 +80,7 @@ let%expect_test "every kind's event attrs" =
     (Stack (On_visible_child_changed))
     (StackSwitcher ())
     (StackSidebar ())
+    (ListBox (On_row_activated On_selected_rows_changed))
     (CenterBox ())
     (Paned (On_position_changed))
     (Overlay ())
@@ -153,8 +155,8 @@ let%expect_test "is_event over every name" =
     (events
      (On_clicked On_toggled On_changed On_activate On_search_changed
       On_value_changed On_expanded_changed On_revealed On_position_changed
-      On_visible_child_changed On_click On_focus_enter On_focus_leave
-      On_key_pressed On_key_released))
+      On_visible_child_changed On_row_activated On_selected_rows_changed On_click
+      On_focus_enter On_focus_leave On_key_pressed On_key_released))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect
@@ -163,7 +165,7 @@ let%expect_test "is_event over every name" =
      (Margin_start Margin_end Margin_top Margin_bottom Halign Valign Hexpand
       Vexpand Sensitive Visible Tooltip Width_request Height_request Opacity
       Focusable Can_focus Widget_name Cursor_name Test_id Measure_overlay
-      Grid_cell Page_title))
+      Grid_cell Page_title Row_selectable Row_activatable))
     |}]
 ;;
 

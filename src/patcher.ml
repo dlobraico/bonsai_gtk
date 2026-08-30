@@ -147,6 +147,7 @@ type interest =
   | Window
   | Stack of Kind.stack_props
   | Stack_ref of [ `Switcher | `Sidebar ] * string
+  | List_box of Kind.list_box_props
 
 let interest_of_kind (kind : Kind.t) =
   match kind with
@@ -154,6 +155,7 @@ let interest_of_kind (kind : Kind.t) =
   | Stack p -> Stack p
   | Stack_switcher { stack } -> Stack_ref (`Switcher, stack)
   | Stack_sidebar { stack } -> Stack_ref (`Sidebar, stack)
+  | List_box p -> List_box p
   | Label _
   | Button _
   | Toggle_button _
@@ -211,6 +213,13 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
       match which with
       | `Switcher -> W_stack_switcher.attach widget stack
       | `Sidebar -> W_stack_sidebar.attach widget stack)
+  | List_box { selected; _ } ->
+    (* The same reason a stack's page is deferred, one step further: the rows are attached
+       after this on a mount and patched after this on a patch, so the frame that adds a
+       row and selects it has nothing to select until the pass is over. Unlike
+       [W_stack.select] this one rejects nothing -- a key naming no row is ignored, and
+       [Node.list_box] says why -- so there is no path to prefix. *)
+    Queue.enqueue ctx.fixups (fun () -> W_list_box.apply_selection widget ~selected)
 ;;
 
 (* The immediate half of realizing a node -- a window is presented, a stack registers its
@@ -251,7 +260,7 @@ let note_interest
      Queue.enqueue
        ctx.stack_claims
        { claim_path = path; give_up; take = name; claimant = widget }
-   | Stack_ref _ -> ());
+   | Stack_ref _ | List_box _ -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
@@ -437,6 +446,7 @@ and destroy ctx (live : live) =
   | Grid _
   | Stack_switcher _
   | Stack_sidebar _
+  | List_box _
   | Box _ -> ()
 
 (* Empties every slot in a subtree without tearing anything down.
@@ -477,7 +487,7 @@ and disarm (live : live) =
 and drop_stack_names ctx (live : live) =
   (match interest_of_kind live.node.kind with
    | Stack { name; _ } -> unregister_stack ctx ~name live.widget
-   | Nothing | Window | Stack_ref _ -> ());
+   | Nothing | Window | Stack_ref _ | List_box _ -> ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 
 and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =

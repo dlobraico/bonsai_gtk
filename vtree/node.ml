@@ -12,6 +12,28 @@ let make ?key ?(attrs = []) kind children =
   { kind; key; attrs = Attrs.of_list attrs; children }
 ;;
 
+(* The keyed containers -- a stack's pages, and from M2 a list box's rows -- require a
+   [~key] on every child rather than merely reconciling by it where it is present. The key
+   is the child's identity in the parent's own terms: for a stack it is the GTK page name
+   that [~visible_child] selects by, and for a list box it is what [~selected] names and
+   what every handler receives, because GTK's own answer (a row widget, or an index that
+   moves) is not something an application can act on.
+
+   Checked here rather than at mount, which is where M1 put the stack's: the constructor
+   already has the children in hand, so the mistake is caught at the line that made it and
+   with no live tree involved -- a headless suite finds it, and so does a [dune build] of
+   a test that never mounts anything. The impl-side check stays as a backstop for the
+   nodes this function did not build (see [w_stack.ml]'s [page_name]).
+
+   [which] is the constructor as the caller spelled it and [why] says what the key is for,
+   so the two containers' messages differ only where they should. *)
+let require_child_keys ~which ~why children =
+  List.iteri children ~f:(fun i (c : t) ->
+    match c.key with
+    | Some _ -> ()
+    | None -> invalid_argf "%s: child %d has no ~key (%s)" which i why ())
+;;
+
 (* The constructors below are total, with one exception: [scrolled_window] rejects a
    minimum content bound above its maximum. It is the exception because that mistake has
    no later diagnostic -- GTK calls it a programming error and checks nothing -- and
@@ -370,6 +392,10 @@ let stack
   ~visible_child
   children
   =
+  require_child_keys
+    ~which:"Node.stack"
+    ~why:"a stack page's key is its GTK page name"
+    children;
   make
     ?key
     ?attrs
@@ -382,6 +408,31 @@ let stack
        ; vhomogeneous
        })
     (List children)
+;;
+
+let list_box
+  ?key
+  ?attrs
+  ?(selection_mode = Defaults.List_box.selection_mode)
+  ?(activate_on_single_click = Defaults.List_box.activate_on_single_click)
+  ?(show_separators = Defaults.List_box.show_separators)
+  ?placeholder
+  ~selected
+  children
+  =
+  require_child_keys
+    ~which:"Node.list_box"
+    ~why:"a row's key is the identity every handler receives"
+    children;
+  make
+    ?key
+    ?attrs
+    (List_box { selection_mode; activate_on_single_click; show_separators; selected })
+    (* Two slots rather than a bare list: the placeholder is a child of the [GtkListBox]
+       and is patched like any other node, but it is not a row -- it has no key, it is
+       never selected or activated, and it must not take part in the rows' reconciliation.
+       Naming the two apart is what keeps those facts structural. *)
+    (Slots [ "placeholder", Single placeholder; "rows", List children ])
 ;;
 
 let stack_switcher ?key ?attrs ~stack () =

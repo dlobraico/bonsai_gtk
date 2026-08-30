@@ -133,6 +133,15 @@ module Stack = struct
   let vhomogeneous = true
 end
 
+(* GTK's own, and two of the three are worth stating out loud because they are not the
+   value a reader guesses: a bare [GtkListBox] has [selection-mode] [SINGLE] (not [NONE])
+   and [activate-on-single-click] [true]. *)
+module List_box = struct
+  let selection_mode = Selection_mode.Single
+  let activate_on_single_click = true
+  let show_separators = false
+end
+
 module Center_box = struct
   let shrink_center_last = true
 end

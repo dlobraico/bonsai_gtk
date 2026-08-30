@@ -20,8 +20,9 @@ val for_kind : Kind.t -> Attr.Name.t list
 
 (** One [GtkEventController] the runtime attaches on demand. A family, rather than one per
     attr, because {!Attr.on_focus_enter} and {!Attr.on_focus_leave} share a single
-    [GtkEventControllerFocus] -- a widget carrying either pays for one -- and Task 5's two
-    key attrs will share a [GtkEventControllerKey] the same way. *)
+    [GtkEventControllerFocus] -- a widget carrying either pays for one -- and
+    {!Attr.on_key_pressed} and {!Attr.on_key_released} share a [GtkEventControllerKey] the
+    same way. *)
 module Family : sig
   type t =
     | Click (** [GtkGestureClick] *)

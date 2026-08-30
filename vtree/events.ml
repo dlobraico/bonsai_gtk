@@ -26,6 +26,7 @@ let for_kind : Kind.t -> Attr.Name.t list = function
   | Revealer _ -> [ On_revealed ]
   | Paned _ -> [ On_position_changed ]
   | Stack _ -> [ On_visible_child_changed ]
+  | List_box _ -> [ On_row_activated; On_selected_rows_changed ]
   | Window _ | Box _ | Grid _ | Center_box _ | Overlay _ | Frame _ | Scrolled_window _ ->
     []
 ;;
@@ -94,7 +95,11 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_expanded_changed
   | On_revealed
   | On_position_changed
-  | On_visible_child_changed -> None
+  | On_visible_child_changed
+  | On_row_activated
+  | On_selected_rows_changed
+  | Row_selectable
+  | Row_activatable -> None
 ;;
 
 (* One [GtkEventControllerKey] serves both key attrs, so there is exactly one propagation

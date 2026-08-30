@@ -439,3 +439,134 @@ let%expect_test "entry max_length reaches the kind and defaults away" =
        : bool * bool)];
   [%expect {| (false true) |}]
 ;;
+
+let%expect_test "list box constructors and defaults" =
+  print_s
+    [%sexp
+      (Node.list_box
+         ~selected:[]
+         [ Node.label ~key:"a" "Alpha"; Node.label ~key:"b" "Beta" ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (List_box ((selected ())))) (attrs ())
+     (children
+      (Slots
+       ((placeholder (Single ()))
+        (rows
+         (List
+          (((kind (Label ((text Alpha)))) (key a) (attrs ())
+            (children No_children))
+           ((kind (Label ((text Beta)))) (key b) (attrs ())
+            (children No_children)))))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.list_box
+         ~selection_mode:Browse
+         ~activate_on_single_click:true
+         ~show_separators:true
+         ~placeholder:(Node.label "nothing here")
+         ~selected:[ "b" ]
+         [ Node.label ~key:"a" ~attrs:[ Attr.row_selectable false ] "Header"
+         ; Node.label ~key:"b" "Beta"
+         ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (List_box ((selection_mode Browse) (show_separators true) (selected (b)))))
+     (attrs ())
+     (children
+      (Slots
+       ((placeholder
+         (Single
+          (((kind (Label ((text "nothing here")))) (attrs ())
+            (children No_children)))))
+        (rows
+         (List
+          (((kind (Label ((text Header)))) (key a)
+            (attrs ((Row_selectable false))) (children No_children))
+           ((kind (Label ((text Beta)))) (key b) (attrs ())
+            (children No_children)))))))))
+    |}]
+;;
+
+(* [selection_mode] and [activate_on_single_click] are GTK's own defaults, so the sexp
+   drops a caller who asks for them explicitly -- which is the [@sexp_drop_if] rule, and
+   the one that is easy to get backwards here because [Single] is not the first
+   constructor of {!Selection_mode.t} and [true] is not the usual "off" default. *)
+let%expect_test "a list box's props take part in equal_props, and GTK's defaults drop" =
+  print_s
+    [%sexp
+      (Node.list_box
+         ~selection_mode:Single
+         ~activate_on_single_click:true
+         ~show_separators:false
+         ~selected:[]
+         []
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (List_box ((selected ())))) (attrs ())
+     (children (Slots ((placeholder (Single ())) (rows (List ()))))))
+    |}];
+  let a = (Node.list_box ~selected:[ "a" ] []).kind in
+  let b = (Node.list_box ~selected:[ "b" ] []).kind in
+  let c = (Node.list_box ~selection_mode:Multiple ~selected:[ "a" ] []).kind in
+  print_s
+    [%sexp
+      (( Kind.same_kind a b
+       , Kind.equal_props a b
+       , Kind.equal_props a c
+       , Kind.equal_props a a )
+       : bool * bool * bool * bool)];
+  [%expect {| (true false false true) |}]
+;;
+
+(* Unlike a stack page, whose missing key M1 caught at mount, this is caught where the
+   children are already in hand. The four keyed containers share the rule, so they share
+   the message shape. *)
+let%expect_test "a list box child without a key is rejected at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.list_box ~selected:[] [ Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.list_box: child 0 has no ~key (a row's key is the identity every handler receives)")
+    |}];
+  (* The placeholder is not a row, so it needs no key. *)
+  print_s
+    [%sexp (Node.list_box ~placeholder:(Node.label "empty") ~selected:[] [] : Node.t)];
+  [%expect
+    {|
+    ((kind (List_box ((selected ())))) (attrs ())
+     (children
+      (Slots
+       ((placeholder
+         (Single
+          (((kind (Label ((text empty)))) (attrs ()) (children No_children)))))
+        (rows (List ()))))))
+    |}]
+;;
+
+let%expect_test "a stack page without a key is rejected at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.stack ~name:"nav" ~visible_child:"a" [ Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.stack: child 0 has no ~key (a stack page's key is its GTK page name)")
+    |}];
+  (* The index is the caller's, so a keyed page beside an unkeyed one names the right one. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.stack
+      ~name:"nav"
+      ~visible_child:"a"
+      [ Node.label ~key:"a" "keyed"; Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.stack: child 1 has no ~key (a stack page's key is its GTK page name)")
+    |}]
+;;

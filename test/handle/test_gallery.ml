@@ -6,9 +6,10 @@ open Bonsai.Let_syntax
    ocgtk type -- which is the rule the README states about keeping view functions in a
    vtree-only library, worked through on the largest tree this repository has.
 
-   Every M1 [Node] constructor appears here exactly once, and its value is coverage: a
-   constructor whose defaults change, or a children shape that stops being legal, shows up
-   as a diff in this one snapshot rather than as a runtime failure in somebody's app. *)
+   Every M1 and M2 [Node] constructor appears here exactly once, and its value is
+   coverage: a constructor whose defaults change, or a children shape that stops being
+   legal, shows up as a diff in this one snapshot rather than as a runtime failure in
+   somebody's app. *)
 let every_widget (graph @ local) =
   let n, set_n = Bonsai.state 0 graph in
   let%arr n and set_n in
@@ -125,6 +126,26 @@ let every_widget (graph @ local) =
                            ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ]
                            "cell"
                        ]
+                     (* Every row keyed, both handlers speaking in keys, both row
+                        placement attrs on the header, and a placeholder that is a child
+                        but not a row. *)
+                   ; Node.list_box
+                       ~attrs:
+                         [ Attr.on_row_activated (fun _ -> Ui_effect.Ignore)
+                         ; Attr.on_selected_rows_changed (fun _ -> Ui_effect.Ignore)
+                         ]
+                       ~selection_mode:Multiple
+                       ~activate_on_single_click:false
+                       ~show_separators:true
+                       ~placeholder:(Node.label "empty")
+                       ~selected:[ "row" ]
+                       [ Node.label
+                           ~key:"hdr"
+                           ~attrs:
+                             [ Attr.row_selectable false; Attr.row_activatable false ]
+                           "header"
+                       ; Node.label ~key:"row" "row"
+                       ]
                    ]
                ; Node.box
                    ~key:"slots"
@@ -164,7 +185,7 @@ let every_widget (graph @ local) =
        ])
 ;;
 
-let%expect_test "every M1 widget builds a legal node" =
+let%expect_test "every M1 and M2 widget builds a legal node" =
   let handle = Bonsai_gtk_test.create every_widget in
   Bonsai_gtk_test.Handle.show handle;
   [%expect
@@ -291,7 +312,29 @@ let%expect_test "every M1 widget builds a legal node" =
                              (attrs
                               ((Grid_cell
                                 ((column 0) (row 0) (width 1) (height 1)))))
-                             (children No_children))))))))))
+                             (children No_children))))))
+                        ((kind
+                          (List_box
+                           ((selection_mode Multiple)
+                            (activate_on_single_click false)
+                            (show_separators true) (selected (row)))))
+                         (attrs
+                          ((On_row_activated <handler>)
+                           (On_selected_rows_changed <handler>)))
+                         (children
+                          (Slots
+                           ((placeholder
+                             (Single
+                              (((kind (Label ((text empty)))) (attrs ())
+                                (children No_children)))))
+                            (rows
+                             (List
+                              (((kind (Label ((text header)))) (key hdr)
+                                (attrs
+                                 ((Row_selectable false) (Row_activatable false)))
+                                (children No_children))
+                               ((kind (Label ((text row)))) (key row) (attrs ())
+                                (children No_children)))))))))))))
                     ((kind (Box ((orientation Vertical) (spacing 8))))
                      (key slots) (attrs ((Page_title Slots)))
                      (children

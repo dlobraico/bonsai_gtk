@@ -1,0 +1,68 @@
+(GtkWindow (title (lists)) (css (background)) hidden
+ (children
+  (GtkListBox (selection-mode multiple) show-separators (selected-rows 1)
+   (css (separators))
+   (children
+    (GtkListBoxRow not-selectable not-activatable
+     (children (GtkLabel (text HEADER))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text A))))
+    (GtkListBoxRow selected (css (activatable))
+     (children (GtkLabel (text B))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text C))))
+    (GtkLabel (text "nothing here"))))))
+after mount: b
+same GObjects after reorder: true
+the original rows are now at: 0,2,3,1
+(GtkWindow (title (lists)) (css (background)) hidden
+ (children
+  (GtkListBox (selection-mode multiple) show-separators (selected-rows 1)
+   (css (separators))
+   (children
+    (GtkListBoxRow not-selectable not-activatable
+     (children (GtkLabel (text HEADER))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text C))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text A))))
+    (GtkListBoxRow selected (css (activatable))
+     (children (GtkLabel (text B))))
+    (GtkLabel (text "nothing here"))))))
+rows after a rightward move: C,A,HEADER,B
+rows after a middle insert: C,A,NEW,HEADER,B
+rows after the middle row went away: HEADER,C,A,B
+after the user clicked: c,b
+after the declining frame: b
+add-and-select: d
+selected row removed: (none)
+selection with a ghost key: a
+multi-selection: a,b
+same selection, listed the other way: a,b
+writes for a re-ordered but equal selection: 0
+asking for the header row: (none)
+after the flags swapped: hdr
+(GtkWindow (title (lists)) (css (background)) hidden
+ (children
+  (GtkListBox (selection-mode multiple) show-separators (selected-rows 1)
+   (css (separators))
+   (children
+    (GtkListBoxRow selected (css (activatable))
+     (children (GtkLabel (text HEADER))))
+    (GtkListBoxRow not-selectable not-activatable
+     (children (GtkLabel (text C))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text A))))
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text B))))))))
+three keys in Single mode: b
+kind change replaced the wrapper: true
+kind change kept the selection: b
+(GtkWindow (title (lists)) (css (background)) hidden
+ (children
+  (GtkListBox show-separators (selected-rows 1) (css (separators))
+   (children
+    (GtkListBoxRow (css (activatable)) (children (GtkLabel (text A))))
+    (GtkListBoxRow selected (css (activatable))
+     (children
+      (GtkButton (label (B)) (css (text-button))
+       (children (GtkLabel (text B))))))))))
+handlers fired during teardown: 0
+driver, after mount: a
+driver, after the user clicked: b
+driver, after the frame the click armed: a (Bonsai saw 1)
+driver, after one more frame: a (Bonsai saw 1)

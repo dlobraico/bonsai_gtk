@@ -25,6 +25,8 @@ module Name = struct
       | Measure_overlay
       | Grid_cell
       | Page_title
+      | Row_selectable
+      | Row_activatable
       | On_clicked
       | On_toggled
       | On_changed
@@ -35,6 +37,8 @@ module Name = struct
       | On_revealed
       | On_position_changed
       | On_visible_child_changed
+      | On_row_activated
+      | On_selected_rows_changed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
          output reorders. *)
       | On_click
@@ -58,6 +62,8 @@ module Name = struct
       | On_revealed
       | On_position_changed
       | On_visible_child_changed
+      | On_row_activated
+      | On_selected_rows_changed
       (* The controller attrs are events too -- they carry a handler and a widget that
          cannot deliver one is a mistake worth a diagnostic. What they are not is any
          impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
@@ -92,7 +98,9 @@ module Name = struct
       | Test_id
       | Measure_overlay
       | Grid_cell
-      | Page_title -> false
+      | Page_title
+      | Row_selectable
+      | Row_activatable -> false
     ;;
   end
 
@@ -141,6 +149,8 @@ module Private = struct
     | Measure_overlay of bool
     | Grid_cell of Grid_cell.t
     | Page_title of string
+    | Row_selectable of bool
+    | Row_activatable of bool
     | On_clicked of unit Handler.t
     | On_toggled of bool Handler.t
     | On_changed of string Handler.t
@@ -151,6 +161,11 @@ module Private = struct
     | On_revealed of bool Handler.t
     | On_position_changed of int Handler.t
     | On_visible_child_changed of string Handler.t
+    (* Both carry the row's {!Key.t} rather than the row or its index: the key is what the
+       node said, and it is the only thing about a live [GtkListBoxRow] the application
+       has a name for. See [src/child_keys.ml]. *)
+    | On_row_activated of Key.t Handler.t
+    | On_selected_rows_changed of Key.t list Handler.t
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
@@ -218,6 +233,8 @@ let name = function
   | Measure_overlay _ -> Some Measure_overlay
   | Grid_cell _ -> Some Grid_cell
   | Page_title _ -> Some Page_title
+  | Row_selectable _ -> Some Row_selectable
+  | Row_activatable _ -> Some Row_activatable
   | On_clicked _ -> Some On_clicked
   | On_toggled _ -> Some On_toggled
   | On_changed _ -> Some On_changed
@@ -228,6 +245,8 @@ let name = function
   | On_revealed _ -> Some On_revealed
   | On_position_changed _ -> Some On_position_changed
   | On_visible_child_changed _ -> Some On_visible_child_changed
+  | On_row_activated _ -> Some On_row_activated
+  | On_selected_rows_changed _ -> Some On_selected_rows_changed
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
@@ -256,7 +275,9 @@ let rec equal a b =
   | Visible a, Visible b
   | Focusable a, Focusable b
   | Can_focus a, Can_focus b
-  | Measure_overlay a, Measure_overlay b -> Bool.equal a b
+  | Measure_overlay a, Measure_overlay b
+  | Row_selectable a, Row_selectable b
+  | Row_activatable a, Row_activatable b -> Bool.equal a b
   | Opacity a, Opacity b -> Float.equal a b
   | Grid_cell a, Grid_cell b -> Grid_cell.equal a b
   | On_clicked a, On_clicked b -> Handler.equal a b
@@ -269,6 +290,8 @@ let rec equal a b =
   | On_revealed a, On_revealed b -> Handler.equal a b
   | On_position_changed a, On_position_changed b -> Handler.equal a b
   | On_visible_child_changed a, On_visible_child_changed b -> Handler.equal a b
+  | On_row_activated a, On_row_activated b -> Handler.equal a b
+  | On_selected_rows_changed a, On_selected_rows_changed b -> Handler.equal a b
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
@@ -327,6 +350,12 @@ let grid_cell ~column ~row ?(width = 1) ?(height = 1) () =
 ;;
 
 let page_title s = Page_title s
+
+(* Two settings the *list box* holds about each row, on the same rule as
+   [Attr.page_title]: the impl wraps every child in a [GtkListBoxRow] of its own, and
+   these are properties of that wrapper rather than of the child. See the mli. *)
+let row_selectable b = Row_selectable b
+let row_activatable b = Row_activatable b
 let on_clicked eff = On_clicked (fun () -> eff)
 let on_toggled f = On_toggled f
 let on_changed f = On_changed f
@@ -337,6 +366,8 @@ let on_expanded_changed f = On_expanded_changed f
 let on_revealed f = On_revealed f
 let on_position_changed f = On_position_changed f
 let on_visible_child_changed f = On_visible_child_changed f
+let on_row_activated f = On_row_activated f
+let on_selected_rows_changed f = On_selected_rows_changed f
 
 let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }

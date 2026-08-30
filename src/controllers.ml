@@ -50,8 +50,8 @@ let set_name (c : W.Event_controller.t) suffix =
 
 (* Whether this family's controller should exist: exactly while at least one of the attrs
    [Events] assigns to it is present. Asking the table rather than naming the attrs here
-   is what keeps "which attrs mean click" in one place -- Task 5's second key attr joins
-   its family in [vtree/events.ml] and nothing in this file changes. *)
+   is what keeps "which attrs mean click" in one place -- an attr joining an existing
+   family does so in [vtree/events.ml], and nothing in this file changes. *)
 let wanted attrs family =
   List.exists (Events.family_attrs family) ~f:(fun name ->
     Option.is_some (Attrs.find attrs name))
@@ -166,7 +166,7 @@ let click_spec (gc : W.Gesture_click.t) : Signals.spec =
           | On_click { handler; _ } -> (), Some (handler e)
           | _ -> (), None)
         (* A [pressed] callback returns nothing to GTK, so there is no unsafe answer to
-           get wrong here. Task 5's key spec is where [declined] earns its keep. *)
+           get wrong here. [key_pressed_spec] below is where [declined] earns its keep. *)
     ; declined = ()
     }
 ;;
@@ -320,7 +320,8 @@ let configure_click (gc : W.Gesture_click.t) attrs =
    legal on every kind, skipped by [Signals.require_slots], and connected by no widget
    impl; this is the other end of that, and without the exhaustiveness a family could be
    named there and attached by nothing -- accepted everywhere, wired nowhere, with no
-   diagnostic. Task 5 adds [Key] to the variant and the compiler asks for its arm here. *)
+   diagnostic. Adding [Key] to the variant was four compile errors, of which this match
+   was one. *)
 let update t attrs =
   (* Once, before any family is touched, rather than inside [sync]'s removal branch.
 

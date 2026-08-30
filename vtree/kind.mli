@@ -249,6 +249,22 @@ type stack_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [selected] is the model's selection, by row key, and carries no [@sexp_drop_if]: it is
+   a required labelled argument. The other three are GTK's own defaults, and two of them
+   are not the value a reader guesses -- a bare [GtkListBox] selects one row and activates
+   on a single click. A row's own per-row settings are not here: they are held by the
+   [GtkListBoxRow] the impl wraps around each child, and ride on the child node's attrs
+   ([Attr.row_selectable], [Attr.row_activatable]). *)
+type list_box_props =
+  { selection_mode : Selection_mode.t
+       [@sexp_drop_if Selection_mode.equal Defaults.List_box.selection_mode]
+  ; activate_on_single_click : bool
+       [@sexp_drop_if Bool.equal Defaults.List_box.activate_on_single_click]
+  ; show_separators : bool [@sexp_drop_if Bool.equal Defaults.List_box.show_separators]
+  ; selected : Key.t list
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -284,6 +300,7 @@ type t =
   | Stack of stack_props
   | Stack_switcher of stack_ref_props
   | Stack_sidebar of stack_ref_props
+  | List_box of list_box_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props

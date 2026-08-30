@@ -1055,3 +1055,318 @@ let%expect_test "a key action on a node with no key handler fails" =
     Bonsai_gtk_test.Handle.recompute_view handle);
   [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_key_released handler") |}]
 ;;
+
+(* stavekeeper's [sidebar.ml] in miniature: a rail of keyed rows, a header row that is
+   neither selectable nor activatable, and a model whose selection is the key the last
+   activation handed it. The parallel [rows]/[row_widgets] arrays that file keeps -- and
+   the [get_index]-into-an-array bridge beside them -- exist only because GTK's
+   [row-activated] offers an index; [Attr.on_row_activated] offers the node's key, so
+   there is nothing to keep in parallel. *)
+let filter_list (graph @ local) =
+  let chosen, set_chosen = Bonsai.state "all" graph in
+  let%arr chosen and set_chosen in
+  Node.window
+    ~title:"Sidebar"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.list_box
+           ~attrs:[ Attr.test_id "rail"; Attr.on_row_activated set_chosen ]
+           ~selection_mode:Single
+           ~selected:[ chosen ]
+           [ Node.label
+               ~key:"hdr"
+               ~attrs:[ Attr.row_selectable false; Attr.row_activatable false ]
+               "FILTERS"
+           ; Node.label ~key:"all" "All pieces"
+           ; Node.label ~key:"recent" "Recent"
+           ]
+       ; Node.label ~attrs:[ Attr.test_id "chosen" ] chosen
+       ])
+;;
+
+let%expect_test "activating a row hands the model the row's key" =
+  let handle = Bonsai_gtk_test.create filter_list in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Sidebar))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (List_box ((selected (all)))))
+             (attrs ((Test_id rail) (On_row_activated <handler>)))
+             (children
+              (Slots
+               ((placeholder (Single ()))
+                (rows
+                 (List
+                  (((kind (Label ((text FILTERS)))) (key hdr)
+                    (attrs ((Row_selectable false) (Row_activatable false)))
+                    (children No_children))
+                   ((kind (Label ((text "All pieces")))) (key all) (attrs ())
+                    (children No_children))
+                   ((kind (Label ((text Recent)))) (key recent) (attrs ())
+                    (children No_children)))))))))
+            ((kind (Label ((text all)))) (attrs ((Test_id chosen)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Activate_row ("rail", "recent") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Sidebar))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (List_box ((selected (all)))))
+    +|       (((kind (List_box ((selected (recent)))))
+               (attrs ((Test_id rail) (On_row_activated <handler>)))
+               (children
+                (Slots
+                 ((placeholder (Single ()))
+                  (rows
+                   (List
+                    (((kind (Label ((text FILTERS)))) (key hdr)
+                      (attrs ((Row_selectable false) (Row_activatable false)))
+                      (children No_children))
+                     ((kind (Label ((text "All pieces")))) (key all) (attrs ())
+                      (children No_children))
+                     ((kind (Label ((text Recent)))) (key recent) (attrs ())
+                      (children No_children)))))))))
+    -|        ((kind (Label ((text all)))) (attrs ((Test_id chosen)))
+    +|        ((kind (Label ((text recent)))) (attrs ((Test_id chosen)))
+               (children No_children))))))))))
+    |}]
+;;
+
+(* [Set_selection] is the other half: a click that changes the selection without
+   activating a row (a ctrl-click in [Multiple], a keyboard move in [Browse]), reported by
+   [selected-rows-changed] as the whole selection rather than as one row. Like every other
+   action, the node's own [~selected] is not consulted -- the action means "the user made
+   the selection be this", which is what the real widget reports whatever the model was
+   rendering. *)
+let multi_list (graph @ local) =
+  let picked, set_picked = Bonsai.state [ "b" ] graph in
+  let%arr picked and set_picked in
+  Node.window
+    ~title:"Picker"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.list_box
+           ~attrs:[ Attr.test_id "grid"; Attr.on_selected_rows_changed set_picked ]
+           ~selection_mode:Multiple
+           ~selected:picked
+           [ Node.label ~key:"a" "A"; Node.label ~key:"b" "B"; Node.label ~key:"c" "C" ]
+       ; Node.label ~attrs:[ Attr.test_id "picked" ] (String.concat ~sep:"," picked)
+       ])
+;;
+
+let%expect_test "a selection change hands the model every selected key" =
+  let handle = Bonsai_gtk_test.create multi_list in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Picker))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (List_box ((selection_mode Multiple) (selected (b)))))
+             (attrs ((Test_id grid) (On_selected_rows_changed <handler>)))
+             (children
+              (Slots
+               ((placeholder (Single ()))
+                (rows
+                 (List
+                  (((kind (Label ((text A)))) (key a) (attrs ())
+                    (children No_children))
+                   ((kind (Label ((text B)))) (key b) (attrs ())
+                    (children No_children))
+                   ((kind (Label ((text C)))) (key c) (attrs ())
+                    (children No_children)))))))))
+            ((kind (Label ((text b)))) (attrs ((Test_id picked)))
+             (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selection ("grid", [ "a"; "c" ]) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Picker))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (List_box ((selection_mode Multiple) (selected (b)))))
+    +|       (((kind (List_box ((selection_mode Multiple) (selected (a c)))))
+               (attrs ((Test_id grid) (On_selected_rows_changed <handler>)))
+               (children
+                (Slots
+                 ((placeholder (Single ()))
+                  (rows
+                   (List
+                    (((kind (Label ((text A)))) (key a) (attrs ())
+                      (children No_children))
+                     ((kind (Label ((text B)))) (key b) (attrs ())
+                      (children No_children))
+                     ((kind (Label ((text C)))) (key c) (attrs ())
+                      (children No_children)))))))))
+    -|        ((kind (Label ((text b)))) (attrs ((Test_id picked)))
+    +|        ((kind (Label ((text a,c)))) (attrs ((Test_id picked)))
+               (children No_children))))))))))
+    |}];
+  (* Emptying it is a state the widget can reach, so it is one the action can deliver. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selection ("grid", []) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Picker))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (List_box ((selection_mode Multiple) (selected (a c)))))
+    +|       (((kind (List_box ((selection_mode Multiple) (selected ()))))
+               (attrs ((Test_id grid) (On_selected_rows_changed <handler>)))
+               (children
+                (Slots
+                 ((placeholder (Single ()))
+                  (rows
+                   (List
+                    (((kind (Label ((text A)))) (key a) (attrs ())
+                      (children No_children))
+                     ((kind (Label ((text B)))) (key b) (attrs ())
+                      (children No_children))
+                     ((kind (Label ((text C)))) (key c) (attrs ())
+                      (children No_children)))))))))
+    -|        ((kind (Label ((text a,c)))) (attrs ((Test_id picked)))
+    +|        ((kind (Label ((text "")))) (attrs ((Test_id picked)))
+               (children No_children))))))))))
+    |}]
+;;
+
+(* Same rule as every other action. *)
+let%expect_test "a list action on a node with no list handler fails" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bare"
+         (Node.list_box
+            ~attrs:[ Attr.test_id "plain" ]
+            ~selected:[]
+            [ Node.label ~key:"a" "A" ]))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (bare))))) (attrs ())
+     (children
+      (Single
+       (((kind (List_box ((selected ())))) (attrs ((Test_id plain)))
+         (children
+          (Slots
+           ((placeholder (Single ()))
+            (rows
+             (List
+              (((kind (Label ((text A)))) (key a) (attrs ())
+                (children No_children)))))))))))))
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Activate_row ("plain", "a") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node plain has no on_row_activated handler") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_selection ("plain", [ "a" ]) ]);
+  [%expect
+    {|
+    (Failure
+     "Bonsai_gtk_test: node plain has no on_selected_rows_changed handler")
+    |}]
+;;
+
+(* The [Events] negative for the two list-box signals: they are the list box's own, so
+   neither is legal anywhere else, and the handle refuses the tree the runtime would. *)
+let%expect_test "the list box's event attrs are rejected on other kinds" =
+  let bad attr (_graph @ local) =
+    Bonsai.return (Node.window ~title:"bad" (Node.label ~attrs:[ attr ] "not a list"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create (bad (Attr.on_row_activated (fun _ -> Ui_effect.Ignore)))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: Label does not emit On_row_activated") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad (Attr.on_selected_rows_changed (fun _ -> Ui_effect.Ignore)))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {| (Invalid_argument "root/0: Label does not emit On_selected_rows_changed") |}]
+;;
+
+(* And the [Placement] negative for the two row attrs, which is the sharper one: nothing
+   applies them to the child, so a row attr on a box child is read by nobody and would
+   otherwise have no diagnostic at all. *)
+let%expect_test "the row attrs are rejected outside a list box" =
+  let bad attr (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bad"
+         (Node.box ~orientation:Vertical [ Node.label ~attrs:[ attr ] "not a row" ]))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create (bad (Attr.row_selectable false)) in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.row_selectable is not read by Box (a placement attribute is read by the container, and this one holds children for ListBox)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create (bad (Attr.row_activatable false)) in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.row_activatable is not read by Box (a placement attribute is read by the container, and this one holds children for ListBox)")
+    |}];
+  (* ... and a list box's own child carries them happily, which is what stops the check
+     above from being a name nothing satisfies. *)
+  let ok (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"ok"
+         (Node.list_box
+            ~selected:[]
+            [ Node.label
+                ~key:"hdr"
+                ~attrs:[ Attr.row_selectable false; Attr.row_activatable false ]
+                "HEADER"
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create ok in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (ok))))) (attrs ())
+     (children
+      (Single
+       (((kind (List_box ((selected ())))) (attrs ())
+         (children
+          (Slots
+           ((placeholder (Single ()))
+            (rows
+             (List
+              (((kind (Label ((text HEADER)))) (key hdr)
+                (attrs ((Row_selectable false) (Row_activatable false)))
+                (children No_children)))))))))))))
+    |}]
+;;

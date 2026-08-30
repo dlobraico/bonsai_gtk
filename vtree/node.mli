@@ -539,7 +539,7 @@ val grid
 
     Every child needs a [~key]: it is the GTK page name, it is what [~visible_child]
     selects by, and it is what preserves a page's widgets across a re-render. A child
-    without one is [Invalid_argument] at mount.
+    without one is [Invalid_argument] {i from this constructor}, naming the child's index.
 
     Child {i order} is not reconciled: GTK offers no way to insert a page at a position or
     to reorder pages, so pages land in the order they are first added and reordering the
@@ -558,14 +558,19 @@ val grid
 
     {b Naming a page this stack does not have is [Invalid_argument]}, raised from that
     same fixup pass and carrying the stack's node path and the page names it does have.
-    The fixup pass is the earliest point at which the mistake is knowable: it runs after
-    the whole tree exists, so every page {i this frame renders} is already added, and a
-    name absent there is absent from the rendered tree rather than merely not added yet. A
-    page that arrives on a {i later} frame is therefore not the case being rejected — but
-    a page that arrives later than the frame naming it is, so a [~visible_child] fed by
-    state that can lag the page list by a frame (closing a tab, where one effect rewrites
-    the list and another the selection) must render the two together. It stops the driver
-    for good, like any exception from a frame.
+    This is deliberately {i unlike} {!list_box}'s [~selected], which ignores a key no row
+    carries: a stack shows exactly one page, so a name that never resolves is a typo with
+    no other symptom, while a selection is plural and a model that keeps a selected id
+    across a filter change is doing something reasonable. Both asymmetries are documented
+    on both constructors; do not "fix" one of them. The fixup pass is the earliest point
+    at which the mistake is knowable: it runs after the whole tree exists, so every page
+    {i this frame renders} is already added, and a name absent there is absent from the
+    rendered tree rather than merely not added yet. A page that arrives on a {i later}
+    frame is therefore not the case being rejected — but a page that arrives later than
+    the frame naming it is, so a [~visible_child] fed by state that can lag the page list
+    by a frame (closing a tab, where one effect rewrites the list and another the
+    selection) must render the two together. It stops the driver for good, like any
+    exception from a frame.
 
     The one exception is a stack with {b no pages at all}, which is left alone:
     [~visible_child] is a required argument, so a model rendering an empty page list has
@@ -586,6 +591,71 @@ val stack
   -> ?vhomogeneous:bool
   -> name:string
   -> visible_child:string
+  -> t list
+  -> t
+
+(** A [GtkListBox]: a vertical list of rows, each of which can be selected, activated, or
+    both.
+
+    Children are ordinary nodes -- a label, a box of a check button and two labels -- and
+    the implementation wraps each one in a [GtkListBoxRow] it owns. There is no
+    [Node.list_box_row] to remember to use, and the settings that belong to the wrapper
+    ride on the child node's attrs instead: {!Attr.row_selectable} and
+    {!Attr.row_activatable}, both read by the list box exactly as {!Attr.page_title} is
+    read by a {!stack}. A header row is a child carrying both as [false].
+
+    {b Every child needs a [~key]}, and a child without one is [Invalid_argument] from
+    this constructor, naming the child's index. The key is the row's identity: it is what
+    [~selected] names, it is what {!Attr.on_row_activated} and
+    {!Attr.on_selected_rows_changed} hand back, and it is what preserves a row's widgets
+    (and its GObject) across a re-render. There is nothing else a handler could be given
+    -- GTK offers the row widget, which the application has never seen, and an index that
+    moves. Rows without a natural id get a synthetic one (["header-instruments"]).
+
+    Row {i order} is reconciled: [GtkListBox] has no reorder primitive, so a moved row is
+    removed and re-inserted, which preserves its widgets and its identity. A [remove] can
+    drop the selection; the selection is re-applied after every pass, so it comes back.
+
+    [~selected] is {i controlled} (spec §6.5): it is compared against the rows the widget
+    actually has selected, so a user who clicked a row the model then ignored is put back.
+    It is applied once the whole tree exists rather than while the list is being built --
+    a row GTK does not have yet cannot be selected, which is exactly the frame that adds a
+    row and selects it -- so a test driving the patcher by hand must call
+    [Patcher.run_fixups] before reading the selection back. Pair it with
+    {!Attr.on_row_activated} or {!Attr.on_selected_rows_changed}, or the control is inert.
+
+    {b A key in [~selected] that no row carries is ignored}, not an error. A selection is
+    plural, and a model that holds a selected id through a filter change is doing
+    something reasonable -- the row comes back when the filter does. Selecting nothing is
+    a legitimate state; selecting a row that is not there is not expressible. This is
+    deliberately {i unlike} {!stack}'s [~visible_child], which raises; both asymmetries
+    are documented on both constructors.
+
+    [~selection_mode] and [~selected] can disagree, and {b GTK arbitrates}: three keys
+    handed to a [Single] list box leaves whichever one GTK kept, and any key at all handed
+    to a [None_] one leaves nothing selected. Nothing is clamped here -- what was asked
+    for is written, and what GTK kept is what the next frame compares against. The cost of
+    asking for something the mode cannot hold is that the comparison differs on every
+    frame and the selection is rewritten on every frame; it is not a loop and not an
+    error, but it is a model that should be brought into line with its mode.
+
+    [~selection_mode] ([Single]), [~activate_on_single_click] ([true]) and
+    [~show_separators] ([false]) are GTK's own defaults -- note that the first two are not
+    the "off" value they look like. [?placeholder] is the node GTK shows in place of an
+    empty list; it is not a row, needs no key, and is patched like any other child.
+
+    Sorting, filtering and headers stay in the model: ocgtk binds none of [GtkListBox]'s
+    callback-taking methods ([set_sort_func], [set_filter_func], [set_header_func],
+    [bind_model]), so the row list this constructor is handed is the row list GTK shows,
+    in that order. *)
+val list_box
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?selection_mode:Selection_mode.t
+  -> ?activate_on_single_click:bool
+  -> ?show_separators:bool
+  -> ?placeholder:t
+  -> selected:Key.t list
   -> t list
   -> t
 

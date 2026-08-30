@@ -25,7 +25,13 @@ let transition : Stack_transition.t -> Gtk_enums.stacktransitiontype = function
 
 (* A page's name is the child's key: it is what [~visible_child] selects by and what the
    reconciler matches on, so making them the same value is what keeps the two agreeing.
-   The patcher's list helpers prefix the child's path onto this message. *)
+
+   The raise is unreachable through [Node.stack], which rejects an unkeyed child at the
+   constructor -- earlier, and at the line that made the mistake. It is kept as
+   belt-and-braces for the nodes that constructor did not build (a [Node.native] payload
+   assembling children, a future constructor): a silent [""] page name would give every
+   page one name and make [get_child_by_name] answer for whichever GTK reached first. The
+   patcher's list helpers prefix the child's path onto this message. *)
 let page_name (node : Node.t) =
   match node.key with
   | Some key -> key

@@ -9,6 +9,7 @@ module Picture_source = Picture_source
 module Policy = Policy
 module Reveal_transition = Reveal_transition
 module Stack_transition = Stack_transition
+module Selection_mode = Selection_mode
 module Grid_cell = Grid_cell
 module Phase = Phase
 module Modifiers = Modifiers

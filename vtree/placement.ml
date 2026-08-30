@@ -8,9 +8,8 @@ open! Core
 
    The empty list is the common case and the wildcard is deliberate: a container that
    reads none of them rejects all of them, which is what makes this a diagnostic rather
-   than a list of exceptions. Tasks that add a container reading a parent-held attr add an
-   arm here ([List_box -> [ Row_selectable; Row_activatable ]],
-   [Notebook -> [ Tab_label ]]).
+   than a list of exceptions. A container that reads a parent-held attr adds an arm here
+   ([Notebook -> [ Tab_label ]] is the next one).
 
    The granularity is the parent's kind, not the parent's slot: [Attr.measure_overlay] on
    an overlay's *main* child is accepted here and is still inert, because only the
@@ -21,6 +20,7 @@ let read_by : Kind.t -> Attr.Name.t list = function
   | Grid _ -> [ Grid_cell ]
   | Stack _ -> [ Page_title ]
   | Overlay _ -> [ Measure_overlay ]
+  | List_box _ -> [ Row_selectable; Row_activatable ]
   | _ -> []
 ;;
 
@@ -36,6 +36,7 @@ let reader : Attr.Name.t -> string option = function
   | Grid_cell -> Some "Grid"
   | Page_title -> Some "Stack"
   | Measure_overlay -> Some "Overlay"
+  | Row_selectable | Row_activatable -> Some "ListBox"
   | Margin_start
   | Margin_end
   | Margin_top
@@ -65,6 +66,8 @@ let reader : Attr.Name.t -> string option = function
   | On_revealed
   | On_position_changed
   | On_visible_child_changed
+  | On_row_activated
+  | On_selected_rows_changed
   | On_click
   | On_focus_enter
   | On_focus_leave

@@ -15,6 +15,8 @@ module Action = struct
     | Focus_leave of string
     | Key_press of string * Key_event.t
     | Key_release of string * Key_event.t
+    | Activate_row of string * Key.t
+    | Set_selection of string * Key.t list
   [@@deriving sexp_of]
 end
 
@@ -175,6 +177,27 @@ module Result_spec = struct
       (match (Attrs.find n.attrs On_key_released :> Attr.Private.t option) with
        | Some (On_key_released { handler; _ }) -> handler event
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_key_released handler" id ())
+    (* The node's own row list is not consulted, and neither is its [~selected]: the
+       action means "the user activated the row with this key", which is what the real
+       widget reports whatever the model was rendering. The same reason [Set_text] does
+       not consult [text]. *)
+    | Activate_row (id, key) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_row_activated :> Attr.Private.t option) with
+       | Some (On_row_activated h) -> h key
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_row_activated handler" id ())
+    (* Likewise: the keys given are the whole selection the user has made, not a delta
+       against the node's [~selected]. A real [selected-rows-changed] reports the whole
+       selection too, which is what makes the two the same shape. *)
+    | Set_selection (id, keys) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_selected_rows_changed :> Attr.Private.t option) with
+       | Some (On_selected_rows_changed h) -> h keys
+       | _ ->
+         failwithf
+           "Bonsai_gtk_test: node %s has no on_selected_rows_changed handler"
+           id
+           ())
   ;;
 end
 

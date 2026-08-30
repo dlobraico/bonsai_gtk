@@ -13,6 +13,7 @@ module Picture_source = Bonsai_gtk_vtree.Picture_source
 module Policy = Bonsai_gtk_vtree.Policy
 module Reveal_transition = Bonsai_gtk_vtree.Reveal_transition
 module Stack_transition = Bonsai_gtk_vtree.Stack_transition
+module Selection_mode = Bonsai_gtk_vtree.Selection_mode
 module Grid_cell = Bonsai_gtk_vtree.Grid_cell
 module Orientation = Bonsai_gtk_vtree.Orientation
 module Phase = Bonsai_gtk_vtree.Phase
@@ -53,5 +54,6 @@ module Private = struct
   module Scheduler = Scheduler
   module Signals = Signals
   module W_button = W_button
+  module W_list_box = W_list_box
   module Widget_impl = Widget_impl
 end

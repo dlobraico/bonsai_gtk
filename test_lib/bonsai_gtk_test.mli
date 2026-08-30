@@ -91,6 +91,29 @@ module Action : sig
     (** test_id of a node carrying [Attr.on_key_released], and the key. Fires that handler
         with exactly that event. Nothing is printed: [key-released] returns [unit] to GTK,
         so there is no answer to record. *)
+    | Activate_row of string * Key.t
+    (** test_id of a [list_box] carrying [Attr.on_row_activated], and the {!Key.t} of the
+        row the user activated. Fires that handler with exactly that key.
+
+        Nothing is derived from the node: neither its row list nor its [~selected] is
+        consulted, for the reason [Set_text] does not consult [text]. In particular a key
+        no row carries, and a row carrying [Attr.row_activatable false], both reach the
+        handler here — the real widget would emit neither, but modelling that would make
+        the action's behaviour depend on a detail and would hide the more useful failure,
+        which is a model that mishandles a key it did not expect.
+
+        Unlike the click and key actions, this one has a live counterpart that goes most
+        of the way: [test/live/live_lists.ml] drives the selection through the real widget
+        and reads the keys back through the same table this handler is fed from. What no
+        test delivers is GTK's own click-to-activate, for the reason [Click_at] documents. *)
+    | Set_selection of string * Key.t list
+    (** test_id of a [list_box] carrying [Attr.on_selected_rows_changed], and the keys of
+        every row now selected. Fires that handler with exactly that list.
+
+        The whole selection, not a delta: that is what [selected-rows-changed] reports off
+        the real widget, so an action that took one row would be modelling a signal that
+        does not exist. [[]] is a state the widget can reach and so a state the action can
+        deliver. As with [Activate_row], the node's own [~selected] is not consulted. *)
   [@@deriving sexp_of]
 end
 

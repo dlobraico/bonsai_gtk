@@ -12,7 +12,9 @@ open! Core
     does not, and an application that reaches for it on a keyboard-layout question is
     almost certainly asking the wrong one.
 
-    [modifiers] is read off the controller while the event is still current; see
+    [modifiers] arrives as the [~state] argument of the controller's own callback -- it is
+    not fetched off anything, so unlike {!Click_event}'s it does not depend on the event
+    still being current and a [Key_event.t] can be stored past the handler; see
     {!Modifiers}. Note that it is the state {i before} this key was pressed, which is
     GDK's convention and is what makes [Ctrl] held plus [w] pressed arrive as
     [{ control = true }] with [keyval = Keyval.of_char 'w'] rather than as two events
