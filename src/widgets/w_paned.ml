@@ -2,11 +2,6 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-let orientation : Orientation.t -> Gtk_enums.orientation = function
-  | Horizontal -> `HORIZONTAL
-  | Vertical -> `VERTICAL
-;;
-
 (* [GtkPaned] has no "the user moved the handle" signal -- the drag is continuous and the
    property is the only record of it -- so this is [notify::position], read back off the
    widget (spec 6.4). It is informative, not the write-back half of a controlled prop:

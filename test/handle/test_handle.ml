@@ -1370,3 +1370,343 @@ let%expect_test "the row attrs are rejected outside a list box" =
                 (children No_children)))))))))))))
     |}]
 ;;
+
+(* stavekeeper's library grid in miniature ([library_window.ml]'s [build_grid] and the two
+   handlers around it): a flow box of keyed cards, [on_child_activated] opening one, and
+   [on_selected_children_changed] driving both a "1 selected" label and the toolbar
+   buttons' [Attr.sensitive].
+
+   That last part is the argument for the port. The imperative version keeps a [selected]
+   ref, a [selected_widget] ref, a [card_entries] array to map a [GtkFlowBoxChild] index
+   back to a piece, and three [set_sensitive] calls in the selection handler -- and a
+   comment about the dangling widget that arrangement produced when a rebuild destroyed
+   the widget the ref still held. Here the selection {i is} the model, the key {i is} the
+   identity, and "the Edit button is sensitive when something is selected" is an
+   expression rather than a callback. *)
+let library_grid (graph @ local) =
+  let selected, set_selected = Bonsai.state [] graph in
+  let opened, set_opened = Bonsai.state "(nothing)" graph in
+  let%arr selected and set_selected and opened and set_opened in
+  Node.window
+    ~title:"Library"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.button
+           ~attrs:
+             [ Attr.test_id "edit"
+             ; Attr.sensitive (not (List.is_empty selected))
+             ; Attr.on_clicked Ui_effect.Ignore
+             ]
+           ~label:"Edit"
+           ()
+       ; Node.label
+           ~attrs:[ Attr.test_id "count" ]
+           (sprintf "%d selected" (List.length selected))
+       ; Node.label ~attrs:[ Attr.test_id "opened" ] opened
+       ; Node.flow_box
+           ~attrs:
+             [ Attr.test_id "grid"
+             ; Attr.on_child_activated set_opened
+             ; Attr.on_selected_children_changed set_selected
+             ]
+           ~selection_mode:Single
+           ~activate_on_single_click:false
+           ~min_children_per_line:1
+           ~max_children_per_line:10
+           ~row_spacing:28
+           ~column_spacing:20
+           ~selected
+           [ Node.label ~key:"sonata" "Sonata"
+           ; Node.label ~key:"etude" "Etude"
+           ; Node.label ~key:"nocturne" "Nocturne"
+           ]
+       ])
+;;
+
+let%expect_test "a card grid: selection drives the toolbar, activation opens a card" =
+  let handle = Bonsai_gtk_test.create library_grid in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Library))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Button ((label (Edit)))))
+             (attrs ((Sensitive false) (Test_id edit) (On_clicked <handler>)))
+             (children (Single ())))
+            ((kind (Label ((text "0 selected")))) (attrs ((Test_id count)))
+             (children No_children))
+            ((kind (Label ((text "(nothing)")))) (attrs ((Test_id opened)))
+             (children No_children))
+            ((kind
+              (Flow_box
+               ((activate_on_single_click false) (min_children_per_line 1)
+                (max_children_per_line 10) (row_spacing 28) (column_spacing 20)
+                (selected ()))))
+             (attrs
+              ((Test_id grid) (On_child_activated <handler>)
+               (On_selected_children_changed <handler>)))
+             (children
+              (List
+               (((kind (Label ((text Sonata)))) (key sonata) (attrs ())
+                 (children No_children))
+                ((kind (Label ((text Etude)))) (key etude) (attrs ())
+                 (children No_children))
+                ((kind (Label ((text Nocturne)))) (key nocturne) (attrs ())
+                 (children No_children))))))))))))))
+    |}];
+  (* A single click selects. The button becomes sensitive and the label counts, both
+     because the selection is a value the view reads -- not because a handler reached over
+     and set three properties. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selection ("grid", [ "etude" ]) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Library))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Button ((label (Edit)))))
+    -|         (attrs ((Sensitive false) (Test_id edit) (On_clicked <handler>)))
+    +|         (attrs ((Sensitive true) (Test_id edit) (On_clicked <handler>)))
+               (children (Single ())))
+    -|        ((kind (Label ((text "0 selected")))) (attrs ((Test_id count)))
+    +|        ((kind (Label ((text "1 selected")))) (attrs ((Test_id count)))
+               (children No_children))
+              ((kind (Label ((text "(nothing)")))) (attrs ((Test_id opened)))
+               (children No_children))
+              ((kind
+                (Flow_box
+                 ((activate_on_single_click false) (min_children_per_line 1)
+                  (max_children_per_line 10) (row_spacing 28) (column_spacing 20)
+    -|            (selected ()))))
+    +|            (selected (etude)))))
+               (attrs
+                ((Test_id grid) (On_child_activated <handler>)
+                 (On_selected_children_changed <handler>)))
+               (children
+                (List
+                 (((kind (Label ((text Sonata)))) (key sonata) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text Etude)))) (key etude) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text Nocturne)))) (key nocturne) (attrs ())
+                   (children No_children))))))))))))))
+    |}];
+  (* A double click (or Enter) activates, which is a different signal and a different
+     handler: the grid sets [activate_on_single_click] to [false] exactly so that these
+     two are separable. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Activate_child ("grid", "etude") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Library))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Button ((label (Edit)))))
+               (attrs ((Sensitive true) (Test_id edit) (On_clicked <handler>)))
+               (children (Single ())))
+              ((kind (Label ((text "1 selected")))) (attrs ((Test_id count)))
+               (children No_children))
+    -|        ((kind (Label ((text "(nothing)")))) (attrs ((Test_id opened)))
+    +|        ((kind (Label ((text etude)))) (attrs ((Test_id opened)))
+               (children No_children))
+              ((kind
+                (Flow_box
+                 ((activate_on_single_click false) (min_children_per_line 1)
+                  (max_children_per_line 10) (row_spacing 28) (column_spacing 20)
+                  (selected (etude)))))
+               (attrs
+                ((Test_id grid) (On_child_activated <handler>)
+                 (On_selected_children_changed <handler>)))
+               (children
+                (List
+                 (((kind (Label ((text Sonata)))) (key sonata) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text Etude)))) (key etude) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text Nocturne)))) (key nocturne) (attrs ())
+    |}];
+  (* Clicking the background clears it, and the toolbar goes back. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selection ("grid", []) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Library))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Button ((label (Edit)))))
+    -|         (attrs ((Sensitive true) (Test_id edit) (On_clicked <handler>)))
+    +|         (attrs ((Sensitive false) (Test_id edit) (On_clicked <handler>)))
+               (children (Single ())))
+    -|        ((kind (Label ((text "1 selected")))) (attrs ((Test_id count)))
+    +|        ((kind (Label ((text "0 selected")))) (attrs ((Test_id count)))
+               (children No_children))
+              ((kind (Label ((text etude)))) (attrs ((Test_id opened)))
+               (children No_children))
+              ((kind
+                (Flow_box
+                 ((activate_on_single_click false) (min_children_per_line 1)
+                  (max_children_per_line 10) (row_spacing 28) (column_spacing 20)
+    -|            (selected (etude)))))
+    +|            (selected ()))))
+               (attrs
+                ((Test_id grid) (On_child_activated <handler>)
+                 (On_selected_children_changed <handler>)))
+               (children
+                (List
+                 (((kind (Label ((text Sonata)))) (key sonata) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text Etude)))) (key etude) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text Nocturne)))) (key nocturne) (attrs ())
+                   (children No_children))))))))))))))
+    |}]
+;;
+
+(* [Activate_child] and [Activate_row] name a {i kind} of container, and the handle knows
+   the kind of the node it found -- so asking a flow box to activate a row is caught with
+   a message naming both, rather than reported as a missing handler (which it also is, and
+   which is the less useful half of the truth). [Set_selection] is deliberately shared: it
+   is the same question of both kinds, and it dispatches on the kind it finds. *)
+let%expect_test "the two activate actions each name their own container kind" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"kinds"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.flow_box
+                ~attrs:
+                  [ Attr.test_id "grid"
+                  ; Attr.on_child_activated (fun _ -> Ui_effect.Ignore)
+                  ]
+                ~selected:[]
+                [ Node.label ~key:"a" "A" ]
+            ; Node.list_box
+                ~attrs:
+                  [ Attr.test_id "rail"
+                  ; Attr.on_row_activated (fun _ -> Ui_effect.Ignore)
+                  ]
+                ~selected:[]
+                [ Node.label ~key:"a" "A" ]
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Activate_row ("grid", "a") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node grid is a FlowBox, not a ListBox") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Activate_child ("rail", "a") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node rail is a ListBox, not a FlowBox") |}];
+  (* Each on its own kind is fine. *)
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Activate_child ("grid", "a"); Activate_row ("rail", "a") ];
+  Bonsai_gtk_test.Handle.recompute_view handle
+;;
+
+let%expect_test "a flow box action on a node with no handler fails" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bare"
+         (Node.flow_box
+            ~attrs:[ Attr.test_id "plain" ]
+            ~selected:[]
+            [ Node.label ~key:"a" "A" ]))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Activate_child ("plain", "a") ]);
+  [%expect
+    {| (Failure "Bonsai_gtk_test: node plain has no on_child_activated handler") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_selection ("plain", [ "a" ]) ]);
+  [%expect
+    {|
+    (Failure
+     "Bonsai_gtk_test: node plain has no on_selected_children_changed handler")
+    |}]
+;;
+
+(* The [Events] negative for the flow box's two signals. *)
+let%expect_test "the flow box's event attrs are rejected on other kinds" =
+  let bad attr (_graph @ local) =
+    Bonsai.return (Node.window ~title:"bad" (Node.label ~attrs:[ attr ] "not a grid"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create (bad (Attr.on_child_activated (fun _ -> Ui_effect.Ignore)))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: Label does not emit On_child_activated") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (bad (Attr.on_selected_children_changed (fun _ -> Ui_effect.Ignore)))
+    in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {| (Invalid_argument "root/0: Label does not emit On_selected_children_changed") |}];
+  (* And they are rejected on a *list box*, which is the near miss worth pinning: the two
+     containers are alike enough that a copied line is a plausible mistake, and the two
+     signals really are different GTK signals. *)
+  let swapped (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bad"
+         (Node.list_box
+            ~attrs:[ Attr.on_child_activated (fun _ -> Ui_effect.Ignore) ]
+            ~selected:[]
+            []))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create swapped in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: ListBox does not emit On_child_activated") |}]
+;;
+
+(* A flow box reads {i no} placement attrs, and that is a fact about GTK rather than a gap
+   in this library: [GtkFlowBoxChild] has no [selectable] and no [activatable] -- the
+   binding's whole surface for it is [set_child], [get_child], [get_index], [is_selected]
+   and [changed] -- so there is nothing for a [flow_child_selectable] to write. The list
+   box's two row attrs are therefore rejected on a flow box child, from the wildcard arm
+   of [Placement.read_by]. *)
+let%expect_test "the row attrs are rejected on a flow box child" =
+  let bad attr (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bad"
+         (Node.flow_box ~selected:[] [ Node.label ~key:"a" ~attrs:[ attr ] "A" ]))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create (bad (Attr.row_selectable false)) in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.row_selectable is not read by FlowBox (a placement attribute is read by the container, and this one holds children for ListBox)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create (bad (Attr.row_activatable false)) in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.row_activatable is not read by FlowBox (a placement attribute is read by the container, and this one holds children for ListBox)")
+    |}]
+;;

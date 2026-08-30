@@ -2,11 +2,6 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-let orientation : Orientation.t -> Gtk_enums.orientation = function
-  | Horizontal -> `HORIZONTAL
-  | Vertical -> `VERTICAL
-;;
-
 let impl : Widget_impl.t =
   { name = "Box"
   ; create =

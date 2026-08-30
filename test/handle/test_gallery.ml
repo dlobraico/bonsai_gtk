@@ -146,6 +146,25 @@ let every_widget (graph @ local) =
                            "header"
                        ; Node.label ~key:"row" "row"
                        ]
+                     (* Every optional argument of the other keyed container, including
+                        the two whose defaults are surprises ([~max_children_per_line] is
+                        7, not unlimited; [~activate_on_single_click] is [true]). No
+                        per-child attrs, because a [GtkFlowBoxChild] has none. *)
+                   ; Node.flow_box
+                       ~attrs:
+                         [ Attr.on_child_activated (fun _ -> Ui_effect.Ignore)
+                         ; Attr.on_selected_children_changed (fun _ -> Ui_effect.Ignore)
+                         ]
+                       ~selection_mode:Single
+                       ~activate_on_single_click:false
+                       ~min_children_per_line:1
+                       ~max_children_per_line:4
+                       ~row_spacing:12
+                       ~column_spacing:12
+                       ~homogeneous:true
+                       ~orientation:Horizontal
+                       ~selected:[ "card" ]
+                       [ Node.label ~key:"card" "card" ]
                    ]
                ; Node.box
                    ~key:"slots"
@@ -334,7 +353,20 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                                  ((Row_selectable false) (Row_activatable false)))
                                 (children No_children))
                                ((kind (Label ((text row)))) (key row) (attrs ())
-                                (children No_children)))))))))))))
+                                (children No_children)))))))))
+                        ((kind
+                          (Flow_box
+                           ((activate_on_single_click false)
+                            (min_children_per_line 1) (max_children_per_line 4)
+                            (row_spacing 12) (column_spacing 12)
+                            (homogeneous true) (selected (card)))))
+                         (attrs
+                          ((On_child_activated <handler>)
+                           (On_selected_children_changed <handler>)))
+                         (children
+                          (List
+                           (((kind (Label ((text card)))) (key card) (attrs ())
+                             (children No_children))))))))))
                     ((kind (Box ((orientation Vertical) (spacing 8))))
                      (key slots) (attrs ((Page_title Slots)))
                      (children

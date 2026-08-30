@@ -47,6 +47,7 @@ after the user clicked: c,b
 after the declining frame: b
 add-and-select: d
 selected row removed: (none)
+the handler saw, as the row left: (none)
 selection with a ghost key: a
 writes on an identical frame with a ghost key held: 0
 the ghost row arrived: a,ghost
@@ -86,8 +87,80 @@ kind change kept the selection: b
      (children
       (GtkButton (label (B)) (css (text-button))
        (children (GtkLabel (text B))))))))))
+activation delivered the key: c
 handlers fired during teardown: 0
 driver, after mount: a
 driver, after the user clicked: b
 driver, after the frame the click armed: a (Bonsai saw 1)
 driver, after one more frame: a (Bonsai saw 1)
+fb gc: mounted, selected a,b
+fb gc: after 50 frames + full_major, selected a,b
+fb gc: after 100 frames + full_major, selected a,b
+fb gc: after 150 frames + full_major, selected a,b
+fb gc: after 200 frames + full_major, selected a,b
+fb gc: after 250 frames + full_major, selected a,b
+(GtkWindow (title (fbgc)) (css (background)) hidden
+ (children
+  (GtkFlowBox (selection-mode multiple) (selected-children 2)
+   (css (horizontal))
+   (children (GtkFlowBoxChild selected (children (GtkLabel (text A))))
+    (GtkFlowBoxChild selected (children (GtkLabel (text B))))
+    (GtkFlowBoxChild (children (GtkLabel (text C))))))))
+(GtkWindow (title (grid)) (css (background)) hidden
+ (children
+  (GtkFlowBox (selection-mode multiple) activate-on-double-click
+   (min-children-per-line 1) (max-children-per-line 10) (row-spacing 28)
+   (column-spacing 20) (selected-children 1) (css (horizontal))
+   (children (GtkFlowBoxChild (children (GtkLabel (text A))))
+    (GtkFlowBoxChild selected (children (GtkLabel (text B))))
+    (GtkFlowBoxChild (children (GtkLabel (text C))))))))
+fb after mount: b
+(GtkWindow (title (grid)) (css (background)) hidden
+ (children
+  (GtkFlowBox (min-children-per-line 1) (max-children-per-line 1) homogeneous
+   vertical (selected-children 1) (css (vertical))
+   (children (GtkFlowBoxChild (children (GtkLabel (text A))))
+    (GtkFlowBoxChild selected (children (GtkLabel (text B))))
+    (GtkFlowBoxChild (children (GtkLabel (text C))))))))
+(GtkWindow (title (grid)) (css (background)) hidden
+ (children
+  (GtkFlowBox (selection-mode multiple) activate-on-double-click
+   (min-children-per-line 1) (max-children-per-line 10) (row-spacing 28)
+   (column-spacing 20) (selected-children 1) (css (horizontal))
+   (children (GtkFlowBoxChild (children (GtkLabel (text A))))
+    (GtkFlowBoxChild selected (children (GtkLabel (text B))))
+    (GtkFlowBoxChild (children (GtkLabel (text C))))))))
+fb same GObjects after reorder: true
+fb the original cards are now at: 1,2,0
+fb order after reorder: C,A,B
+fb selection survived the reorder: b
+fb after a middle insert: C,A,NEW,B
+fb after the middle card went away: C,A,B
+fb after the user clicked: a,b
+fb after the declining frame: b
+fb add-and-select: d
+fb selected card removed: (none)
+fb the handler saw, as the card left: (none)
+fb selection with the removed key still held: a
+fb writes on an identical frame with the removed key held: 0
+fb the removed card came back: a,d
+fb multi-selection: a,b
+fb same selection, listed the other way: a,b
+fb writes for a re-ordered but equal selection: 0
+fb three keys in Single mode: b
+fb asking a None_ grid for a selection: (none)
+(GtkWindow (title (grid)) (css (background)) hidden
+ (children
+  (GtkFlowBox (selection-mode none) activate-on-double-click
+   (min-children-per-line 1) (max-children-per-line 10) (row-spacing 28)
+   (column-spacing 20) (css (horizontal))
+   (children (GtkFlowBoxChild (children (GtkLabel (text C))))
+    (GtkFlowBoxChild (children (GtkLabel (text A))))
+    (GtkFlowBoxChild (children (GtkLabel (text D))))
+    (GtkFlowBoxChild (children (GtkLabel (text B))))))))
+fb activation delivered the key: d
+fb handlers fired during teardown: 0
+fb driver, after mount: a
+fb driver, after the user clicked: b
+fb driver, after the frame the click armed: a (Bonsai saw 1)
+fb driver, after one more frame: a (Bonsai saw 1)

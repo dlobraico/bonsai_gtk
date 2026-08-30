@@ -558,19 +558,21 @@ val grid
 
     {b Naming a page this stack does not have is [Invalid_argument]}, raised from that
     same fixup pass and carrying the stack's node path and the page names it does have.
-    This is deliberately {i unlike} {!list_box}'s [~selected], which ignores a key no row
-    carries: a stack shows exactly one page, so a name that never resolves is a typo with
-    no other symptom, while a selection is plural and a model that keeps a selected id
-    across a filter change is doing something reasonable. Both asymmetries are documented
-    on both constructors; do not "fix" one of them. The fixup pass is the earliest point
-    at which the mistake is knowable: it runs after the whole tree exists, so every page
-    {i this frame renders} is already added, and a name absent there is absent from the
-    rendered tree rather than merely not added yet. A page that arrives on a {i later}
-    frame is therefore not the case being rejected — but a page that arrives later than
-    the frame naming it is, so a [~visible_child] fed by state that can lag the page list
-    by a frame (closing a tab, where one effect rewrites the list and another the
-    selection) must render the two together. It stops the driver for good, like any
-    exception from a frame.
+    This is deliberately {i unlike} the [~selected] of {!list_box} and {!flow_box}, where
+    a key naming no child is {i inert} -- not merely tolerated: it is dropped before the
+    model's selection is compared with the widget's, so holding one provokes no write, and
+    the child is selected on the frame it arrives if it ever does. A stack shows exactly
+    one page, so a name that never resolves is a typo with no other symptom, while a
+    selection is plural and a model that keeps a selected id across a filter change is
+    doing something reasonable. Both asymmetries are documented on both constructors; do
+    not "fix" one of them. The fixup pass is the earliest point at which the mistake is
+    knowable: it runs after the whole tree exists, so every page {i this frame renders} is
+    already added, and a name absent there is absent from the rendered tree rather than
+    merely not added yet. A page that arrives on a {i later} frame is therefore not the
+    case being rejected — but a page that arrives later than the frame naming it is, so a
+    [~visible_child] fed by state that can lag the page list by a frame (closing a tab,
+    where one effect rewrites the list and another the selection) must render the two
+    together. It stops the driver for good, like any exception from a frame.
 
     The one exception is a stack with {b no pages at all}, which is left alone:
     [~visible_child] is a required argument, so a model rendering an empty page list has
@@ -626,10 +628,9 @@ val stack
 
     {b A key in [~selected] that no row carries is inert}, not an error -- and inert in
     the strong sense: it is dropped before the model's selection is compared with the
-    widget's, so holding one costs nothing and provokes no write. If the row later
-    arrives, it is selected {i on the frame it arrives}, without the model having to
-    change its mind; that is the same-frame rule that makes this a post-pass fixup rather
-    than a [reassert].
+    widget's, so holding one provokes no write. If the row later arrives, it is selected
+    {i on the frame it arrives}, without the model having to change its mind; that is the
+    same-frame rule that makes this a post-pass fixup rather than a [reassert].
 
     A selection is plural, and a model that holds a selected id through a filter change is
     doing something reasonable -- the row comes back when the filter does. Selecting
@@ -661,6 +662,90 @@ val list_box
   -> ?activate_on_single_click:bool
   -> ?show_separators:bool
   -> ?placeholder:t
+  -> selected:Key.t list
+  -> t list
+  -> t
+
+(** A [GtkFlowBox]: a grid of children that reflows to the available width, each of which
+    can be selected, activated, or both. The same machinery as a {!list_box} over a
+    different GTK widget — keyed children, auto-wrapping, a controlled selection — with
+    the geometry of a grid in place of a list's separators.
+
+    Children are ordinary nodes and the implementation wraps each one in a
+    [GtkFlowBoxChild] it owns; there is no [Node.flow_box_child]. Unlike a list box's rows
+    there are {b no per-child attrs to go with them}: [GtkFlowBoxChild] has neither
+    [selectable] nor [activatable] (its whole surface is a child, an index, and whether it
+    is selected), so a flow box holds nothing on behalf of an individual child and
+    {!Attr.row_selectable} on one of these children is rejected like any other misplaced
+    placement attr. A card that should not be selectable is one the model does not put in
+    the grid.
+
+    {b Every child needs a [~key]}, and a child without one is [Invalid_argument] from
+    this constructor, naming the child's index. The key is the card's identity: it is what
+    [~selected] names, it is what {!Attr.on_child_activated} and
+    {!Attr.on_selected_children_changed} hand back, and it is what preserves a card's
+    widgets across a re-render. GTK offers a [GtkFlowBoxChild] the application has never
+    seen and an index that moves whenever the grid does, which is why an application
+    written against GTK directly keeps an array of cards beside the flow box and looks up
+    by index.
+
+    Child {i order} is reconciled: [GtkFlowBox] has no reorder primitive, so a moved child
+    is removed and re-inserted, which preserves its widgets and its identity.
+
+    [~selected] is {i controlled}, on exactly {!list_box}'s rules, and every paragraph
+    there applies here: it is compared against the widget rather than against the previous
+    node, so a click the model declines is put back; it is applied from the fixup pass
+    once the whole tree exists, so a test driving the patcher by hand must call
+    [Patcher.run_fixups] before reading it back; a key naming no child is {b inert}, not
+    an error — dropped before the comparison, so holding one provokes no write — and the
+    child is selected {i on the frame it arrives} if it ever does; and [~selection_mode]
+    and [~selected] can disagree, with GTK arbitrating and nothing clamped here. Pair it
+    with {!Attr.on_child_activated} or {!Attr.on_selected_children_changed}, or the
+    control is inert.
+
+    Removing a selected child is worth one sentence of its own, because the imperative
+    version of this screen has a crash comment about it: GTK drops the child from its
+    selection and emits [selected-children-changed] while doing so, so an application
+    holding the selected {i widget} in a ref is holding a widget that is about to be
+    destroyed. Here the selection is re-derived from the widget on the next pass and the
+    model's answer is put back, so the divergence lasts less than a frame and nothing
+    reads it in between.
+
+    [~activate_on_single_click] defaults to GTK's [true], and a grid of cards usually
+    wants [false]: with [false] a single click selects and a double click (or Enter)
+    activates, which is what lets one grid drive both a selection-dependent toolbar and an
+    "open this" action. stavekeeper's library grid sets it to [false] for exactly that.
+
+    [~selection_mode] ([Single]), [~min_children_per_line] ([0]), [~row_spacing] and
+    [~column_spacing] ([0]), [~homogeneous] ([false]) and [~orientation] ([Horizontal])
+    are GTK's own. So is [~max_children_per_line], whose default is a real {b 7} rather
+    than "unlimited" — a grid that never mentions it lays out seven per line however wide
+    the window is, which is a surprise worth having in one place. It must be at least 1
+    ([gtk_flow_box_set_max_children_per_line] refuses 0 with a critical and keeps the old
+    value), and none of the four numbers may be negative: they are unsigned in C, so a
+    negative arrives as a very large positive one and nothing complains. Both are
+    [Invalid_argument] from this constructor.
+
+    The geometry props are ordinary props, which is the point: switching one grid between
+    a grid view and a list view is [~max_children_per_line:1 ~homogeneous:true] and two
+    spacings in the next render — one diff, applied in one batch — rather than five
+    setters and a CSS-class toggle.
+
+    Sorting and filtering stay in the model, as for a {!list_box}: ocgtk binds none of
+    [GtkFlowBox]'s callback-taking methods ([set_sort_func], [set_filter_func],
+    [bind_model]), so the child list this constructor is handed is the child list GTK
+    shows, in that order. *)
+val flow_box
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?selection_mode:Selection_mode.t
+  -> ?activate_on_single_click:bool
+  -> ?min_children_per_line:int
+  -> ?max_children_per_line:int
+  -> ?row_spacing:int
+  -> ?column_spacing:int
+  -> ?homogeneous:bool
+  -> ?orientation:Orientation.t
   -> selected:Key.t list
   -> t list
   -> t

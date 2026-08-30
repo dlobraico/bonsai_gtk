@@ -21,6 +21,11 @@ let read_by : Kind.t -> Attr.Name.t list = function
   | Stack _ -> [ Page_title ]
   | Overlay _ -> [ Measure_overlay ]
   | List_box _ -> [ Row_selectable; Row_activatable ]
+  (* [Flow_box] is deliberately not here, and falls into the wildcard: a [GtkFlowBoxChild]
+     has neither [selectable] nor [activatable] -- unlike a [GtkListBoxRow], which has
+     both -- so a flow box holds nothing on behalf of an individual child and
+     [Attr.row_selectable] on one of its children is a mistake with no other symptom.
+     Rejecting it is the whole point of the wildcard. *)
   | _ -> []
 ;;
 
@@ -68,6 +73,8 @@ let reader : Attr.Name.t -> string option = function
   | On_visible_child_changed
   | On_row_activated
   | On_selected_rows_changed
+  | On_child_activated
+  | On_selected_children_changed
   | On_click
   | On_focus_enter
   | On_focus_leave

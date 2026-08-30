@@ -76,6 +76,19 @@ let selected_row_count (b : W.List_box.t) =
   go 0 0
 ;;
 
+(* The same walk for a [GtkFlowBox]. [gtk_flow_box_get_selected_children] is safe in the
+   pinned fork (its stub sinks each element, unlike the [GtkListBox] twin), but this dump
+   is called in a loop by a debugging session and a count is all it needs; walking keeps
+   the two container arms below identical in shape. *)
+let selected_child_count (b : W.Flow_box.t) =
+  let rec go i n =
+    match W.Flow_box.get_child_at_index b i with
+    | None -> n
+    | Some c -> go (i + 1) (if W.Flow_box_child.is_selected c then n + 1 else n)
+  in
+  go 0 0
+;;
+
 let selection_mode_name : Gtk_enums.selectionmode -> string = function
   | `NONE -> "none"
   | `SINGLE -> "single"
@@ -441,6 +454,43 @@ let rec dump (w : Widget.t) : Sexp.t =
        flag_prop "selected" (W.List_box_row.is_selected r)
        @ (if W.List_box_row.get_selectable r then [] else [ Sexp.Atom "not-selectable" ])
        @ if W.List_box_row.get_activatable r then [] else [ Sexp.Atom "not-activatable" ]
+     (* The geometry props, each against GTK's own default so that the dump stays a list
+        of what is unusual about this widget. [max-children-per-line] is the one to read
+        carefully: its default is 7, so a golden that shows nothing is showing seven per
+        line, and a grid switched to a list view shows [(max-children-per-line 1)].
+
+        No keys here, as on a list box: this dump is about GTK, and a golden that showed
+        keys would go green on an implementation that put them on the wrong children.
+        [live_lists.ml] prints [W_flow_box.selected_keys] instead, which is a read back
+        through [Child_keys]. *)
+     | "GtkFlowBox" ->
+       let b : W.Flow_box.t = cast w in
+       (match W.Flow_box.get_selection_mode b with
+        | `SINGLE -> []
+        | m -> [ Sexp.List [ Atom "selection-mode"; Atom (selection_mode_name m) ] ])
+       @ (if W.Flow_box.get_activate_on_single_click b
+          then []
+          else [ Sexp.Atom "activate-on-double-click" ])
+       @ int_prop
+           "min-children-per-line"
+           (W.Flow_box.get_min_children_per_line b)
+           ~default:0
+       @ int_prop
+           "max-children-per-line"
+           (W.Flow_box.get_max_children_per_line b)
+           ~default:7
+       @ int_prop "row-spacing" (W.Flow_box.get_row_spacing b) ~default:0
+       @ int_prop "column-spacing" (W.Flow_box.get_column_spacing b) ~default:0
+       @ flag_prop "homogeneous" (W.Flow_box.get_homogeneous b)
+       (* The property, read directly. GTK also keeps a [horizontal]/[vertical] style
+          class in step with it, which shows up on the [css] line beside this one -- but
+          that is GTK's bookkeeping rather than the property, and a dump that made the
+          reader infer the orientation from a CSS class would be asking them to know that. *)
+       @ (match W.Orientable.get_orientation (W.Orientable.from_gobject b) with
+          | `HORIZONTAL -> []
+          | `VERTICAL -> [ Sexp.Atom "vertical" ])
+       @ int_prop "selected-children" (selected_child_count b) ~default:0
+     | "GtkFlowBoxChild" -> flag_prop "selected" (W.Flow_box_child.is_selected (cast w))
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])

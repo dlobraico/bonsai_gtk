@@ -55,5 +55,6 @@ module Private = struct
   module Signals = Signals
   module W_button = W_button
   module W_list_box = W_list_box
+  module W_flow_box = W_flow_box
   module Widget_impl = Widget_impl
 end

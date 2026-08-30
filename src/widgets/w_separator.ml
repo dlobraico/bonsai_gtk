@@ -2,11 +2,6 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-let orientation : Orientation.t -> Gtk_enums.orientation = function
-  | Horizontal -> `HORIZONTAL
-  | Vertical -> `VERTICAL
-;;
-
 (* [gtk_separator_new] takes the orientation and there is no [GtkSeparator] setter for it,
    so a change goes through [GtkOrientable], which every separator implements. *)
 let impl : Widget_impl.t =

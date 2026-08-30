@@ -136,6 +136,8 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_visible_child_changed _
   | On_row_activated _
   | On_selected_rows_changed _
+  | On_child_activated _
+  | On_selected_children_changed _
   | Many _ -> ()
 ;;
 
@@ -185,7 +187,9 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_position_changed
   | On_visible_child_changed
   | On_row_activated
-  | On_selected_rows_changed -> ()
+  | On_selected_rows_changed
+  | On_child_activated
+  | On_selected_children_changed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

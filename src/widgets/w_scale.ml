@@ -2,11 +2,6 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-let orientation : Orientation.t -> Gtk_enums.orientation = function
-  | Horizontal -> `HORIZONTAL
-  | Vertical -> `VERTICAL
-;;
-
 (* A [GtkScale] *is* a [GtkRange]: the value, the bounds, the increments and [inverted]
    all live there, and so does [value-changed]. Only the presentation props are the
    scale's own. [Range] has no [from_gobject], so the downcast is [Gtk_import.cast], which

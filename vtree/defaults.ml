@@ -142,6 +142,25 @@ module List_box = struct
   let show_separators = false
 end
 
+(* GTK's own, read off a fresh [GtkFlowBox] rather than out of the docs, and three of the
+   seven are not the value a reader guesses. [selection_mode] is [SINGLE], as a list box's
+   is. [activate_on_single_click] is [true] -- stavekeeper's library grid sets it to
+   [false] on purpose, so that a single click selects a card and a double click opens it,
+   which is the interaction a grid of cards wants and is not GTK's default.
+   [max_children_per_line] is a real **7**, not "unlimited": an application that never
+   mentions it gets seven per line however wide its window is. Confirmed live --
+   [get_max_children_per_line] on a box nothing has touched answers 7. *)
+module Flow_box = struct
+  let selection_mode = Selection_mode.Single
+  let activate_on_single_click = true
+  let min_children_per_line = 0
+  let max_children_per_line = 7
+  let row_spacing = 0
+  let column_spacing = 0
+  let homogeneous = false
+  let orientation = Orientation.Horizontal
+end
+
 module Center_box = struct
   let shrink_center_last = true
 end

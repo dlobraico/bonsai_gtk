@@ -27,6 +27,10 @@ let for_kind : Kind.t -> Attr.Name.t list = function
   | Paned _ -> [ On_position_changed ]
   | Stack _ -> [ On_visible_child_changed ]
   | List_box _ -> [ On_row_activated; On_selected_rows_changed ]
+  (* Its own pair, not the list box's: the two containers emit different GTK signals, so a
+     line copied from a list box to a flow box is rejected here rather than being accepted
+     and never firing. *)
+  | Flow_box _ -> [ On_child_activated; On_selected_children_changed ]
   | Window _ | Box _ | Grid _ | Center_box _ | Overlay _ | Frame _ | Scrolled_window _ ->
     []
 ;;
@@ -98,6 +102,8 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_visible_child_changed
   | On_row_activated
   | On_selected_rows_changed
+  | On_child_activated
+  | On_selected_children_changed
   | Row_selectable
   | Row_activatable -> None
 ;;

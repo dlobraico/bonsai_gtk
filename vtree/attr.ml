@@ -39,6 +39,8 @@ module Name = struct
       | On_visible_child_changed
       | On_row_activated
       | On_selected_rows_changed
+      | On_child_activated
+      | On_selected_children_changed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
          output reorders. *)
       | On_click
@@ -64,6 +66,8 @@ module Name = struct
       | On_visible_child_changed
       | On_row_activated
       | On_selected_rows_changed
+      | On_child_activated
+      | On_selected_children_changed
       (* The controller attrs are events too -- they carry a handler and a widget that
          cannot deliver one is a mistake worth a diagnostic. What they are not is any
          impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
@@ -166,6 +170,14 @@ module Private = struct
        has a name for. See [src/child_keys.ml]. *)
     | On_row_activated of Key.t Handler.t
     | On_selected_rows_changed of Key.t list Handler.t
+    (* A flow box's pair of the same two, named after the GTK signals they carry
+       ([child-activated], [selected-children-changed]) exactly as the list box's are
+       ([row-activated], [selected-rows-changed]). One naming scheme, and it is GTK's: the
+       alternative -- one shared [On_item_activated] over both -- would have to be
+       accepted on both kinds by [Events.for_kind], and a copied line would then be inert
+       rather than rejected. *)
+    | On_child_activated of Key.t Handler.t
+    | On_selected_children_changed of Key.t list Handler.t
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
@@ -247,6 +259,8 @@ let name = function
   | On_visible_child_changed _ -> Some On_visible_child_changed
   | On_row_activated _ -> Some On_row_activated
   | On_selected_rows_changed _ -> Some On_selected_rows_changed
+  | On_child_activated _ -> Some On_child_activated
+  | On_selected_children_changed _ -> Some On_selected_children_changed
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
@@ -292,6 +306,8 @@ let rec equal a b =
   | On_visible_child_changed a, On_visible_child_changed b -> Handler.equal a b
   | On_row_activated a, On_row_activated b -> Handler.equal a b
   | On_selected_rows_changed a, On_selected_rows_changed b -> Handler.equal a b
+  | On_child_activated a, On_child_activated b -> Handler.equal a b
+  | On_selected_children_changed a, On_selected_children_changed b -> Handler.equal a b
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
@@ -368,6 +384,8 @@ let on_position_changed f = On_position_changed f
 let on_visible_child_changed f = On_visible_child_changed f
 let on_row_activated f = On_row_activated f
 let on_selected_rows_changed f = On_selected_rows_changed f
+let on_child_activated f = On_child_activated f
+let on_selected_children_changed f = On_selected_children_changed f
 
 let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }

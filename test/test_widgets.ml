@@ -570,3 +570,173 @@ let%expect_test "a stack page without a key is rejected at the constructor" =
      "Node.stack: child 1 has no ~key (a stack page's key is its GTK page name)")
     |}]
 ;;
+
+(* The same machinery as the list box, over [GtkFlowBoxChild], with geometry props in
+   place of [show_separators]. Every default below was read off a live [GtkFlowBox] rather
+   than out of the GTK docs -- [max_children_per_line] in particular, which is a real 7
+   and not "unlimited". *)
+let%expect_test "flow box constructors and defaults" =
+  print_s
+    [%sexp
+      (Node.flow_box
+         ~selected:[]
+         [ Node.label ~key:"a" "Alpha"; Node.label ~key:"b" "Beta" ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Flow_box ((selected ())))) (attrs ())
+     (children
+      (List
+       (((kind (Label ((text Alpha)))) (key a) (attrs ()) (children No_children))
+        ((kind (Label ((text Beta)))) (key b) (attrs ()) (children No_children))))))
+    |}];
+  (* Stavekeeper's library grid, prop for prop (library_window.ml's [build_grid]). *)
+  print_s
+    [%sexp
+      (Node.flow_box
+         ~selection_mode:Single
+         ~activate_on_single_click:false
+         ~min_children_per_line:1
+         ~max_children_per_line:10
+         ~row_spacing:28
+         ~column_spacing:20
+         ~homogeneous:false
+         ~selected:[ "b" ]
+         [ Node.label ~key:"a" "A"; Node.label ~key:"b" "B" ]
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Flow_box
+       ((activate_on_single_click false) (min_children_per_line 1)
+        (max_children_per_line 10) (row_spacing 28) (column_spacing 20)
+        (selected (b)))))
+     (attrs ())
+     (children
+      (List
+       (((kind (Label ((text A)))) (key a) (attrs ()) (children No_children))
+        ((kind (Label ((text B)))) (key b) (attrs ()) (children No_children))))))
+    |}];
+  (* The list view the same grid switches to, which is four props in one diff. *)
+  print_s
+    [%sexp
+      (Node.flow_box
+         ~max_children_per_line:1
+         ~homogeneous:true
+         ~orientation:Vertical
+         ~selected:[]
+         []
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Flow_box
+       ((max_children_per_line 1) (homogeneous true) (orientation Vertical)
+        (selected ()))))
+     (attrs ()) (children (List ())))
+    |}]
+;;
+
+(* GTK's own defaults drop from the sexp, and the two that are easy to get backwards are
+   [selection_mode = Single] (not [None_]) and [max_children_per_line = 7] (not
+   "unlimited"). Both were confirmed against a fresh [GtkFlowBox]. *)
+let%expect_test "a flow box's props take part in equal_props, and GTK's defaults drop" =
+  print_s
+    [%sexp
+      (Node.flow_box
+         ~selection_mode:Single
+         ~activate_on_single_click:true
+         ~min_children_per_line:0
+         ~max_children_per_line:7
+         ~row_spacing:0
+         ~column_spacing:0
+         ~homogeneous:false
+         ~orientation:Horizontal
+         ~selected:[]
+         []
+       : Node.t)];
+  [%expect {| ((kind (Flow_box ((selected ())))) (attrs ()) (children (List ()))) |}];
+  let a = (Node.flow_box ~selected:[ "a" ] []).kind in
+  let b = (Node.flow_box ~selected:[ "b" ] []).kind in
+  let c = (Node.flow_box ~max_children_per_line:3 ~selected:[ "a" ] []).kind in
+  let d = (Node.list_box ~selected:[ "a" ] []).kind in
+  print_s
+    [%sexp
+      (( Kind.same_kind a b
+       , Kind.equal_props a b
+       , Kind.equal_props a c
+       , Kind.equal_props a a
+       , Kind.same_kind a d )
+       : bool * bool * bool * bool * bool)];
+  [%expect {| (true false false true false) |}]
+;;
+
+let%expect_test "a flow box child without a key is rejected at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.flow_box ~selected:[] [ Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.flow_box: child 0 has no ~key (a child's key is the identity every handler receives)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.flow_box ~selected:[] [ Node.label ~key:"a" "keyed"; Node.label "unkeyed" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.flow_box: child 1 has no ~key (a child's key is the identity every handler receives)")
+    |}]
+;;
+
+(* The geometry numbers GTK will not take. [gtk_flow_box_set_max_children_per_line] is
+   [g_return_if_fail (n_children > 0)] -- a critical on stderr and the old value kept --
+   and every one of these properties is unsigned in C, so a negative reaches GTK as a very
+   large positive number with no complaint at all (measured: a minimum of [-1] reads back
+   as 65535, a row spacing of [-5] as 4294967291). Neither has a diagnostic worth the
+   name, which is the test {!Node.scrolled_window}'s min/max rejection already passes. *)
+let%expect_test "a flow box's geometry numbers are checked at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.flow_box ~max_children_per_line:0 ~selected:[] []);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.flow_box: ~max_children_per_line is 0, but GTK requires at least 1 (a flow box has no \"unlimited\"; its own default is 7)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.flow_box ~min_children_per_line:(-1) ~selected:[] []);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.flow_box: ~min_children_per_line is -1, but GTK reads it as an unsigned number (a negative one arrives as a very large positive one, with no error)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.flow_box ~row_spacing:(-5) ~selected:[] []);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.flow_box: ~row_spacing is -5, but GTK reads it as an unsigned number (a negative one arrives as a very large positive one, with no error)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.flow_box ~column_spacing:(-1) ~selected:[] []);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.flow_box: ~column_spacing is -1, but GTK reads it as an unsigned number (a negative one arrives as a very large positive one, with no error)")
+    |}];
+  (* [0] is legal for the minimum ("no minimum") and for both spacings; only the maximum
+     has a floor. *)
+  print_s
+    [%sexp
+      (Node.flow_box
+         ~min_children_per_line:0
+         ~max_children_per_line:1
+         ~row_spacing:0
+         ~selected:[]
+         []
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Flow_box ((max_children_per_line 1) (selected ())))) (attrs ())
+     (children (List ())))
+    |}]
+;;

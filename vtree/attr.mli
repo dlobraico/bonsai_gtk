@@ -48,6 +48,8 @@ module Name : sig
     | On_visible_child_changed
     | On_row_activated
     | On_selected_rows_changed
+    | On_child_activated
+    | On_selected_children_changed
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -140,6 +142,8 @@ module Private : sig
     | On_visible_child_changed of string Handler.t
     | On_row_activated of Key.t Handler.t
     | On_selected_rows_changed of Key.t list Handler.t
+    | On_child_activated of Key.t Handler.t
+    | On_selected_children_changed of Key.t list Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -426,6 +430,35 @@ val on_row_activated : (Key.t -> unit Ui_effect.t) -> t
     selection on the next frame. Attaching it to a widget that emits no such signal raises
     [Invalid_argument] when the node is mounted or patched. *)
 val on_selected_rows_changed : (Key.t list -> unit Ui_effect.t) -> t
+
+(** Fires when the user activates a child of a {!Node.flow_box} -- a click if the flow box
+    has [~activate_on_single_click] (GTK's default), a double click otherwise, or Enter on
+    the focused child. Carries the {i key} of the node that child was built from, for the
+    reason {!on_row_activated} carries one: GTK's [child-activated] hands back a
+    [GtkFlowBoxChild] the library made, and its index moves whenever the grid is filtered
+    or re-sorted.
+
+    A grid of cards usually pairs this with [~activate_on_single_click:false], so that a
+    single click selects a card (reaching {!on_selected_children_changed}) and a double
+    click opens it (reaching this).
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched -- including on a {!Node.list_box}, which emits
+    {!on_row_activated} instead. The two are different GTK signals on different widgets
+    and the attrs are named after them. *)
+val on_child_activated : (Key.t -> unit Ui_effect.t) -> t
+
+(** Fires when a {!Node.flow_box}'s selection changes, carrying the keys of {i every}
+    selected child, in the widget's order -- the same shape and the same rules as
+    {!on_selected_rows_changed}, over [selected-children-changed].
+
+    It fires when a selected child is {i removed}, too, with the reduced selection; the
+    key of the departing child is gone from the table before GTK is told to remove it, so
+    a handler is never handed the name of a child that has just left the tree.
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched. *)
+val on_selected_children_changed : (Key.t list -> unit Ui_effect.t) -> t
 
 (** A [GtkGestureClick] on this widget.
 

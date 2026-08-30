@@ -196,6 +196,68 @@ let lists (graph @ local) =
     ]
 ;;
 
+(* Page 4: the same keyed machinery as a grid of cards, and the one thing a list cannot
+   show -- the geometry is a prop, so "grid view" and "list view" are one toggle in the
+   model rather than four setters and a CSS class. The grid activates on a double click,
+   which is what lets a single click drive the toolbar and a double click open a card. *)
+let grid (graph @ local) =
+  let selected, set_selected = Bonsai.state [] graph in
+  let opened, set_opened = Bonsai.state "(nothing)" graph in
+  let as_list, set_as_list = Bonsai.state false graph in
+  let%arr selected
+  and set_selected
+  and opened
+  and set_opened
+  and as_list
+  and set_as_list in
+  let card key label =
+    Node.frame
+      ~key
+      (Node.label ~xalign:0. ~attrs:[ Attr.margin 12; Attr.width_request 120 ] label)
+  in
+  Node.box
+    ~orientation:Vertical
+    ~spacing:12
+    ~attrs:[ Attr.margin 12 ]
+    [ Node.box
+        ~orientation:Horizontal
+        ~spacing:8
+        [ Node.toggle_button
+            ~label:"List view"
+            ~active:as_list
+            ~attrs:[ Attr.on_toggled set_as_list ]
+            ()
+        ; Node.button
+            ~label:"Edit"
+              (* The selection {i is} the model, so a selection-dependent toolbar is an
+                 expression rather than a callback that reaches over and sets properties. *)
+            ~attrs:[ Attr.sensitive (not (List.is_empty selected)) ]
+            ()
+        ; Node.label (sprintf "%d selected, opened: %s" (List.length selected) opened)
+        ]
+    ; Node.flow_box
+        ~attrs:
+          [ Attr.on_child_activated set_opened
+          ; Attr.on_selected_children_changed set_selected
+          ; Attr.vexpand true
+          ]
+        ~selection_mode:Single
+        ~activate_on_single_click:false
+        ~min_children_per_line:1
+        ~max_children_per_line:(if as_list then 1 else 4)
+        ~homogeneous:as_list
+        ~row_spacing:(if as_list then 0 else 12)
+        ~column_spacing:(if as_list then 0 else 12)
+        ~selected
+        [ card "sonata" "Sonata in C"
+        ; card "etude" "Étude Op. 10"
+        ; card "nocturne" "Nocturne No. 2"
+        ; card "prelude" "Prelude in E"
+        ; card "waltz" "Waltz in A♭"
+        ]
+    ]
+;;
+
 (* Page 4: the containers, including the overlay-over-a-spacer trick that caps a picture's
    allocated size. *)
 let layout (graph @ local) =
@@ -265,8 +327,9 @@ let app (graph @ local) =
   let controls = controls graph in
   let numbers = numbers graph in
   let lists = lists graph in
+  let grid = grid graph in
   let layout = layout graph in
-  let%arr page and set_page and controls and numbers and lists and layout in
+  let%arr page and set_page and controls and numbers and lists and grid and layout in
   Node.window
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
@@ -305,6 +368,11 @@ let app (graph @ local) =
                    ~attrs:[ Attr.page_title "Lists" ]
                    ~orientation:Vertical
                    [ lists ]
+               ; Node.box
+                   ~key:"grid"
+                   ~attrs:[ Attr.page_title "Grid" ]
+                   ~orientation:Vertical
+                   [ grid ]
                ; Node.box
                    ~key:"layout"
                    ~attrs:[ Attr.page_title "Layout" ]

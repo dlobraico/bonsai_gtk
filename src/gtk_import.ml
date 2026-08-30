@@ -66,6 +66,26 @@ let modifiers_of_gdk (state : Gdk_enums.modifiertype) : Bonsai_gtk_vtree.Modifie
       | `BUTTON5_MASK -> acc)
 ;;
 
+(* [GtkOrientable]'s enum, shared by the five kinds that take an orientation ([Box],
+   [Separator], [Scale], [Paned], [Flow_box]). It was a private four-line copy in each of
+   the first four before the fifth arrived, which is one copy past the point where the
+   duplication stops being cheaper than the name. *)
+let orientation : Bonsai_gtk_vtree.Orientation.t -> Gtk_enums.orientation = function
+  | Horizontal -> `HORIZONTAL
+  | Vertical -> `VERTICAL
+;;
+
+(* Shared by [w_list_box] and [w_flow_box]: [gtk_list_box_set_selection_mode] and
+   [gtk_flow_box_set_selection_mode] take the same enum, and one converter with two
+   callers is what {!Bonsai_gtk_vtree.Selection_mode} being one type already implies. *)
+let selection_mode : Bonsai_gtk_vtree.Selection_mode.t -> Gtk_enums.selectionmode
+  = function
+  | None_ -> `NONE
+  | Single -> `SINGLE
+  | Browse -> `BROWSE
+  | Multiple -> `MULTIPLE
+;;
+
 (* [Phase.Capture] is what a window-wide Escape handler wants and [Bubble] is GTK's own
    default; GTK's [`NONE] has no spelling in {!Phase} because a controller in that phase
    never fires, which omitting the attribute already says. *)

@@ -6,6 +6,7 @@ module Live_tree = Bonsai_gtk.Private.Live_tree
 module P = Bonsai_gtk.Private.Patcher
 module Scheduler = Bonsai_gtk.Private.Scheduler
 module W = Bonsai_gtk.Private.Gtk_import.W
+module W_flow_box = Bonsai_gtk.Private.W_flow_box
 module W_list_box = Bonsai_gtk.Private.W_list_box
 module Widget = Bonsai_gtk.Private.Gtk_import.Widget
 
@@ -164,6 +165,8 @@ let drain () =
 
 let () =
   let scheduled = ref 0 in
+  let reported = ref [] in
+  let activated = ref [] in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
   let ctx =
     P.create_ctx
@@ -192,8 +195,12 @@ let () =
       ~title:"lists"
       (Node.list_box
          ~attrs:
-           [ Attr.on_row_activated (fun (_ : Key.t) -> Ui_effect.Ignore)
-           ; Attr.on_selected_rows_changed (fun (_ : Key.t list) -> Ui_effect.Ignore)
+           [ Attr.on_row_activated (fun key ->
+               activated := key :: !activated;
+               Ui_effect.Ignore)
+           ; Attr.on_selected_rows_changed (fun keys ->
+               reported := keys :: !reported;
+               Ui_effect.Ignore)
            ]
          ~selection_mode:mode
          ~show_separators:true
@@ -306,6 +313,7 @@ let () =
   printf "add-and-select: %s\n" (selected_keys live);
   (* 5. Removing the selected row. GTK drops the selection; the model still says "d", and
      the next frame must not resurrect a row that is gone. Nothing selected, no raise. *)
+  reported := [];
   let live =
     patch
       live
@@ -316,6 +324,18 @@ let () =
          ())
   in
   printf "selected row removed: %s\n" (selected_keys live);
+  (* And what the handler was told while the row was leaving: the reduced selection, never
+     the key of the row on its way out. [selected_keys] answers by walking the rows the
+     list box still holds, so a departed row cannot appear in it whatever [Child_keys]
+     still remembers -- which is why [remove]'s "drop the key before the GTK call"
+     ordering is belt-and-braces rather than the load-bearing step this file used to
+     claim. See the comment there, corrected in Task 7. *)
+  printf
+    "the handler saw, as the row left: %s\n"
+    (String.concat
+       ~sep:" | "
+       (List.rev_map !reported ~f:(fun keys ->
+          if List.is_empty keys then "(none)" else String.concat ~sep:"," keys)));
   (* 6. A key in ~selected that no row carries is ignored, not an error -- deliberately
      unlike [Node.stack ~visible_child], which raises. *)
   let live =
@@ -460,6 +480,20 @@ let () =
     (not (same_rows before_kind_change (row_widgets live)));
   printf "kind change kept the selection: %s\n" (selected_keys live);
   print_s (Live_tree.dump live.widget);
+  (* The activation handler, end to end through GTK's own emission chain, which nothing
+     delivered in M2 until now. There is still no synthetic click in the pinned binding --
+     but [GtkListBoxRow::activate] is an action signal and it is what a click ends in, so
+     emitting it makes GTK emit [row-activated] on the list box, which reaches this
+     library's trampoline, which looks the key up in [Child_keys] and hands it to the
+     attr's handler. That is the whole of the [Payload] spec's claim: the key an
+     application receives is the key of the row that was activated, and not merely that a
+     handler exists. (Found while writing the flow box's half in Task 7; the same emission
+     is what [live_lists]' flow box block uses.) *)
+  let live = patch live (view ~selected:[ "a" ] ~rows:[ "hdr"; "c"; "a"; "b" ] ()) in
+  let w = list_box live in
+  Option.iter (W_list_box.row_by_key w "c") ~f:(fun row ->
+    Gobject.Signal.emit_by_name (row :> Widget.t) ~name:"activate");
+  printf "activation delivered the key: %s\n" (String.concat ~sep:"," !activated);
   (* 7. Teardown does not fire a handler. GTK emits [selected-rows-changed] as rows go
      away; [scheduled] must not move across the destroy. *)
   let before = !scheduled in
@@ -523,6 +557,400 @@ let () =
   Bonsai_gtk.Expert.Driver.frame d;
   printf
     "driver, after one more frame: %s (Bonsai saw %d)\n"
+    (driven_keys ())
+    !selection_seen;
+  Bonsai_gtk.Expert.Driver.stop d
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+(* [GtkFlowBox]: the same machinery as above, over a grid of cards. *)
+(* ------------------------------------------------------------------------------------ *)
+
+let flow_box (live : P.live) =
+  match live.children with
+  | Single (Some fb) -> fb.P.widget
+  | No_children | Single None | List _ | Slots _ -> assert false
+;;
+
+let card_widgets (live : P.live) =
+  let b : W.Flow_box.t = cast (flow_box live) in
+  let rec go i acc =
+    match W.Flow_box.get_child_at_index b i with
+    | None -> List.rev acc
+    | Some c -> go (i + 1) (c :: acc)
+  in
+  go 0 []
+;;
+
+let card_positions cards =
+  String.concat
+    ~sep:","
+    (List.map cards ~f:(fun c -> Int.to_string (W.Flow_box_child.get_index c)))
+;;
+
+let card_labels (live : P.live) =
+  String.concat
+    ~sep:","
+    (List.map (card_widgets live) ~f:(fun c ->
+       match W.Flow_box_child.get_child c with
+       | Some inner
+         when String.equal (Bonsai_gtk.Private.Gtk_import.type_name inner) "GtkLabel" ->
+         W.Label.get_text (cast inner)
+       | Some _ | None -> "?"))
+;;
+
+let card_keys (live : P.live) =
+  match W_flow_box.selected_keys (flow_box live) with
+  | [] -> "(none)"
+  | keys -> String.concat ~sep:"," keys
+;;
+
+let select_card_by_hand (live : P.live) key =
+  let w = flow_box live in
+  match W_flow_box.child_by_key w key with
+  | Some c -> W.Flow_box.select_child (cast w) c
+  | None -> printf "BUG: no card for key %s\n" key
+;;
+
+(* The [Child_keys] lifetime regression, for the flow box and first among its blocks, for
+   the reason the list box's runs first: every selection line below is a read {i through}
+   that table, so if the table empties itself under GC the whole golden is measuring
+   nothing.
+
+   This is not the [get_selected_rows] use-after-free --
+   [gtk_flow_box_get_selected_children] is transfer-container too, but the pinned fork's
+   stub {i does} [g_object_ref_sink] each element before wrapping it
+   ([ml_flow_box_gen.c:216-233]), which is the fix the [GtkListBox] twin is still missing.
+   Every other getter this impl calls ([get_child_at_index], [flow_box_child_get_child],
+   [widget_get_parent]) sinks as well; all four were read in the stub rather than in the
+   GIR, which is the rule that catches this class.
+
+   What it {i is} a regression for is [child_keys.mli]'s invariant: the ephemeron is weak
+   in the OCaml value, so keying it on the [GtkFlowBoxChild] this impl makes and drops --
+   rather than on the card the patcher retains -- loses every entry at the first major
+   collection, with the cards still parented and still selected and no error anywhere. The
+   frames are the real thing: [reassert_only] + [run_fixups] inside the patch guard is
+   what [Driver.frame] runs on a physically-same-node frame. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  let live =
+    P.mount
+      ctx
+      ~path:"fbgc"
+      ~is_root:true
+      (Node.window
+         ~title:"fbgc"
+         (Node.flow_box
+            ~selection_mode:Multiple
+            ~selected:[ "a"; "b" ]
+            [ Node.label ~key:"a" "A"; Node.label ~key:"b" "B"; Node.label ~key:"c" "C" ]))
+  in
+  P.run_fixups ctx;
+  printf "fb gc: mounted, selected %s\n" (card_keys live);
+  Out_channel.flush stdout;
+  for batch = 1 to 5 do
+    for _ = 1 to 50 do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:"fbgc" live;
+        P.run_fixups ctx)
+    done;
+    Gc.full_major ();
+    printf
+      "fb gc: after %d frames + full_major, selected %s\n"
+      (batch * 50)
+      (card_keys live);
+    Out_channel.flush stdout
+  done;
+  print_s (Live_tree.dump live.widget);
+  P.destroy ctx live
+;;
+
+let () =
+  let scheduled = ref 0 in
+  let activated = ref [] in
+  let reported = ref [] in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  (* stavekeeper's [build_grid], prop for prop, as the baseline; [view] then varies the
+     geometry so that the "grid view / list view" patch below is a diff of these. *)
+  let view
+    ?(mode = Selection_mode.Multiple)
+    ?(activate_on_single_click = false)
+    ?(min_per_line = 1)
+    ?(max_per_line = 10)
+    ?(row_spacing = 28)
+    ?(column_spacing = 20)
+    ?(homogeneous = false)
+    ?(orientation = Orientation.Horizontal)
+    ~selected
+    ~cards
+    ()
+    =
+    Node.window
+      ~title:"grid"
+      (Node.flow_box
+         ~attrs:
+           [ Attr.on_child_activated (fun key ->
+               activated := key :: !activated;
+               Ui_effect.Ignore)
+           ; Attr.on_selected_children_changed (fun keys ->
+               reported := keys :: !reported;
+               Ui_effect.Ignore)
+           ]
+         ~selection_mode:mode
+         ~activate_on_single_click
+         ~min_children_per_line:min_per_line
+         ~max_children_per_line:max_per_line
+         ~row_spacing
+         ~column_spacing
+         ~homogeneous
+         ~orientation
+         ~selected
+         (List.map cards ~f:(fun key -> Node.label ~key (String.uppercase key))))
+  in
+  let patch live node =
+    let live = P.patch ctx ~path:"root" ~is_root:true live node in
+    P.run_fixups ctx;
+    live
+  in
+  (* 1. The mount golden: the cards GTK holds, each in the [GtkFlowBoxChild] this impl
+        made, and the grid's own geometry. Note what the dump does {i not} print --
+        [max-children-per-line] shows because 10 is not GTK's default, and GTK's default
+        is 7 rather than "unlimited". *)
+  let live =
+    P.mount
+      ctx
+      ~path:"root"
+      ~is_root:true
+      (view ~selected:[ "b" ] ~cards:[ "a"; "b"; "c" ] ())
+  in
+  P.run_fixups ctx;
+  print_s (Live_tree.dump live.widget);
+  printf "fb after mount: %s\n" (card_keys live);
+  (* 2. The runtime reconfiguration stavekeeper does by hand. [configure_grid_for_view]
+     writes four setters and toggles a CSS class from a function both call sites have to
+     remember to call; here the same change is four fields of the next render, and the
+     diff writes exactly the ones that moved inside one [Widget_impl.batch]. Six props
+     change in this one patch. *)
+  let live =
+    patch
+      live
+      (view
+         ~mode:Single
+         ~activate_on_single_click:true
+         ~max_per_line:1
+         ~row_spacing:0
+         ~column_spacing:0
+         ~homogeneous:true
+         ~orientation:Vertical
+         ~selected:[ "b" ]
+         ~cards:[ "a"; "b"; "c" ]
+         ())
+  in
+  print_s (Live_tree.dump live.widget);
+  (* ...and back, which is the half that shows the diff is a diff and not a one-way trip:
+     every one of those six returns to the value the mount had, so the dump prints the
+     mount's line again. *)
+  let live = patch live (view ~selected:[ "b" ] ~cards:[ "a"; "b"; "c" ] ()) in
+  print_s (Live_tree.dump live.widget);
+  (* 3. A keyed reorder moves the same GObjects. The wrappers matter here as much as the
+     cards: [move] is remove-and-re-insert, and re-inserting the {i card} rather than the
+     wrapper would have GTK build a second [GtkFlowBoxChild] -- which is exactly how a
+     reorder would silently drop the selection. *)
+  let cards_before = card_widgets live in
+  let live = patch live (view ~selected:[ "b" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  printf
+    "fb same GObjects after reorder: %b\n"
+    (same_rows
+       (List.map cards_before ~f:(fun c -> (c :> Widget.t)))
+       (List.map (card_widgets live) ~f:(fun c -> (c :> Widget.t))));
+  printf "fb the original cards are now at: %s\n" (card_positions cards_before);
+  printf "fb order after reorder: %s\n" (card_labels live);
+  printf "fb selection survived the reorder: %s\n" (card_keys live);
+  (* A middle insert and a middle removal, which is the index arithmetic from both sides:
+     the index comes from the predecessor's own [get_index], not from the reconciler's. *)
+  let live = patch live (view ~selected:[ "b" ] ~cards:[ "c"; "a"; "new"; "b" ] ()) in
+  printf "fb after a middle insert: %s\n" (card_labels live);
+  let live = patch live (view ~selected:[ "b" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  printf "fb after the middle card went away: %s\n" (card_labels live);
+  (* 4. The declined selection: the user clicks "a", the model keeps "b", and the frame
+     that renders the same selection puts the widget back. Spec §6.5 for a container. *)
+  select_card_by_hand live "a";
+  printf "fb after the user clicked: %s\n" (card_keys live);
+  let live = patch live (view ~selected:[ "b" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  printf "fb after the declining frame: %s\n" (card_keys live);
+  (* Add a card and select it in one frame: the card does not exist when [reassert] would
+     have run, which is why the selection is a fixup. *)
+  let live = patch live (view ~selected:[ "d" ] ~cards:[ "c"; "a"; "b"; "d" ] ()) in
+  printf "fb add-and-select: %s\n" (card_keys live);
+  (* 5. Removing the selected card, which is the case the imperative version has a crash
+     comment about ([library_window.ml]: a [selected_widget] ref left pointing at a
+     destroyed card, found live as a `GTK_IS_WIDGET` critical).
+
+     Measured here rather than assumed, because the claim in circulation is wrong:
+     [gtk_flow_box_remove] {i does} emit [selected-children-changed] as the card goes (and
+     so does [remove_all], which this library never calls). Either way it does not matter,
+     which is the point of asserting the recovery rather than the divergence: the
+     selection is re-derived from the widget on the next pass, so what the model still
+     holds is by then a key naming no card -- inert -- and nothing selected is the answer
+     both sides agree on. Nothing raises, and no dangling widget is reachable because
+     nothing here holds a widget. *)
+  reported := [];
+  let live = patch live (view ~selected:[ "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  printf "fb selected card removed: %s\n" (card_keys live);
+  (* What the handler was told while the card was leaving: the reduced selection, and
+     never the name of the card on its way out. That is
+     [Attr.on_selected_children_changed]'s promise and it is the half of "the selection
+     can diverge for less than a frame" that an application can actually observe -- GTK
+     emits [selected-children-changed] synchronously from [gtk_flow_box_remove], so this
+     handler runs while the patch is half-done.
+
+     Measured, and it does {i not} depend on [remove] dropping the [Child_keys] entry
+     before the GTK call: [selected_keys] answers by walking the children the box still
+     holds, so a departed card cannot appear in it whatever the table remembers. Moving
+     that line down changes nothing here (checked). The ordering is kept because it is the
+     right instinct and costs nothing, but it is belt-and-braces -- which is a correction
+     to what [w_list_box.ml] claimed for it, made in both files. *)
+  printf
+    "fb the handler saw, as the card left: %s\n"
+    (String.concat
+       ~sep:" | "
+       (List.rev_map !reported ~f:(fun keys ->
+          if List.is_empty keys then "(none)" else String.concat ~sep:"," keys)));
+  (* 6. The stale key is {i inert}, not merely tolerated -- and the way to show that is a
+     frame in which the model holds the departed key {i and} a live one. [current] can
+     only hold keys of cards that exist, so comparing it against the unnarrowed
+     [~selected] is false forever the moment the model holds one extra id, and every frame
+     would then [unselect_all] and re-select the survivors. The first line is the
+     selection, the second is the number of writes an idle frame provoked; without the
+     narrowing in [apply_selection] the second reads 2 and the selection flickers off and
+     back on sixty times a second. *)
+  let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  printf "fb selection with the removed key still held: %s\n" (card_keys live);
+  let before = !scheduled in
+  let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "b" ] ()) in
+  printf
+    "fb writes on an identical frame with the removed key held: %d\n"
+    (!scheduled - before);
+  (* ...and the card comes back selected on the frame it returns, without the model having
+     changed its mind. The same-frame rule the fixup exists for, reached from the "the
+     filter lifted" direction. *)
+  let live = patch live (view ~selected:[ "a"; "d" ] ~cards:[ "c"; "a"; "d"; "b" ] ()) in
+  printf "fb the removed card came back: %s\n" (card_keys live);
+  (* 7. A multi-selection listed the other way round is not a change. GTK answers in
+     widget order; the model lists whatever order it built; an unsorted comparison would
+     rewrite the selection on every frame and the user could never keep one. Only the
+     write count moves, which is why it is what is printed. *)
+  let live = patch live (view ~selected:[ "a"; "b" ] ~cards:[ "c"; "a"; "d"; "b" ] ()) in
+  printf "fb multi-selection: %s\n" (card_keys live);
+  let before = !scheduled in
+  let live = patch live (view ~selected:[ "b"; "a" ] ~cards:[ "c"; "a"; "d"; "b" ] ()) in
+  printf "fb same selection, listed the other way: %s\n" (card_keys live);
+  printf "fb writes for a re-ordered but equal selection: %d\n" (!scheduled - before);
+  (* The mode and the model can disagree and GTK arbitrates: three keys handed to a
+     [Single] grid leaves whichever one GTK kept. Written as asked and read back. *)
+  let live =
+    patch
+      live
+      (view ~mode:Single ~selected:[ "c"; "a"; "b" ] ~cards:[ "c"; "a"; "d"; "b" ] ())
+  in
+  printf "fb three keys in Single mode: %s\n" (card_keys live);
+  (* A [None_] grid selects nothing however hard the model asks. *)
+  let live =
+    patch live (view ~mode:None_ ~selected:[ "a" ] ~cards:[ "c"; "a"; "d"; "b" ] ())
+  in
+  printf "fb asking a None_ grid for a selection: %s\n" (card_keys live);
+  print_s (Live_tree.dump live.widget);
+  (* 8. The activation handler, end to end through GTK's own emission chain. There is no
+     synthetic click in the pinned binding, but [GtkFlowBoxChild::activate] is an action
+     signal and it is what a click ends in: emitting it makes GTK emit [child-activated]
+     on the flow box, which reaches this library's trampoline, which looks the key up in
+     [Child_keys] and hands it to the attr's handler. So this really does check that the
+     key an application receives is the key of the card that was activated -- the
+     [Payload] spec's whole reason to exist -- rather than only that the handler exists.
+
+     (The same trick drives [GtkListBox::row-activated] from [GtkListBoxRow::activate];
+     the list box's own live test predates the discovery and is a carry, not a gap
+     introduced here.) *)
+  let live =
+    patch live (view ~mode:Single ~selected:[] ~cards:[ "c"; "a"; "d"; "b" ] ())
+  in
+  Option.iter
+    (W_flow_box.child_by_key (flow_box live) "d")
+    ~f:(fun c -> Gobject.Signal.emit_by_name (c :> Widget.t) ~name:"activate");
+  printf "fb activation delivered the key: %s\n" (String.concat ~sep:"," !activated);
+  (* 9. Teardown fires no handler: GTK emits [selected-children-changed] as the cards go
+     away, and [scheduled] must not move across the destroy. *)
+  let before = !scheduled in
+  P.destroy ctx live;
+  printf "fb handlers fired during teardown: %d\n" (!scheduled - before);
+  (* 10. And the declined selection once more through a real [Driver.frame], which is the
+     only thing that proves the fixup survives the frame the driver does {i not} walk: the
+     view is built once and handed back by reference, so every frame after the first is
+     the physically-same-node frame. *)
+  let selection_seen = ref 0 in
+  let declining_view =
+    Node.window
+      ~title:"declined-grid"
+      (Node.flow_box
+         ~attrs:
+           [ Attr.on_selected_children_changed
+               (Bonsai_gtk.Effect.of_sync_fun (fun (_ : Key.t list) ->
+                  incr selection_seen))
+           ]
+         ~selection_mode:Single
+         ~activate_on_single_click:false
+         ~selected:[ "a" ]
+         [ Node.label ~key:"a" "A"; Node.label ~key:"b" "B" ])
+  in
+  let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  let d =
+    Bonsai_gtk.Expert.Driver.create
+      ~time_source
+      ~on_window_created:(fun _ -> ())
+      (fun (_graph @ local) -> Bonsai.return declining_view)
+  in
+  Bonsai_gtk.Expert.Driver.frame d;
+  let driven_grid () =
+    let root = Option.value_exn (Bonsai_gtk.Expert.Driver.root_widget d) in
+    List.hd_exn (Bonsai_gtk.Private.Gtk_import.widget_children root)
+  in
+  let driven_keys () =
+    match W_flow_box.selected_keys (driven_grid ()) with
+    | [] -> "(none)"
+    | keys -> String.concat ~sep:"," keys
+  in
+  printf "fb driver, after mount: %s\n" (driven_keys ());
+  let w = driven_grid () in
+  Option.iter (W_flow_box.child_by_key w "b") ~f:(W.Flow_box.select_child (cast w));
+  printf "fb driver, after the user clicked: %s\n" (driven_keys ());
+  drain ();
+  printf
+    "fb driver, after the frame the click armed: %s (Bonsai saw %d)\n"
+    (driven_keys ())
+    !selection_seen;
+  Bonsai_gtk.Expert.Driver.frame d;
+  printf
+    "fb driver, after one more frame: %s (Bonsai saw %d)\n"
     (driven_keys ())
     !selection_seen;
   Bonsai_gtk.Expert.Driver.stop d

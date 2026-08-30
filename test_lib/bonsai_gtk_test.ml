@@ -16,6 +16,7 @@ module Action = struct
     | Key_press of string * Key_event.t
     | Key_release of string * Key_event.t
     | Activate_row of string * Key.t
+    | Activate_child of string * Key.t
     | Set_selection of string * Key.t list
   [@@deriving sexp_of]
 end
@@ -24,6 +25,25 @@ let node_exn (node : Node.t) id =
   match Node.find_by_test_id node id with
   | Some n -> n
   | None -> failwithf "Bonsai_gtk_test: no node with test_id %s" id ()
+;;
+
+(* The node an action found, checked to be the container kind the action names.
+
+   [Activate_row] and [Activate_child] each name a {i kind}: they are two different GTK
+   signals on two different widgets, and a test reading [Activate_row ("grid", ...)]
+   against a flow box is confusing however it fails. The handle has the node in hand and
+   can therefore say which kind it found, which is strictly more useful than the "no
+   on_row_activated handler" it would otherwise report -- true, but the less informative
+   half of the truth. *)
+let of_kind_exn (n : Node.t) id ~expected ~is_expected =
+  if not (is_expected n.kind)
+  then
+    failwithf
+      "Bonsai_gtk_test: node %s is a %s, not a %s"
+      id
+      (Kind.name n.kind)
+      expected
+      ()
 ;;
 
 (* The value a real toggle would take: whatever the node is *not* showing now. Reading it
@@ -180,24 +200,49 @@ module Result_spec = struct
     (* The node's own row list is not consulted, and neither is its [~selected]: the
        action means "the user activated the row with this key", which is what the real
        widget reports whatever the model was rendering. The same reason [Set_text] does
-       not consult [text]. *)
+       not consult [text]. The {i kind} is consulted, which is a different thing -- it is
+       not a fact about the user's action but about which action this is. *)
     | Activate_row (id, key) ->
       let n = node_exn node id in
+      of_kind_exn n id ~expected:"ListBox" ~is_expected:(function
+        | Kind.List_box _ -> true
+        | _ -> false);
       (match (Attrs.find n.attrs On_row_activated :> Attr.Private.t option) with
        | Some (On_row_activated h) -> h key
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_row_activated handler" id ())
+    (* The flow box's own, and deliberately not [Activate_row] reused: [row-activated] and
+       [child-activated] are different signals on different widgets, so one action for
+       both would have to accept either attr and would read wrong in whichever test used
+       the other name. *)
+    | Activate_child (id, key) ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"FlowBox" ~is_expected:(function
+        | Kind.Flow_box _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_child_activated :> Attr.Private.t option) with
+       | Some (On_child_activated h) -> h key
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_child_activated handler" id ())
     (* Likewise: the keys given are the whole selection the user has made, not a delta
        against the node's [~selected]. A real [selected-rows-changed] reports the whole
-       selection too, which is what makes the two the same shape. *)
+       selection too, which is what makes the two the same shape.
+
+       Shared between the two containers, unlike the pair above, because it is the same
+       question of both -- "the selection is now these keys" -- and the two signals differ
+       only in the noun. Which attr it looks for is decided by the kind it found, so the
+       action needs no kind check of its own: a node that is neither reports that it has
+       no selection handler, naming both spellings. *)
     | Set_selection (id, keys) ->
       let n = node_exn node id in
-      (match (Attrs.find n.attrs On_selected_rows_changed :> Attr.Private.t option) with
+      let name, attr =
+        match n.kind with
+        | Kind.Flow_box _ ->
+          "on_selected_children_changed", Attr.Name.On_selected_children_changed
+        | _ -> "on_selected_rows_changed", Attr.Name.On_selected_rows_changed
+      in
+      (match (Attrs.find n.attrs attr :> Attr.Private.t option) with
        | Some (On_selected_rows_changed h) -> h keys
-       | _ ->
-         failwithf
-           "Bonsai_gtk_test: node %s has no on_selected_rows_changed handler"
-           id
-           ())
+       | Some (On_selected_children_changed h) -> h keys
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no %s handler" id name ())
   ;;
 end
 

@@ -435,6 +435,78 @@ let list_box
     (Slots [ "placeholder", Single placeholder; "rows", List children ])
 ;;
 
+(* The two geometry mistakes GTK does not diagnose usefully.
+
+   [gtk_flow_box_set_max_children_per_line] is [g_return_if_fail (n_children > 0)]: a zero
+   logs a critical and leaves the old value, so a caller who meant "no maximum" gets GTK's
+   own 7 and no exception. And every one of these four numbers is an unsigned integer in
+   C, so a negative is not rejected at all -- it arrives as a very large positive number
+   and the layout silently stops making sense.
+
+   Rejected here for the reason {!scrolled_window}'s min/max bound is: the mistake has no
+   later diagnostic worth the name, and the two numbers are right there in the call, so
+   the constructor is the only place that can name them. *)
+let require_non_negative ~which ~arg n =
+  if n < 0
+  then
+    invalid_argf
+      "%s: ~%s is %d, but GTK reads it as an unsigned number (a negative one arrives as \
+       a very large positive one, with no error)"
+      which
+      arg
+      n
+      ()
+;;
+
+let flow_box
+  ?key
+  ?attrs
+  ?(selection_mode = Defaults.Flow_box.selection_mode)
+  ?(activate_on_single_click = Defaults.Flow_box.activate_on_single_click)
+  ?(min_children_per_line = Defaults.Flow_box.min_children_per_line)
+  ?(max_children_per_line = Defaults.Flow_box.max_children_per_line)
+  ?(row_spacing = Defaults.Flow_box.row_spacing)
+  ?(column_spacing = Defaults.Flow_box.column_spacing)
+  ?(homogeneous = Defaults.Flow_box.homogeneous)
+  ?(orientation = Defaults.Flow_box.orientation)
+  ~selected
+  children
+  =
+  require_child_keys
+    ~which:"Node.flow_box"
+    ~why:"a child's key is the identity every handler receives"
+    children;
+  let which = "Node.flow_box" in
+  require_non_negative ~which ~arg:"min_children_per_line" min_children_per_line;
+  require_non_negative ~which ~arg:"row_spacing" row_spacing;
+  require_non_negative ~which ~arg:"column_spacing" column_spacing;
+  if max_children_per_line < 1
+  then
+    invalid_argf
+      "%s: ~max_children_per_line is %d, but GTK requires at least 1 (a flow box has no \
+       \"unlimited\"; its own default is 7)"
+      which
+      max_children_per_line
+      ();
+  make
+    ?key
+    ?attrs
+    (Flow_box
+       { selection_mode
+       ; activate_on_single_click
+       ; min_children_per_line
+       ; max_children_per_line
+       ; row_spacing
+       ; column_spacing
+       ; homogeneous
+       ; orientation
+       ; selected
+       })
+    (* A plain [List], unlike {!list_box}'s two slots: a flow box has no placeholder, so
+       every child of the node is a child of the grid and there is nothing to name apart. *)
+    (List children)
+;;
+
 let stack_switcher ?key ?attrs ~stack () =
   make ?key ?attrs (Stack_switcher { stack }) No_children
 ;;

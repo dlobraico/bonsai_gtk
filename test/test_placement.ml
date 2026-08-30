@@ -21,7 +21,7 @@ let%expect_test "which attrs are container-placement attrs, and who reads each" 
     [%sexp
       (List.count Attr.Name.all ~f:(fun name -> Option.is_none (Placement.reader name))
        : int)];
-  [%expect {| 36 |}]
+  [%expect {| 38 |}]
 ;;
 
 (* The two tables are inverses, and nothing else checks that: [read_by] is what the
@@ -34,6 +34,12 @@ let%expect_test "read_by and reader agree" =
     ; (Node.stack ~name:"s" ~visible_child:"a" []).kind
     ; (Node.overlay (Node.label "x")).kind
     ; (Node.list_box ~selected:[] []).kind
+      (* In the list although it reads nothing, which is the point: a flow box is the
+         container a reader most expects to have a [Flow_child_selectable] to go with the
+         list box's, and it has none because [GtkFlowBoxChild] has no such property.
+         Pinning the empty list here is what keeps that a decision rather than an
+         oversight. *)
+    ; (Node.flow_box ~selected:[] []).kind
     ]
   in
   print_s
@@ -43,7 +49,7 @@ let%expect_test "read_by and reader agree" =
   [%expect
     {|
     ((Grid (Grid_cell)) (Stack (Page_title)) (Overlay (Measure_overlay))
-     (ListBox (Row_selectable Row_activatable)))
+     (ListBox (Row_selectable Row_activatable)) (FlowBox ()))
     |}];
   (* Every name a container reads names that container back... *)
   print_s

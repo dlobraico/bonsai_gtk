@@ -2,13 +2,6 @@ open! Core
 open Bonsai_gtk_vtree
 open Gtk_import
 
-let selection_mode : Selection_mode.t -> Gtk_enums.selectionmode = function
-  | None_ -> `NONE
-  | Single -> `SINGLE
-  | Browse -> `BROWSE
-  | Multiple -> `MULTIPLE
-;;
-
 (* One table for every list box in the process, mapping each row's *child* to the key its
    node carried. A row is looked up through [W.List_box_row.get_child].
 
@@ -242,7 +235,14 @@ let apply_selection (w : Widget.t) ~selected =
    and [Signals.dispatch_payload] is the only thing here that stands between a raise and
    GTK's stack frame. Nothing is lost by deferring it -- the row is an ordinary callback
    argument that stays valid, unlike a click's modifier state -- and it is not even
-   reached when the slot is empty. *)
+   reached when the slot is empty.
+
+   The payload's type is [W.List_box_row.t], not an upcast [Widget.t]: [Signals]' ['p] is
+   existential, so [connect] can hand the callback the row GTK actually passed and [fire]
+   needs no downcast. It was a [Widget.t] with a bare [cast] in [fire] until
+   [task-6-review.md]'s N3 pointed out that this file goes to the trouble of a type-name
+   check in [row_of] for exactly that reason. [w_flow_box.ml] was written this way from
+   the start. *)
 let row_activated : Signals.spec =
   Payload
     { attr = Attr.Name.On_row_activated
@@ -250,12 +250,11 @@ let row_activated : Signals.spec =
         (fun w ~callback ->
           Signals.connected
             w
-            (W.List_box.on_row_activated (cast w) ~callback:(fun ~row ->
-               callback (row :> Widget.t))))
+            (W.List_box.on_row_activated (cast w) ~callback:(fun ~row -> callback row)))
     ; fire =
         (fun _w attr row ->
           match (attr :> Attr.Private.t) with
-          | On_row_activated handler -> (), Some (handler (key_of_row_exn (cast row)))
+          | On_row_activated handler -> (), Some (handler (key_of_row_exn row))
           | _ -> (), None)
     ; declined = ()
     }
@@ -381,12 +380,17 @@ let impl : Widget_impl.t =
                        every list box in the process, and a filtered list would otherwise
                        accumulate entries until the rows themselves were collected.
 
-                       *Before* the GTK call, and that order is load-bearing rather than
-                       tidy: GTK emits [selected-rows-changed] synchronously from the
-                       remove, and [selected_keys] drops the rows it cannot find -- so
-                       forgetting the key first is what stops a handler being handed the
-                       key of a row that has just left the tree. Moving this line down
-                       beside the rest of the teardown reintroduces exactly that. *)
+                       *Before* the GTK call, which is the right order but -- correcting
+                       what this comment claimed in M2 -- is belt-and-braces rather than
+                       load-bearing. GTK does emit [selected-rows-changed] synchronously
+                       from the remove, so a handler really does run mid-patch; but
+                       [selected_keys] answers by walking the rows the list box still
+                       holds, so a row that has left cannot appear in that answer whatever
+                       the table still remembers. Moving this line down changes no
+                       observable behaviour (measured in [live_lists.ml], for both
+                       containers). Keep the order anyway: it is free, and it is what
+                       makes the table's contents match the tree at every point a handler
+                       could look. *)
                     Child_keys.remove row_keys child;
                     W.List_box.remove (cast parent) (row :> Widget.t))
               ; updated =

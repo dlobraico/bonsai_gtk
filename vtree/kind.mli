@@ -265,6 +265,33 @@ type list_box_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [selected] carries no [@sexp_drop_if] for the reason [list_box_props]' does not: it is
+   a required labelled argument. The other seven are GTK's own defaults, and three are not
+   the value a reader guesses -- a bare [GtkFlowBox] selects one child, activates on a
+   single click, and lays out at most **seven** children per line.
+
+   There is no per-child record beside this one, and that is GTK's doing rather than an
+   omission: [GtkFlowBoxChild] has no [selectable] and no [activatable] -- unlike
+   [GtkListBoxRow], which has both -- so a flow box holds nothing on behalf of an
+   individual child and reads no placement attrs at all. *)
+type flow_box_props =
+  { selection_mode : Selection_mode.t
+       [@sexp_drop_if Selection_mode.equal Defaults.Flow_box.selection_mode]
+  ; activate_on_single_click : bool
+       [@sexp_drop_if Bool.equal Defaults.Flow_box.activate_on_single_click]
+  ; min_children_per_line : int
+       [@sexp_drop_if Int.equal Defaults.Flow_box.min_children_per_line]
+  ; max_children_per_line : int
+       [@sexp_drop_if Int.equal Defaults.Flow_box.max_children_per_line]
+  ; row_spacing : int [@sexp_drop_if Int.equal Defaults.Flow_box.row_spacing]
+  ; column_spacing : int [@sexp_drop_if Int.equal Defaults.Flow_box.column_spacing]
+  ; homogeneous : bool [@sexp_drop_if Bool.equal Defaults.Flow_box.homogeneous]
+  ; orientation : Orientation.t
+       [@sexp_drop_if Orientation.equal Defaults.Flow_box.orientation]
+  ; selected : Key.t list
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -301,6 +328,7 @@ type t =
   | Stack_switcher of stack_ref_props
   | Stack_sidebar of stack_ref_props
   | List_box of list_box_props
+  | Flow_box of flow_box_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props

@@ -106,14 +106,38 @@ module Action : sig
         of the way: [test/live/live_lists.ml] drives the selection through the real widget
         and reads the keys back through the same table this handler is fed from. What no
         test delivers is GTK's own click-to-activate, for the reason [Click_at] documents. *)
-    | Set_selection of string * Key.t list
-    (** test_id of a [list_box] carrying [Attr.on_selected_rows_changed], and the keys of
-        every row now selected. Fires that handler with exactly that list.
+    | Activate_child of string * Key.t
+    (** test_id of a [flow_box] carrying [Attr.on_child_activated], and the {!Key.t} of
+        the card the user activated — a double click, or Enter, on a grid that sets
+        [~activate_on_single_click:false]. Fires that handler with exactly that key.
 
-        The whole selection, not a delta: that is what [selected-rows-changed] reports off
-        the real widget, so an action that took one row would be modelling a signal that
-        does not exist. [[]] is a state the widget can reach and so a state the action can
-        deliver. As with [Activate_row], the node's own [~selected] is not consulted. *)
+        Its own action rather than [Activate_row] reused, on the same rule the attrs
+        follow: [row-activated] and [child-activated] are different GTK signals on
+        different widgets, and one action for both would read wrong in whichever test used
+        the other noun.
+
+        Both activate actions check the {i kind} of the node they find and fail naming it,
+        because the handle knows it and "node grid is a FlowBox, not a ListBox" is a more
+        useful failure than "node grid has no on_row_activated handler" — which is also
+        true and is the less informative half. Nothing {i else} about the node is
+        consulted: as with [Activate_row], neither the child list nor [~selected], so a
+        key no card carries reaches the handler here. *)
+    | Set_selection of string * Key.t list
+    (** test_id of a [list_box] carrying [Attr.on_selected_rows_changed] {i or} a
+        [flow_box] carrying [Attr.on_selected_children_changed], and the keys of every
+        child now selected. Fires that handler with exactly that list.
+
+        Shared between the two kinds, unlike the pair of activate actions, because it is
+        the same question of both — "the selection is now these keys" — and the two GTK
+        signals differ only in the noun. Which attr it looks for follows from the kind of
+        the node it finds; a node that is neither kind reports that it has no
+        [on_selected_rows_changed] handler.
+
+        The whole selection, not a delta: that is what [selected-rows-changed] and
+        [selected-children-changed] both report off the real widget, so an action that
+        took one row would be modelling a signal that does not exist. [[]] is a state the
+        widget can reach and so a state the action can deliver. As with [Activate_row],
+        the node's own [~selected] is not consulted. *)
   [@@deriving sexp_of]
 end
 
