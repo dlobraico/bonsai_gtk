@@ -56,6 +56,12 @@ let of_kind_exn (n : Node.t) id ~expected ~is_expected =
 let current_active (node : Node.t) id =
   match node.kind with
   | Toggle_button { active; _ } | Check_button { active; _ } | Switch { active } -> active
+  (* Defensive, and with no legal path to it: the three kinds [Events.for_kind] says emit
+     [On_toggled] are exactly the three matched above, and a node carrying
+     [Attr.on_toggled] on any other kind is refused by [require_supported] before an
+     action can be dispatched against it. Kept because it is the arm that would fire if
+     those two lists ever drifted apart, and a [match] failure here would be a far worse
+     diagnostic. *)
   | k ->
     failwithf "Bonsai_gtk_test: %s (test_id %s) has no toggle state" (Kind.name k) id ()
 ;;
@@ -327,7 +333,69 @@ end
 
 let result_spec : (Node.t, Action.t) Bonsai_test.Result_spec.t = (module Result_spec)
 
-module Handle = Bonsai_test.Handle
+(* [Bonsai_test.Handle] with the two non-checking entry points replaced by checking ones.
+
+   The checks this library adds live in [Result_spec.view], which only the {i printing}
+   entry points call -- [show], [show_into_string], [show_diff], [store_view]. So a test
+   that advances with [recompute_view] and prints once at the end validated exactly one of
+   its trees, and every tree that existed only between two prints went unchecked. That is
+   not a hazard a caller might one day hit: it is the idiom this library's own mli
+   recommends for seeing one action's effect before the next, and [test/handle/] takes
+   that advice twenty times.
+
+   [Bonsai_test.Handle.recompute_view] takes a [?simulate_diff_patch] and hands it the
+   computed result, which is exactly the hook needed: run the view for its exceptions and
+   throw the string away, then pass the result on to whatever the caller asked for.
+
+   Monomorphic in [Node.t], unlike the function it shadows. It has to be: the check is
+   [Result_spec.view], which is a function of a [Node.t], and a polymorphic
+   ['result -> unit] has nothing to apply it to. Every handle this library hands out is a
+   [(Node.t, Action.t) Handle.t] anyway ([create] below is the only constructor an
+   application should use); a caller who really wants a handle over some other result type
+   still has [Bonsai_test.Handle] itself, since the [t] below is that module's type and
+   not a new one. *)
+module Handle = struct
+  include Bonsai_test.Handle
+
+  let with_check ~f (simulate_diff_patch : (Node.t -> unit) option) node =
+    (* The exception is the product; the string is discarded, as [run_row] in
+       [test/handle/test_gallery.ml] discards [show_into_string]'s and for the same
+       reason. *)
+    ignore (f node : string);
+    Option.iter simulate_diff_patch ~f:(fun g -> g node)
+  ;;
+
+  let recompute_view ?simulate_diff_patch (handle : (Node.t, _) t) =
+    Bonsai_test.Handle.recompute_view
+      handle
+      ~simulate_diff_patch:(with_check ~f:Result_spec.view simulate_diff_patch)
+  ;;
+
+  let recompute_view_until_stable
+    ?max_computes
+    ?simulate_diff_patch
+    (handle : (Node.t, _) t)
+    =
+    Bonsai_test.Handle.recompute_view_until_stable
+      ?max_computes
+      handle
+      ~simulate_diff_patch:(with_check ~f:Result_spec.view simulate_diff_patch)
+  ;;
+
+  (* The third one, and the surprise: [store_view] {i does} build a view -- it is [show]
+     without the printing -- but it builds it lazily, so the [Result_spec]'s [view] is not
+     called until a later [show_diff] asks for the text, and an illegal tree stored and
+     never diffed was never checked. Measured; it is why the golden in
+     [test/handle/test_gallery.ml] lists it beside the other two.
+
+     No [?simulate_diff_patch] to hang the check on here, so it goes after: [store_view]
+     has already computed the frame, and [last_result] is the very tree it stored. Same
+     tree, same frame, no second stabilization. *)
+  let store_view (handle : (Node.t, _) t) =
+    Bonsai_test.Handle.store_view handle;
+    ignore (Result_spec.view (Bonsai_test.Handle.last_result handle) : string)
+  ;;
+end
 
 let create ~(here : [%call_pos]) ?start_time ?optimize app =
   Handle.create ~here ?start_time ?optimize result_spec app

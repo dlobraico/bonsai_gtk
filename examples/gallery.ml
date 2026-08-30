@@ -33,13 +33,35 @@ let sample_png_path =
      path)
 ;;
 
-(* Page 1: the toggle family and the entries, all controlled by one record of state. *)
+(* Page 1: the toggle family and the entries, all controlled by one record of state.
+
+   {b Every controlled prop on this page is backed by a piece of state and by the attr
+     that writes it},
+   and that is not decoration. A controlled prop is re-asserted on every frame
+   ([Widget_impl.reassert], run by [Patcher.reassert_only] on every node of every frame
+   including a no-change one), and [Bonsai_gtk.start]'s scheduler ticks at 16 ms -- so a
+   [~text] the model never learns about is written back over what the user typed about
+   sixty times a second. Measured: an entry, password entry, search entry or editable
+   label pinned to [""] with no [Attr.on_changed] shows [""] again one idle frame after a
+   keystroke. The same holds for [~selected], [~active], [~value] and the rest. The audit
+   is in task-13-report.md; the rule is one line:
+   {i if a prop names something the user can change, the attr that reports the change must
+     write the state the prop reads}. *)
 let controls (graph @ local) =
   let toggled, set_toggled = Bonsai.state false graph in
   let checked, set_checked = Bonsai.state true graph in
   let switched, set_switched = Bonsai.state false graph in
   let text, set_text = Bonsai.state "" graph in
+  let password, set_password = Bonsai.state "" graph in
+  (* Two states for the one search box, because it has two signals. [search] is the text,
+     written by [Attr.on_changed] on every keystroke -- which is what [~text] has to read,
+     since the widget's text changes on every keystroke too. [query] is the {i debounced}
+     [search-changed], [search_delay] ms after typing stops, which is what an application
+     actually runs a search on. Wiring [~text] to the debounced one instead is the bug
+     this page had: for the 150 ms before the debounce fires the model holds the old text,
+     and the idle frame in between writes it back over what was typed. *)
   let search, set_search = Bonsai.state "" graph in
+  let query, set_query = Bonsai.state "" graph in
   let note, set_note = Bonsai.state "" graph in
   let%arr toggled
   and set_toggled
@@ -49,8 +71,12 @@ let controls (graph @ local) =
   and set_switched
   and text
   and set_text
+  and password
+  and set_password
   and search
   and set_search
+  and query
+  and set_query
   and note
   and set_note in
   Node.grid
@@ -90,16 +116,21 @@ let controls (graph @ local) =
         ()
     ; Node.label ~attrs:[ Attr.grid_cell ~column:0 ~row:4 () ] ~xalign:0. "Password"
     ; Node.password_entry
-        ~attrs:[ Attr.grid_cell ~column:1 ~row:4 (); Attr.hexpand true ]
+        ~attrs:
+          [ Attr.grid_cell ~column:1 ~row:4 ()
+          ; Attr.hexpand true
+          ; Attr.on_changed set_password
+          ]
         ~placeholder:"passphrase"
-        ~text:""
+        ~text:password
         ()
     ; Node.label ~attrs:[ Attr.grid_cell ~column:0 ~row:5 () ] ~xalign:0. "Search"
     ; Node.search_entry
         ~attrs:
           [ Attr.grid_cell ~column:1 ~row:5 ()
           ; Attr.hexpand true
-          ; Attr.on_search_changed set_search
+          ; Attr.on_changed set_search
+          ; Attr.on_search_changed set_query
           ]
         ~text:search
         ()
@@ -143,7 +174,15 @@ let controls (graph @ local) =
         ~attrs:[ Attr.grid_cell ~column:0 ~row:8 ~width:2 () ]
         ~xalign:0.
         ~ellipsize:End
-        (sprintf "text=%S search=%S note=%d characters" text search (String.length note))
+        (* [search] follows every keystroke and [query] lags it by the debounce, so typing
+           in the search box and stopping is how the two are told apart on screen. *)
+        (sprintf
+           "text=%S password=%d characters search=%S query=%S note=%d characters"
+           text
+           (String.length password)
+           search
+           query
+           (String.length note))
     ]
 ;;
 
@@ -259,7 +298,21 @@ let lists (graph @ local) =
     [ Node.frame
         ~label:"Single, activated"
         (Node.list_box
-           ~attrs:[ Attr.on_row_activated set_chosen; Attr.width_request 200 ]
+         (* Both attrs, and the second is not optional. [~selected] is a controlled prop,
+            re-asserted on every frame, and [row-activated] is not the signal that reports
+            a {i selection}: a click emits both, but the arrow keys move the selection
+            without activating anything. Wired to activation alone, the fixup pass puts
+            the selection back on the next idle frame and the list cannot be browsed from
+            the keyboard at all. Measured: select row 1 without activating it, and one
+            [reassert_only] restores row 0. *)
+           ~attrs:
+             [ Attr.on_row_activated set_chosen
+             ; Attr.on_selected_rows_changed (fun keys ->
+                 match keys with
+                 | key :: _ -> set_chosen key
+                 | [] -> Ui_effect.Ignore)
+             ; Attr.width_request 200
+             ]
            ~selection_mode:Single
            ~show_separators:true
            ~selected:[ chosen ]
@@ -642,6 +695,7 @@ let input (graph @ local) =
   let click, set_click = Bonsai.state "(nothing yet)" graph in
   let focus, set_focus = Bonsai.state "(neither)" graph in
   let text, set_text = Bonsai.state "" graph in
+  let second, set_second = Bonsai.state "" graph in
   let%arr key
   and set_key
   and escapes
@@ -651,7 +705,9 @@ let input (graph @ local) =
   and focus
   and set_focus
   and text
-  and set_text in
+  and set_text
+  and second
+  and set_second in
   let modifiers (m : Modifiers.t) =
     match
       List.filter_map
@@ -719,14 +775,22 @@ let input (graph @ local) =
             ~placeholder:"type here; Escape never arrives"
             ~text
             ()
+          (* Its own state, not a second view of the first entry's: [~text] is controlled
+             and re-asserted every frame, so an entry pinned to a constant erases whatever
+             is typed into it on the next idle tick -- and on {i this} page more surely
+             than anywhere else, because the capture-phase handler above schedules an
+             effect for every key, which guarantees a frame per keystroke. A page whose
+             whole job is to be believed by a person cannot contain a box that eats
+             typing. *)
         ; Node.entry
             ~attrs:
               [ Attr.hexpand true
+              ; Attr.on_changed set_second
               ; Attr.on_focus_enter (fun () -> set_focus "second entry")
               ; Attr.on_focus_leave (fun () -> set_focus "(neither)")
               ]
             ~placeholder:"Tab to me"
-            ~text:""
+            ~text:second
             ()
         ]
     ; Node.separator ~orientation:Horizontal ()

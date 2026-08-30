@@ -129,11 +129,26 @@ let%expect_test "Toggle needs a handler, and a node with toggle state to read" =
   Expect_test_helpers_core.require_does_raise (fun () ->
     Bonsai_gtk_test.Handle.do_actions handle [ Toggle "state" ]);
   [%expect {| (Failure "Bonsai_gtk_test: node state has no on_toggled handler") |}];
+  (* The second half never reaches the action now, and that is the {i fix}: the tree is
+     refused when it is built, which is what [mislabelled]'s comment above always claimed
+     and what this test was written to assert.
+
+     It was not asserting that until Task 13's fix round. [Handle.recompute_view] used to
+     run the computation without building the view, so the [Events] check in
+     [Result_spec.view] never ran and the illegal tree sailed through to [do_actions],
+     where [Toggle] failed for a second, weaker reason -- "has no toggle state" -- that a
+     reader would take as the point of the test. This file was the one place in the suite
+     where the non-checking [recompute_view] was certifying a tree the runtime refuses,
+     and the shadow found it on the first run.
+
+     [current_active]'s "has no toggle state" arm has no legal path to it any more: the
+     three kinds [Events.for_kind] says emit [On_toggled] are exactly the three that carry
+     toggle state, so a node that reaches the action has state to read. The arm stays as a
+     defensive one and says so where it lives. *)
   let handle = Bonsai_gtk_test.create mislabelled in
-  Bonsai_gtk_test.Handle.recompute_view handle;
   Expect_test_helpers_core.require_does_raise (fun () ->
-    Bonsai_gtk_test.Handle.do_actions handle [ Toggle "lbl" ]);
-  [%expect {| (Failure "Bonsai_gtk_test: Label (test_id lbl) has no toggle state") |}]
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect {| (Invalid_argument "root/0: Label does not emit On_toggled") |}]
 ;;
 
 (* The test that pins the controlled-text semantics headlessly: [Set_text] means "the user

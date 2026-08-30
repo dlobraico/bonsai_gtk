@@ -213,14 +213,13 @@ Tests:
 - ~~**`test/handle/test_gallery.ml`'s "exactly once" comment is inaccurate**~~ — fixed in
   Task 13: the header now says "at least once" and the claim is checked against
   `Kind.Variants.descriptions` and `Attr.Name.all` rather than asserted in prose.
-- **`Bonsai_gtk_test` has no validating `recompute_view`.** The `Placement`/`Events`/key-phase
-  checks live in the `Result_spec`'s `view`, which only `Handle.show`, `show_into_string`,
-  `show_diff` and `store_view` call — so a headless test that drives a component with
-  `do_actions` and `recompute_view` and shows it only at the end has checked exactly one of
-  its trees. Found in Task 13, which corrected the mli (it claimed the opposite) and pinned
-  the behaviour in `test/handle/test_gallery.ml`. The fix, if it is wanted, is for
-  `Bonsai_gtk_test` to stop re-exporting `Bonsai_test.Handle` wholesale and shadow
-  `recompute_view` with one that builds the view and discards it. tests M3.
+- ~~**`Bonsai_gtk_test` has no validating `recompute_view`**~~ — fixed in Task 13's fix
+  round. Three of the six entry points that advance a handle did not run the
+  `Placement`/`Events`/key-phase checks: `recompute_view` and `recompute_view_until_stable`
+  never build a view, and `store_view` builds one lazily. `Bonsai_gtk_test.Handle` is now a
+  hand-written signature that shadows all three; `test/handle/test_gallery.ml` pins all six.
+  The first run found one call site certifying a tree the runtime refuses
+  (`test/handle/test_handle.ml`'s "Toggle needs a handler"), fixed in the same commit.
 - **A synthetic click or key press may be reachable through XTEST rather than through the
   binding.** The plan closed that question against ocgtk (no `GdkEvent` constructor, no
   argument-carrying emission, no `gtk_test_*`) and did not consider driving the X server

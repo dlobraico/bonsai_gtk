@@ -146,8 +146,14 @@ let gallery_tree ~n ~set_n =
                        ()
                    ; Node.image ~pixel_size:24 (Icon_name "list-add-symbolic")
                    ; Node.picture ~alternative_text:"nothing" Empty
+                     (* [false], not [true]: [true] is GTK's own default, so the write
+                        would be a no-op and no wrong value of this attr could change the
+                        golden -- name coverage that pins nothing, which is the shape of
+                        the M1 backlog's "three expect tests pass props the sexp then
+                        drops". This tree is never displayed, so hiding a separator in it
+                        costs nothing. *)
                    ; Node.separator
-                       ~attrs:[ Attr.visible true ]
+                       ~attrs:[ Attr.visible false ]
                        ~orientation:Horizontal
                        ()
                    ]
@@ -438,7 +444,7 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                           (Picture ((source Empty) (alternative_text (nothing)))))
                          (attrs ()) (children No_children))
                         ((kind (Separator ((orientation Horizontal))))
-                         (attrs ((Visible true))) (children No_children))))))
+                         (attrs ((Visible false))) (children No_children))))))
                     ((kind (Box ((orientation Vertical) (spacing 8))))
                      (key containers) (attrs ((Page_title Containers)))
                      (children
@@ -673,8 +679,14 @@ let%expect_test "the gallery names every attr" =
 
 (* The half of the attr surface [Attr.Name.all] cannot reach.
 
-   [Attr.css_class] is the one attr [Attr.name] answers [None] for: a css class is a
-   member of a set the patcher adds to and removes from ([Attrs.diff]'s
+   [Attr.name] answers [None] for two constructors, [Css_class] and [Many] -- but [Many]
+   never reaches [Attrs.to_list], because [Attr.flatten] walks it away first. So
+   [Attr.css_class] is the only nameless attr this sweep can {i encounter}, which is not
+   the same claim as "the only nameless attr" and matters to whoever adds a second
+   combinator.
+
+   [Attr.css_class] is the attr [Attr.name] answers [None] for: a css class is a member of
+   a set the patcher adds to and removes from ([Attrs.diff]'s
    [Add_css_class]/[Remove_css_class]), not a keyed property it sets and unsets, so it has
    no [Name.t] and the test above would pass with no css class anywhere in the tree. This
    is that missing half, spelled out rather than left to a reader to notice. *)
@@ -699,17 +711,32 @@ let%expect_test "the gallery uses the one attr with no name" =
    - Each phase's tree is one [Bonsai_gtk_test] accepts -- the [Placement], [Events] and
      key-phase checks the runtime also makes, from the same two tables. A kind whose node
      is legal to build and illegal to mount fails here.
-   - A prop change is [Kind.same_kind] (so the patcher recurses into the widget it already
-     has) and not [Kind.equal_props] (so it does not skip the update). Those two answers
-     are one [Kind.name] arm and one [Kind.equal_props] arm apart from being wrong, and
-     getting either wrong is expensive in a way no golden shows: a kind [same_kind]
-     answers [false] for is destroyed and remounted on every frame that touches it, and
-     one [equal_props] answers [true] for never updates at all. No per-widget test asks
-     this of every kind at once.
+   - A prop change is not [Kind.equal_props], so the patcher does not skip the update. A
+     kind [equal_props] answers [true] for never updates at all, and no per-widget test
+     asks this of every kind at once. This is the column that can fail, and it is
+     mutation-verified: forcing [Kind.equal_props]'s [Text_view] arm to [true] moves
+     [Text_view] into the [skipped] list below.
    - A container's children really diff: the op counts come from [Reconcile.diff] over the
      subject's own child lists. No row {i reorders} its children, so no [Move] is produced
      and [?ordered] never arises -- which container drops a [Move] is
      [test/test_reconcile.ml]'s and [test/live/live_containers.ml]'s question.
+
+   {b Two of the printed columns cannot fail, and are the record of an invariant rather
+     than a test of it.}
+   Saying so is cheaper than leaving a reader to work out how much the other three are
+   worth:
+
+   - [same_kind] is a {i tautology} given [Kind.name]. [Kind.same_kind] is
+     [String.equal (name a) (name b)] and [name] is a total function of the constructor,
+     so two nodes built from one constructor always agree, and no single wrong arm can
+     make a kind differ from itself. It meant something against the 32-arm matrix with the
+     [_ -> false] wildcard that [vtree/kind.ml] describes as removed, and it would mean
+     something again if [same_kind] ever stopped being a [name] comparison -- which is why
+     the column stays.
+   - [unmount] checks this file's own scaffold: [STILL THERE] can print only if
+     [subject_of] disagrees with [lifecycle_app]'s [step] arithmetic. What is not vacuous
+     about the phase is the third [show_into_string], which re-validates the tree the
+     subject was removed from.
 
    What it does not prove: anything GTK's. There is no widget here, so "unmount" is the
    node leaving the tree and nothing more -- no [destroy], no disconnected signal, no
@@ -972,7 +999,11 @@ let sweep_rows : (placement * Node.t * Node.t) list =
   ]
 ;;
 
-let%expect_test "every kind mounts, patches and unmounts" =
+(* Named for what it checks rather than for the three phases it runs: [test/handle/dune]
+   links no ocgtk, so there is no widget and nothing here shows that an impl's [update]
+   {i writes} anything. A per-kind live [Live_tree.dump] sweep is still the gap
+   [docs/m1-backlog.md] records. *)
+let%expect_test "every kind is diffed, and no kind is skipped" =
   let outcomes = List.map sweep_rows ~f:run_row in
   (* The row list is hand-maintained; [Kind.Variants.descriptions] is not. A kind added to
      [Kind.t] without a row here has no lifecycle coverage at all, and this is what says
@@ -1043,16 +1074,29 @@ let%expect_test "every kind mounts, patches and unmounts" =
     |}]
 ;;
 
-(* The claim [run_row] rests on, and which [Bonsai_gtk_test]'s own mli got backwards.
+(* {b Every entry point that advances a handle checks the tree}, which is the guarantee
+   [Bonsai_gtk_test]'s header rests on: "so that a headless suite cannot certify a tree
+   the runtime refuses".
 
-   [Handle.recompute_view] runs the computation but does not build the view -- the
-   [Result_spec]'s [view] function is what the [Placement]/[Events]/key-phase checks live
-   in, and only [show] and [show_into_string] call it. So a headless test that drives a
-   component with [do_actions] and [recompute_view] and shows it only at the end has
-   validated exactly one of its trees, and the intermediate ones went unchecked. That is
-   worth pinning rather than describing, because the mli said the opposite until this test
-   was written. *)
-let%expect_test "only the printing entry points check the tree" =
+   It did not hold when this test was first written. The [Placement]/[Events]/key-phase
+   checks live in the [Result_spec]'s [view], and only the entry points that {i build} the
+   view call it -- so [Handle.recompute_view], which runs the computation and never builds
+   one, waved an illegal tree straight through. That mattered because [recompute_view] is
+   not an obscure corner: it is the idiom this library's own mli recommends for seeing one
+   action's effect before dispatching the next, and [test/handle/] takes that advice
+   twenty times. A guarantee that holds only if you avoid the documented idiom is not a
+   guarantee, so [Bonsai_gtk_test.Handle] now shadows [recompute_view] and
+   [recompute_view_until_stable] with checking versions (through [bonsai_test]'s own
+   [?simulate_diff_patch] hook, which is handed the computed result).
+
+   The first run of that shadow found one call site that had been certifying a tree the
+   runtime refuses -- [test/handle/test_handle.ml]'s "Toggle needs a handler", whose
+   second half asserted a weaker failure than the one its own comment claimed. It is fixed
+   there.
+
+   This test is the regression: if [Handle] ever goes back to being a plain alias for
+   [Bonsai_test.Handle], the first line below reverts to [accepted] and this goes red. *)
+let%expect_test "every entry point that advances a handle checks the tree" =
   let app (_graph @ local) =
     Bonsai.return
       (Node.window
@@ -1060,18 +1104,29 @@ let%expect_test "only the printing entry points check the tree" =
             ~orientation:Vertical
             [ Node.label ~attrs:[ Attr.on_toggled (fun _ -> Ui_effect.Ignore) ] "bad" ]))
   in
-  let handle = Bonsai_gtk_test.create app in
   let report name f =
-    match f () with
+    (* A fresh handle each time: the check raises out of the frame, and a handle that has
+       raised is not one the next entry point should be asked about. *)
+    let handle = Bonsai_gtk_test.create app in
+    match f handle with
     | () -> printf "%s: accepted\n" name
     | exception e -> printf "%s: %s\n" name (Exn.to_string e)
   in
-  report "recompute_view" (fun () -> Bonsai_gtk_test.Handle.recompute_view handle);
-  report "show_into_string" (fun () ->
+  report "recompute_view" Bonsai_gtk_test.Handle.recompute_view;
+  report "recompute_view_until_stable" (fun handle ->
+    Bonsai_gtk_test.Handle.recompute_view_until_stable handle);
+  report "show_into_string" (fun handle ->
     ignore (Bonsai_gtk_test.Handle.show_into_string handle : string));
+  report "show" Bonsai_gtk_test.Handle.show;
+  report "show_diff" Bonsai_gtk_test.Handle.show_diff;
+  report "store_view" Bonsai_gtk_test.Handle.store_view;
   [%expect
     {|
-    recompute_view: accepted
+    recompute_view: (Invalid_argument "root/0/0: Label does not emit On_toggled")
+    recompute_view_until_stable: (Invalid_argument "root/0/0: Label does not emit On_toggled")
     show_into_string: (Invalid_argument "root/0/0: Label does not emit On_toggled")
+    show: (Invalid_argument "root/0/0: Label does not emit On_toggled")
+    show_diff: (Invalid_argument "root/0/0: Label does not emit On_toggled")
+    store_view: (Invalid_argument "root/0/0: Label does not emit On_toggled")
     |}]
 ;;

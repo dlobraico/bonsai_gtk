@@ -211,7 +211,107 @@ end
     ({!Bonsai_gtk_vtree.Node.find_by_test_id}); an id no node carries raises [Failure]. *)
 val result_spec : (Node.t, Action.t) Bonsai_test.Result_spec.t
 
-module Handle = Bonsai_test.Handle
+(** {!Bonsai_test.Handle}, with the two entry points that did not check the tree replaced
+    by ones that do.
+
+    Everything here is [Bonsai_test.Handle]'s, unchanged, except [recompute_view] and
+    [recompute_view_until_stable]. [t] is that module's type rather than a new one, so a
+    handle passes freely between the two and a test needing something not re-exported here
+    can call [Bonsai_test.Handle] directly.
+
+    {b Why the two are shadowed.} The [Placement] / [Events] / key-phase checks below live
+    in this library's [Result_spec.view], and only the entry points that
+    {i build the view} call it: [show], [show_into_string], [show_diff], [store_view].
+    [Bonsai_test.Handle.recompute_view] runs the computation and never builds a view, and
+    [recompute_view_until_stable] is that function in a loop. So a test that advances with
+    either and prints once at the end used to validate exactly one of its trees — while
+    this file recommended exactly that idiom for seeing one action's effect before the
+    next, and [test/handle/] followed the recommendation twenty times. A guarantee that
+    holds only if you avoid the documented idiom is not a guarantee.
+
+    Both now run the view for its exceptions and discard the string, through
+    [Bonsai_test.Handle]'s own [?simulate_diff_patch] hook, which is handed the computed
+    result. A [?simulate_diff_patch] the caller passes still runs, after the check.
+
+    {b They are monomorphic in [Node.t] where the functions they shadow are polymorphic in
+      the result.}
+    The check is a function of a [Node.t]; a polymorphic ['result] has nothing to apply it
+    to. Every handle {!create} hands out is a [(Node.t, Action.t) Handle.t], so this costs
+    nothing in practice. *)
+module Handle : sig
+  type ('result, 'incoming) t = ('result, 'incoming) Bonsai_test.Handle.t
+
+  (** {2 Checked already, and unchanged: these build the view} *)
+
+  val show : ?simulate_diff_patch:('result -> unit) -> ('result, _) t -> unit
+
+  val show_into_string
+    :  ?simulate_diff_patch:('result -> unit)
+    -> ('result, _) t
+    -> string
+
+  val show_diff
+    :  ?location_style:Patdiff_kernel.Format.Location_style.t
+    -> ?diff_context:int
+    -> ?simulate_diff_patch:('result -> unit)
+    -> ('result, _) t
+    -> unit
+
+  (** {2 Shadowed: these did not check, and now do} *)
+
+  (** One frame of a Bonsai app, as [Bonsai_test.Handle.recompute_view] — flush the time
+      source, flush the action queue, stabilize, trigger lifecycles — and then the tree it
+      produced is checked, exactly as a [show] would check it. The view is not printed and
+      not stored for [show_diff]; use [show] for that. *)
+  val recompute_view : ?simulate_diff_patch:(Node.t -> unit) -> (Node.t, _) t -> unit
+
+  (** [recompute_view] until there are no after-display lifecycle events left, or
+      [max_computes] (default 100) is reached. Every intermediate tree is checked, not
+      just the last. *)
+  val recompute_view_until_stable
+    :  ?max_computes:int
+    -> ?simulate_diff_patch:(Node.t -> unit)
+    -> (Node.t, _) t
+    -> unit
+
+  (** [show] without the printing: the frame is computed and the view stored for a later
+      [show_diff]. The third entry point that did not check, and the least obvious one --
+      it {i does} build a view, but lazily, so an illegal tree stored and never diffed was
+      never seen. The check runs on the tree it just stored, after it is stored, since
+      this function has no [?simulate_diff_patch] to hang it on. *)
+  val store_view : (Node.t, _) t -> unit
+
+  (** {2 The rest, unchanged} *)
+
+  val last_result : ('result, _) t -> 'result
+  val do_actions : (_, 'incoming) t -> 'incoming list -> unit
+  val time_source : _ t -> Bonsai.Time_source.t
+  val advance_clock_by : _ t -> Time_ns.Span.t -> unit
+  val advance_clock : to_:Time_ns.t -> _ t -> unit
+
+  (** Prefer {!Bonsai_gtk_test.create}, which supplies this library's [Result_spec]. This
+      is here so that the re-export is complete; a handle built with some other spec is
+      one the checks above cannot see. *)
+  val create
+    :  here:[%call_pos]
+    -> ?start_time:Time_ns.t
+    -> ?optimize:bool
+    -> ('result, 'incoming) Bonsai_test.Result_spec.t
+    -> (local_ Bonsai.graph -> 'result Bonsai.t)
+    -> ('result, 'incoming) t
+
+  val has_after_display_events : ('result, 'incoming) t -> bool
+  val print_actions : _ t -> unit
+  val print_stabilizations : _ t -> unit
+  val print_stabilization_tracker_stats : _ t -> unit
+  val print_computation_structure : _ t -> unit
+
+  (** [show_model], [result_incr], [lifecycle_incr] and [action_input_incr] are not
+      re-exported: they expose Bonsai internals ([show_model] carries a
+      [rampantly_nondeterministic] alert of its own) and re-stating that alert here would
+      duplicate a warning whose wording is [bonsai_test]'s to change. [t] is
+      [Bonsai_test.Handle.t], so a test that wants one calls it there. *)
+end
 
 (** Builds a headless test handle for [app]: no GTK, no display, just the [Node.t] sexp
     tree and [Action.t] actions dispatched against it by [test_id].
@@ -243,15 +343,22 @@ module Handle = Bonsai_test.Handle
       They share one [GtkEventControllerKey] and therefore one phase, so there is nothing
       the runtime could mount; both sides call the same function for the string.
 
-    All three are checked by the entry points that build the view -- [Handle.show],
-    [Handle.show_into_string], [Handle.show_diff], [Handle.store_view] -- on the first
-    call and on every later one. {b [Handle.recompute_view] does not check}: the checks
-    live in this [Result_spec]'s [view] function, and [recompute_view] runs the
-    computation without building a view. So a test that drives a component with
-    [do_actions] and [recompute_view] and shows it only at the end has checked exactly one
-    of its trees, and a tree that only exists between two shows is not checked at all.
-    Show it, or [show_into_string] it and drop the string, wherever that matters.
-    ([test/handle/test_gallery.ml] pins this; the sentence used to claim the opposite.)
+    {b All three are checked by every entry point that advances a handle} --
+    [Handle.show], [Handle.show_into_string], [Handle.show_diff], [Handle.store_view],
+    [Handle.recompute_view] and [Handle.recompute_view_until_stable] -- on the first call
+    and on every later one. So there is no way to advance a handle past a tree without
+    checking it, and no idiom a test has to avoid.
+
+    That took work, and the history is worth a sentence because it is the reason {!Handle}
+    is a hand-written signature rather than an alias for [Bonsai_test.Handle]. The checks
+    live in this [Result_spec]'s [view], and three of those six entry points did not call
+    it: [recompute_view] and [recompute_view_until_stable] run the computation without
+    building a view at all, and [store_view] builds one lazily, so a tree stored and never
+    diffed was never seen. [recompute_view] in particular is the idiom this very file
+    recommends below for advancing between actions, and [test/handle/] takes that advice
+    twenty times -- one of which was certifying a tree the runtime refuses
+    ([test/handle/test_handle.ml]'s "Toggle needs a handler"). All three are shadowed here
+    now. [test/handle/test_gallery.ml] pins all six.
 
     What is still only checked at mount is the structural half that needs the widget
     implementations or the live tree: a [Node.grid] child with no [Attr.grid_cell], a
@@ -279,7 +386,9 @@ module Handle = Bonsai_test.Handle
     changed (a different label becoming clickable, an attribute the click flips), call
     [Handle.recompute_view handle] between the two actions to force a fresh snapshot
     first. See [test/test_handle.ml] for the pattern: two single-click [do_actions] calls
-    separated by [recompute_view], rather than one call with both clicks. *)
+    separated by [recompute_view], rather than one call with both clicks. The intermediate
+    tree that produces is checked like any other -- {!Handle}'s [recompute_view] is this
+    library's, not [bonsai_test]'s, for exactly that reason. *)
 val create
   :  here:[%call_pos]
   -> ?start_time:Time_ns.t

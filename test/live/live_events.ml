@@ -69,8 +69,23 @@ let all_kinds : Kind.t list =
 (* The list above is hand-maintained; [Kind.Variants.descriptions] is not. A kind added to
    [Kind.t] without a row here fails this assertion rather than quietly going unchecked --
    which matters because [Events.for_kind]'s missing wildcard forces a *decision* for a
-   new kind but nothing forces that decision to be *tested*. *)
-let () = assert (List.length all_kinds = List.length Kind.Variants.descriptions)
+   new kind but nothing forces that decision to be *tested*.
+
+   By {i name} and not by count. A count is satisfied by a duplicated row plus an omitted
+   one, which is exactly the drift Task 1 recorded as a carry when it left the two
+   [all_kinds] lists duplicated; [test/handle/test_gallery.ml]'s sweeps subtract names for
+   the same reason, and this is that idiom brought here (task-13-review.md N6). The names
+   are [Kind.Variants.to_name]'s -- the OCaml constructor -- because that is the one the
+   compiler writes; [Kind.name] is the GTK class and is a different string. *)
+let () =
+  let covered = List.map all_kinds ~f:Kind.Variants.to_name in
+  let missing =
+    List.filter_map Kind.Variants.descriptions ~f:(fun (name, _) ->
+      if List.mem covered name ~equal:String.equal then None else Some name)
+  in
+  if not (List.is_empty missing)
+  then raise_s [%message "kinds with no row in all_kinds" (missing : string list)]
+;;
 
 let () =
   (* No display is needed: [Registry.for_kind] only reads a record. The file lives under

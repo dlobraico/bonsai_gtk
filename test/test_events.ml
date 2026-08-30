@@ -53,10 +53,22 @@ let all_kinds : Kind.t list =
 ;;
 
 (* The list above is hand-maintained; [Kind.Variants.descriptions] is not. A kind added to
-   [Kind.t] without a row here fails this assertion rather than quietly going unchecked --
-   which matters because [Events.for_kind]'s missing wildcard forces a *decision* for a
-   new kind but nothing forces that decision to be *tested*. *)
-let () = assert (List.length all_kinds = List.length Kind.Variants.descriptions)
+   [Kind.t] without a row here fails this rather than quietly going unchecked -- which
+   matters because [Events.for_kind]'s missing wildcard forces a *decision* for a new kind
+   but nothing forces that decision to be *tested*.
+
+   By {i name} and not by count, and so is [test/live/live_events.ml]'s twin: a count is
+   satisfied by a duplicated row plus an omitted one, which is exactly the drift Task 1
+   recorded as a carry when it left these two lists duplicated. (task-13-review.md N6.) *)
+let%expect_test "all_kinds names every kind" =
+  let covered = List.map all_kinds ~f:Kind.Variants.to_name in
+  let missing =
+    List.filter_map Kind.Variants.descriptions ~f:(fun (name, _) ->
+      if List.mem covered name ~equal:String.equal then None else Some name)
+  in
+  print_s [%sexp (missing : string list)];
+  [%expect {| () |}]
+;;
 
 let%expect_test "every kind's event attrs" =
   List.iter all_kinds ~f:(fun kind ->

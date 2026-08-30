@@ -141,8 +141,30 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     accented character) is disturbed. That is the price of a model that rewrites as you
     type, and the reason the widget is left alone whenever it already agrees. There is no
     uncontrolled mode: an entry whose text no [Attr.on_changed] feeds back into the model
-    resets to the model's value the next time anything re-renders, which is the bug the
-    required argument exists to make impossible to write by accident.
+    resets to the model's value the next time anything re-renders.
+
+    {b The required argument does not prevent that, and it is worth being exact about what
+      it does prevent.}
+    It makes the {i prop} impossible to forget; the {i attr} is still an ordinary
+    attribute a caller can leave off, and "the next time anything re-renders" is about
+    sixty times a second — [Bonsai_gtk.start]'s scheduler holds a 16 ms tick and
+    [Patcher.reassert_only] re-asserts every node on every frame, changed or not. So the
+    failure is not a stale value that appears after some later unrelated render: it is
+    typing that vanishes as it is typed. Measured, mounting the node and running one
+    [reassert_only]: text typed into an [entry], {!password_entry}, {!search_entry} or
+    {!editable_label} whose prop is pinned to [""] is [""] again one frame later.
+    [examples/gallery.ml] had three of these and none was noticed until somebody typed
+    into it, which is the shape of the mistake — it is invisible to every automated test,
+    because a test that never types sees a widget agreeing with its model.
+
+    The same holds for every other controlled prop: a {!list_box}'s [~selected] fed only
+    by [Attr.on_row_activated] is restored on the next idle frame whenever the selection
+    moved without activating (the arrow keys), and a {!search_entry}'s [~text] fed by the
+    {i debounced} [Attr.on_search_changed] rather than by [Attr.on_changed] is written
+    back over during the debounce window. The rule in one line:
+    {b if a prop names something the user can change, the attr that reports that change
+      must write the state the prop reads}
+    — the same attr, not a related one.
 
     [placeholder] is the grey prompt shown while the entry is empty. [visibility:false] is
     password-style masking — prefer {!password_entry}, which is the accessible widget for
