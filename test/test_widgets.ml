@@ -982,43 +982,49 @@ let%expect_test "drop down constructor and defaults" =
     |}]
 ;;
 
-(* The one selection in this library that is checkable at the constructor, because a
-   drop-down's items are props rather than children: both the list and the index are in
-   the call, so "names no item" is decidable here rather than against a live tree. A
-   stack's [~visible_child] and a list box's [~selected] cannot be, which is why they are
-   inert-or-deferred instead. *)
-let%expect_test "drop down rejects an out-of-range selection at the constructor" =
-  Expect_test_helpers_core.require_does_raise (fun () ->
-    Node.drop_down ~items:[ "a"; "b" ] ~selected:2 ());
-  [%expect
-    {|
-    (Invalid_argument
-     "Node.drop_down: ~selected:2 names no item (there are 2), and -1 is the only out-of-range value with a meaning")
-    |}];
-  (* Below the range as well as above it, and [-2] is not a second spelling of "none". *)
+(* The constructor check is deliberately narrow, and the first round of this task had it
+   wrong. An index past the end of [~items] is {i not} rejected: [~items] and [~selected]
+   come from different Bonsai state in any real view, so deleting the last row leaves the
+   index stale for one frame -- and a constructor that raised on that frame would not
+   report a mistake, it would end the application (the exception leaves the Bonsai
+   computation, [Driver.frame] marks the driver broken, and nothing repaints again). That
+   state gets Tasks 6-8's ghost-key treatment instead: inert while it names nothing,
+   selected on the frame the list grows to include it, reported once meanwhile.
+   [test/live/live_text.ml] is where that is asserted, because it is GTK's behaviour
+   rather than the vtree's.
+
+   What is left here is the number no list of items could ever make valid. *)
+let%expect_test "drop down rejects only an index below -1" =
   Expect_test_helpers_core.require_does_raise (fun () ->
     Node.drop_down ~items:[ "a"; "b" ] ~selected:(-2) ());
   [%expect
     {|
     (Invalid_argument
-     "Node.drop_down: ~selected:-2 names no item (there are 2), and -1 is the only out-of-range value with a meaning")
-    |}];
-  (* An index into an empty list is the same mistake, and the message counts correctly. *)
-  Expect_test_helpers_core.require_does_raise (fun () ->
-    Node.drop_down ~items:[] ~selected:0 ());
-  [%expect
-    {|
-    (Invalid_argument
-     "Node.drop_down: ~selected:0 names no item (there are 0), and -1 is the only out-of-range value with a meaning")
+     "Node.drop_down: ~selected:-2 is not an index and is not -1 (which means nothing is selected); no list of items could make it valid")
     |}];
   (* [-1] is the one out-of-range value that means something, and it is accepted over a
-     non-empty list too -- GTK is what declines that, at mount, with a message naming the
-     node's path (see [Node.drop_down] and [test/live/live_text.ml]). Rejecting it here
-     would refuse a model that is asking a reasonable question. *)
+     non-empty list too -- GTK is what declines that, and it says so with the node's path
+     rather than by raising. *)
   print_s [%sexp (Node.drop_down ~items:[ "a"; "b" ] ~selected:(-1) () : Node.t)];
   [%expect
     {|
     ((kind (Drop_down ((items (a b)) (selected -1)))) (attrs ())
+     (children No_children))
+    |}];
+  (* An index past the end is a legal node: it is the frame between a list shrinking and
+     the index being recomputed, and every real application has one. *)
+  print_s [%sexp (Node.drop_down ~items:[ "a"; "b" ] ~selected:5 () : Node.t)];
+  [%expect
+    {|
+    ((kind (Drop_down ((items (a b)) (selected 5)))) (attrs ())
+     (children No_children))
+    |}];
+  (* Including into an empty list, which is what a picker renders while its query is still
+     running. *)
+  print_s [%sexp (Node.drop_down ~items:[] ~selected:0 () : Node.t)];
+  [%expect
+    {|
+    ((kind (Drop_down ((items ()) (selected 0)))) (attrs ())
      (children No_children))
     |}]
 ;;
@@ -1036,15 +1042,18 @@ let%expect_test "drop down props take part in equal_props" =
        : bool * bool * bool * bool)];
   [%expect {| (true false false false) |}];
   (* The items compare structurally, not physically: a view that rebuilds an equal list
-     every frame must not look like a change, or [w_drop_down] would rebuild GTK's model
+     every frame must not look like a change, or [w_drop_down] would splice GTK's model
      sixty times a second. *)
+  (* [b] is built rather than written as a literal: two structured constants with the same
+     contents are shared by the compiler, so a pair of literals here would be physically
+     equal and the comparison this case is about would never run (task-10-review.md M1). *)
   let a = [ "a"; "b" ] in
-  let b = [ "a"; "b" ] in
+  let b = List.map a ~f:String.capitalize |> List.map ~f:String.uncapitalize in
   print_s
     [%sexp
       ((phys_equal a b, Kind.equal_props (props ~items:a ()) (props ~items:b ()))
        : bool * bool)];
-  [%expect {| (true true) |}];
+  [%expect {| (false true) |}];
   print_s [%sexp (Kind.same_kind (props ()) (props ~selected:1 ()) : bool)];
   [%expect {| true |}]
 ;;

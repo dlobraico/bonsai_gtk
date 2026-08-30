@@ -815,13 +815,13 @@ let () =
     live
   in
   (* 2. The claim, and it goes first because it is the one that would pass silently
-     against a wrong implementation. Changing only the selection must not rebuild the
-     model. *)
+     against a wrong implementation. Changing only the selection must not write the model. *)
   let live =
     patch "selection alone" live (picker ~items:[ "60"; "90"; "120" ] ~selected:2 ())
   in
   (* And a patch that changes nothing at all -- which is every frame of an application at
-     rest -- writes nothing and rebuilds nothing. *)
+     rest -- writes nothing and touches nothing. [Kind.equal_props] is the outer guard
+     there: [update] is not called at all, so the items comparison is not even reached. *)
   let live =
     patch "nothing at all" live (picker ~items:[ "60"; "90"; "120" ] ~selected:2 ())
   in
@@ -838,27 +838,47 @@ let () =
     (Gobject.same before_idle (model live))
     (selected live)
     !scheduled;
-  (* 3. Changing the items rebuilds the model -- a different GObject -- {i and} re-applies
-     the selection inside the same patch, so the drop-down is never left showing the item
-     GTK's autoselect picked. Read back straight after [P.patch], with no fixup pass in
-     between, because nothing about this is deferred. *)
-  let live =
-    patch "items changed" live (picker ~items:[ "60"; "90"; "120"; "144" ] ~selected:3 ())
-  in
-  (* The same rebuild with the selection standing still: GTK resets the selection to item
-     0 as part of taking the new model (its autoselect again -- not to "nothing", which is
-     what a reading of the docs suggests), and [reassert] puts it back in the same frame. *)
+  (* 3. Changing the items writes into the same model object -- [same model: true] on a
+     line where the contents really moved is the whole claim -- and [reassert] applies the
+     selection inside the same patch. Read back straight after [P.patch], with no fixup
+     pass in between, because nothing about this is deferred.
+
+     One emission, not two: a splice carries [GtkSingleSelection]'s position across, so
+     the only write is the selection change the node itself asked for. Under a model
+     replacement this line read [same model: false, GTK emitted: 2] -- the autoselect
+     reset to item 0, then the re-apply. *)
   let live =
     patch
-      "items changed, selection unchanged"
+      "items grew, selection moved"
+      live
+      (picker ~items:[ "60"; "90"; "120"; "144" ] ~selected:3 ())
+  in
+  (* Items changing with [~selected] standing still {i and} staying in range, which is the
+     case a replacement could not leave alone: it would reset the selection to 0 and need
+     [reassert] to put it back. A splice keeps it, so nothing is written at all and GTK
+     emits nothing (task-10-review.md M2). *)
+  let live =
+    patch
+      "items changed, selection unchanged and still in range"
+      live
+      (picker ~items:[ "60"; "90"; "121"; "144" ] ~selected:3 ())
+  in
+  (* Items shrinking under the selection, which GTK cannot leave alone: position 3 does
+     not exist in a two-item model, so the splice moves the selection and the node's own
+     [~selected:1] is what lands. The label used to say "selection unchanged" while
+     changing it (task-10-review.md M2). *)
+  let live =
+    patch
+      "items shrank under the selection"
       live
       (picker ~items:[ "50"; "70" ] ~selected:1 ())
   in
-  (* 5. The reentrancy accounting, gathered: every line above emitted [notify::selected]
-     for real -- from [set_model] and from [set_selected] both -- and not one of those
-     emissions reached Bonsai, because they all happened inside a patch. Nothing is
-     deferred here, unlike a [GtkSearchEntry]'s debounced signal, so draining the main
-     loop changes nothing either. *)
+  (* 5. The reentrancy accounting, gathered: every line above that emitted
+     [notify::selected] emitted it for real -- from [set_selected], and from the splice
+     where the content moved the selection -- and not one of those emissions reached
+     Bonsai, because they all happened inside a patch. Nothing is deferred here, unlike a
+     [GtkSearchEntry]'s debounced signal, so draining the main loop changes nothing
+     either. *)
   drain ();
   printf "after a drain: GTK emitted %d in all, Bonsai heard %d\n" !notifies !scheduled;
   (* 4. The declined choice. The "user" picks item 0 outside any patch, which is a real
@@ -873,8 +893,17 @@ let () =
 
 (* ------------------------------------------------------------------------------------ *)
 
-(* [~selected:(-1)] over a non-empty list: a state GTK will not hold, treated exactly as
-   the text view treats text a [GtkTextBuffer] will not store.
+(* The two selections GTK will not hold, treated exactly as the text view treats text a
+   [GtkTextBuffer] will not store: written once, read back, remembered against the index,
+   reported once with the node's path, and then left alone.
+
+   Neither is a mistake a constructor can refuse. [~selected:(-1)] is a reasonable thing
+   for a model to ask (nothing chosen yet); an index past the end is a state a {i correct}
+   model passes through, because [~items] and [~selected] come from different Bonsai state
+   and a list that shrinks leaves the index stale for one frame. Raising on that frame
+   would end the application rather than report anything -- [Driver.frame] marks the
+   driver broken -- which is why the first round's constructor check was softened
+   (task-10-review.md I4).
 
    A [GtkDropDown] selects through an internal [GtkSingleSelection] whose [autoselect] is
    on and which no drop-down method exposes, so [set_selected] with the "nothing" sentinel
@@ -940,16 +969,38 @@ let () =
   let live = patch live (picker ~items:[ "a"; "b" ] ~selected:(-1) ()) in
   show "asking for none again" live;
   (* An empty list is the shape in which "nothing selected" is a state GTK holds: the
-     rebuild leaves the widget with no selection of its own, so there is nothing to write
+     splice leaves the widget with no selection of its own, so there is nothing to write
      and nothing to refuse. *)
   let live = patch live (picker ~items:[] ~selected:(-1) ()) in
   show "no items at all" live;
-  (* Back to a non-empty list with the same [~selected]. The rebuild forgot the refusal,
-     which it must: a model rebuild changes GTK's answer, and remembering across one would
+  (* Back to a non-empty list with the same [~selected]. The items change forgot the
+     refusal, which it must: it changes GTK's answer, and remembering across one would
      leave the library sure of something that is no longer true. So this is decided again,
      and reported again. *)
   let live = patch live (picker ~items:[ "a" ] ~selected:(-1) ()) in
   show "items again" live;
+  (* And the other shape, in the order a real application meets it. First a selection that
+     is perfectly ordinary. *)
+  let live = patch live (picker ~items:[ "a"; "b"; "c" ] ~selected:2 ()) in
+  show "three items, item 2 chosen" live;
+  (* Then the list shrinks under it -- one row deleted, the index not yet recomputed. GTK
+     ignores a position outside its model, silently, so the divergence is reported once
+     with the path and the widget keeps a selection that exists. The idle frames after it
+     say nothing and cost nothing. *)
+  let live = patch live (picker ~items:[ "a" ] ~selected:2 ()) in
+  show "list shrank under the index" live;
+  (* Then the list grows back and the index means something again -- and it is applied on
+     {i that} frame, not the next, which is Tasks 6-8's ghost-key rule over a different
+     kind of ghost. The items change forgets the refusal, [reassert] runs immediately
+     after it in the same patch, and the write lands. *)
+  let live = patch live (picker ~items:[ "a"; "b"; "c" ] ~selected:2 ()) in
+  show "list grew back to include it" live;
+  (* A model that stays wrong is reported once per distinct index rather than once per
+     frame, and moving from one impossible index to another is a new decision. *)
+  let live = patch live (picker ~items:[ "a" ] ~selected:2 ()) in
+  show "wrong again" live;
+  let live = patch live (picker ~items:[ "a" ] ~selected:7 ()) in
+  show "wrong differently" live;
   P.destroy ctx live
 ;;
 
@@ -969,9 +1020,12 @@ let () =
    too, which is one ref too many: [GtkStringList] descends from [GObject] rather than
    [GInitiallyUnowned], so it is not floating and the sink is a plain extra reference that
    the finaliser does not balance. A fresh model therefore reads a reference count of 2
-   where it should read 1, and one model is leaked per items change (never per frame). It
-   is a generator defect, it is recorded in [docs/m1-backlog.md] for Task 14, and the
-   count is pinned here so that the fix is visible in this golden when it lands. *)
+   where it should read 1. **Nothing in this library calls it on a reachable path any
+   more** -- [create] goes through [new_from_strings] and items changes splice into the
+   model that already exists, so the only caller left is [w_drop_down.ml]'s defensive
+   fallback for a model this library did not install. The count is still measured here,
+   because it is the evidence behind [docs/m1-backlog.md]'s generator entry and because
+   the entry covers every non-widget [*_new] in the binding, not just this one. *)
 let () =
   let scheduled = ref 0 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
@@ -979,7 +1033,7 @@ let () =
   let fresh = W.String_list.new_ (Some [| "x"; "y" |]) in
   printf
     "a fresh GtkStringList holds %d references (1 is correct; 2 is the stub's extra \
-     ref_sink)\n"
+     ref_sink, which nothing on a reachable path pays any more)\n"
     (Gobject.get_ref_count fresh);
   let live =
     P.mount ctx ~path:"gc" ~is_root:true (picker ~items:[ "a"; "b"; "c" ] ~selected:0 ())
@@ -996,22 +1050,39 @@ let () =
     "after 500 get_model wrappers and a full major: items=%s selected=%d\n"
     (Sexp.to_string [%sexp (items live : string list)])
     (selected live);
-  (* And the model the drop-down replaced: the old one is unreachable from OCaml and from
-     GTK both, and collecting it must not disturb the new one. *)
+  (* And the count the splice exists to keep flat. Read after a [Gc.full_major] each time,
+     because every [get_model] above and inside [items] leaves a wrapper holding a
+     reference until it is collected -- so an unstable number here would be this test's
+     noise rather than a leak. Under model replacement this figure was irrelevant (each
+     items change stranded a whole model at count 1, unreachable and uncounted); under
+     splice the model is the same object throughout, so its count {i is} the measurement. *)
+  let model_refs live =
+    Gc.full_major ();
+    Gobject.get_ref_count (model live)
+  in
+  let before = model_refs live in
+  let identical = ref true in
   let live =
-    Scheduler.with_patch_guard scheduler (fun () ->
-      P.patch
-        ctx
-        ~path:"gc"
-        ~is_root:true
-        live
-        (picker ~items:[ "d"; "e" ] ~selected:1 ()))
+    List.fold
+      [ [ "a"; "b" ]; [ "a"; "b"; "c"; "d" ]; [ "e" ]; [ "a"; "b"; "c" ] ]
+      ~init:live
+      ~f:(fun live items ->
+        let m = model live in
+        let live =
+          Scheduler.with_patch_guard scheduler (fun () ->
+            P.patch ctx ~path:"gc" ~is_root:true live (picker ~items ~selected:0 ()))
+        in
+        if not (Gobject.same m (model live)) then identical := false;
+        live)
   in
   Gc.full_major ();
   printf
-    "after a rebuild and a full major: items=%s selected=%d\n"
-    (Sexp.to_string [%sexp (items live : string list)])
-    (selected live);
+    "four items changes later: same model object throughout: %b, references %d -> %d, \
+     items=%s\n"
+    !identical
+    before
+    (model_refs live)
+    (Sexp.to_string [%sexp (items live : string list)]);
   P.destroy ctx live
 ;;
 
@@ -1033,14 +1104,28 @@ let () =
   let bar ?min ?max ?mode ?inverted ~value () =
     Node.window ~title:"levels" (Node.level_bar ?min ?max ?mode ?inverted ~value ())
   in
+  (* The offset style classes GTK has put on the bar's internal blocks, printed beside the
+     dump so that the write-order guard is legible rather than incidental. They are the
+     [GtkGizmo] children's CSS classes, which the dump does carry -- but buried two levels
+     into a nested sexp, where a reader promoting a golden would read a change as noise. *)
+  let offsets live =
+    let bar = List.hd_exn (Bonsai_gtk.Private.Gtk_import.widget_children live.P.widget) in
+    Bonsai_gtk.Private.Gtk_import.widget_children bar
+    |> List.concat_map ~f:Bonsai_gtk.Private.Gtk_import.widget_children
+    |> List.concat_map ~f:(fun g ->
+      Array.to_list (Bonsai_gtk.Private.Gtk_import.Widget.get_css_classes g))
+    |> String.concat ~sep:" "
+  in
   let live = P.mount ctx ~path:"bar" ~is_root:true (bar ~value:0.4 ()) in
   print_s (Live_tree.dump live.widget);
+  printf "offsets: %s\n" (offsets live);
   let patch live node =
     let live =
       Scheduler.with_patch_guard scheduler (fun () ->
         P.patch ctx ~path:"bar" ~is_root:true live node)
     in
     print_s (Live_tree.dump live.widget);
+    printf "offsets: %s\n" (offsets live);
     live
   in
   (* The range moving up, which is the order-sensitive direction: the new minimum is above
@@ -1059,6 +1144,14 @@ let () =
   let live = patch live (bar ~min:0.8 ~max:1. ~value:0.5 ()) in
   let live =
     patch live (bar ~min:0. ~max:5. ~mode:Discrete ~inverted:true ~value:3. ())
+  in
+  (* The ordinary case, and until now the one this block did not have: the value moving
+     with the bounds and everything else standing still, which is what an application
+     spends all its time doing. Every other patch here changes a bound, so deleting the
+     [old.value <> new_.value] disjunct from [w_level_bar.ml]'s value condition left the
+     whole suite green (task-10-review.md I3). It does not any more. *)
+  let live =
+    patch live (bar ~min:0. ~max:5. ~mode:Discrete ~inverted:true ~value:4. ())
   in
   P.destroy ctx live;
   (* What the ordering is defence against, measured on a raw widget rather than claimed in

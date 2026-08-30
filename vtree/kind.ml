@@ -362,8 +362,9 @@ type notebook_props =
    that.
 
    [items] is compared by [equal_list_string] like any other field, and that comparison is
-   what decides whether the model is rebuilt -- see [w_drop_down.ml], which pays for a
-   whole-model replacement only when this field really moved. *)
+   what decides whether the GTK model is written at all -- see [w_drop_down.ml], which
+   splices the whole content into the model the drop-down already holds, and only when
+   this field really moved. *)
 type drop_down_props =
   { items : string list
   ; selected : int
@@ -475,8 +476,16 @@ let name = function
    The cost is a string comparison per node per patch in place of a tag comparison. The
    strings are short literals and [String.equal] compares lengths first, so two different
    kinds nearly always answer on the length; two of the same kind compare a handful of
-   bytes. That is the price of the wildcard going away, and it is worth paying.
-   (task-9-report.md's carry 1.) *)
+   bytes.
+
+   {b A [Native] node additionally allocates two strings per comparison}, since [name]
+   builds ["Native:" ^ n.name] for each side, where the old matrix compared the two
+   [n.name]s with no allocation at all. That is the real cost of this change and it is
+   worth naming: it is two short minor-heap allocations per native node per patch, against
+   a wildcard that made a forgotten arm destroy and remount a widget sixty times a second.
+   If native nodes ever become common enough for that to matter, the fix is a [tag]
+   function returning a variant -- exhaustive like [name], and allocation-free -- rather
+   than going back to the matrix. (task-9-report.md's carry 1; task-10-review.md M4.) *)
 let same_kind a b = String.equal (name a) (name b)
 
 let equal_props a b =

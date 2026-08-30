@@ -17,40 +17,61 @@ let to_gtk = function
 
 let of_gtk n = if n = Gtk_constants.invalid_list_position then -1 else n
 
-(* The model, replaced rather than mutated.
+(* The items, written into the model the drop-down already holds.
 
-   [GtkStringList] has [append], [remove] and [splice], so an in-place edit is available
-   -- and computing a minimal splice from two string lists is a diff nobody has asked for.
-   A whole-model replacement is one call and is obviously correct; what makes it
-   affordable is that it happens only when the items actually changed, which for the
-   drop-downs a real application has (a fixed list of modes, a list of setlists that
-   changes when the database does) is rare. [update] below is what enforces that, and
-   [test/live/live_text.ml] asserts it by GObject identity rather than by comment.
+   [GtkStringList] has [append], [remove] and [splice], and the brief's ruling rejected
+   computing a minimal splice from two string lists -- a diff nobody has asked for. It is
+   right to. But [splice] does not require a diff: [splice model 0 n_old new_items]
+   replaces the whole content in one call, which is the same "no diff, one call" property
+   a model replacement has and strictly better on four counts:
 
-   It is not cheap: replacing the model closes an open popup, resets the selection and
-   re-lays-out the button. Doing it on every frame would make the widget unusable rather
-   than merely slow, which is why the identity check is a correctness matter and not an
-   optimisation.
+   - {b it allocates no GObject}, so it does not pay [String_list.new_]'s leaked reference
+     (the stub reference-sinks a non-floating constructor return, so one model plus its
+     copied strings is leaked per call, permanently, with no [unref] reachable from OCaml
+     to compensate -- see [docs/m1-backlog.md]);
+   - {b the selection survives}. [GtkSingleSelection] carries its position across a splice
+     and only moves it when the content forces it, where taking a whole new model resets
+     it to item 0. So "the widget is never left showing an item the model did not choose"
+     stops depending on the [update]-then-[reassert] ordering and becomes true by
+     construction; the ordering still holds and is still what corrects the cases where the
+     content {i does} force a move;
+   - it therefore emits {b half} the [notify::selected] traffic: one write's worth rather
+     than a reset plus a re-apply (measured, and the counts are in the golden);
+   - it skips the popup close and the model swap that [set_model] forces.
 
-   [String_list.t]'s phantom row is [`string_list | `object_] and [List_model.t]'s is
-   [`list_model], so a [:>] coercion does not typecheck: they are different interfaces,
-   not sub- and supertype. [from_gobject] is the checked interface cast -- the same idiom
-   [w_entry.ml] uses for [Editable.from_gobject] -- and it raises [Failure] naming the
-   type rather than corrupting anything if it is ever handed the wrong object.
+   The model object is consequently {b never replaced} after [create]. That is a stronger
+   claim than the one this file used to make, and it is the one [test/live/live_text.ml]
+   asserts, by GObject identity across every patch in the file.
 
-   {b The wrapper leaks one GObject per call}, and it is the binding rather than this
-   code: [ml_gtk_string_list_new] calls [g_object_ref_sink] on the result, which is right
-   for the floating widgets around it and wrong here -- [GtkStringList] descends from
-   [GObject], not [GInitiallyUnowned], so it is not floating and [ref_sink] is a plain
-   extra ref that the wrapper's finaliser does not balance. Measured: a fresh
-   [String_list.new_] reads [Gobject.get_ref_count = 2]. The leak is one model per
-   {i items change} (never per frame), it is recorded in [docs/m1-backlog.md] as a
-   generator fix for Task 14, and [test/live/live_text.ml] pins the refcount so the fix is
-   visible when it lands. The create path avoids it entirely by going through
-   [new_from_strings]. *)
+   {b Why the cast is safe, and what happens if it ever is not.} [get_model] answers a
+   [List_model.t] -- the interface -- and [splice] is a [GtkStringList] method, so this
+   has to go the other way from [from_gobject]'s checked interface cast and there is no
+   checked downcast in the binding. The invariant is that this library installs a
+   [GtkStringList] and nothing else: [create] uses [new_from_strings], and the only other
+   writer of the model property is the fallback below. Rather than rest on that, the type
+   is checked at runtime -- one [g_type_is_a] per items change -- and a model that is
+   somehow not a [GtkStringList] falls back to replacement, which is correct for any model
+   and merely leaks. So the invariant is enforced rather than assumed, and breaking it
+   later degrades rather than corrupts. *)
+let string_list_type = lazy (Gobject.Type.from_name "GtkStringList")
+
 let set_items (d : W.Drop_down.t) items =
-  let sl = W.String_list.new_ (Some (Array.of_list items)) in
-  W.Drop_down.set_model d (Some (List_model.from_gobject sl))
+  let additions = Array.of_list items in
+  match W.Drop_down.get_model d with
+  | Some model when Gobject.Type.is_a (Gobject.get_type model) (force string_list_type) ->
+    let sl : W.String_list.t = cast model in
+    (* [n_removals] must be exact -- [gtk_string_list_splice] requires
+       [position + n_removals <= length] -- so it is read off the model rather than off
+       the previous node, which is the same reason every controlled prop compares against
+       the widget. *)
+    W.String_list.splice sl 0 (List_model.get_n_items model) (Some additions)
+  | Some _ | None ->
+    (* Unreachable through this library's own constructors, and kept because "unreachable"
+       is an invariant rather than a type. It is also the one path that still calls the
+       leaking [String_list.new_]; a model that got here would leak one GObject per items
+       change, which is worth strictly less than corrupting memory with an unchecked cast. *)
+    let sl = W.String_list.new_ (Some additions) in
+    W.Drop_down.set_model d (Some (List_model.from_gobject sl))
 ;;
 
 (* What this drop-down has already asked GTK for and been refused, per widget.
@@ -112,32 +133,57 @@ let forget_refusal w =
 
 (* Why GTK is still showing something else after a write.
 
-   The reachable case is the first, and it is the whole reason this machinery exists. A
-   [GtkDropDown] selects through an internal [GtkSingleSelection] whose [autoselect]
-   property is [true] and which no drop-down method exposes, so
-   [gtk_drop_down_set_selected] with the "nothing" sentinel over a non-empty model does
-   {i nothing at all}: the item that was selected stays selected and GTK does not even
-   emit [notify::selected] (measured -- a bar of two items, [set_selected invalid], zero
-   notifications and the selection unchanged). [~selected:(-1)] over a non-empty list is
-   therefore a state the widget will not hold, exactly as text that is not valid UTF-8 is
-   a state a [GtkTextBuffer] will not hold, and it gets the same treatment: written once,
-   refused, reported with the node's path, and then left alone.
+   Two shapes, and they are the two states a [GtkDropDown] will not hold. Neither is a
+   mistake the constructor can refuse, because both are states a correct model passes
+   {i through}: the vtree's job here is to say what happened, not to end the frame.
 
-   The second case is unreachable today -- [Node.drop_down] rejects an in-range-violating
-   [~selected] at the constructor, where the items are in hand -- and is written out
-   anyway so that the mechanism is about "GTK declined" rather than about one cause of it.
-   GTK ignores an out-of-range position silently too (measured: [set_selected 5] on a
-   three-item model leaves the selection where it was). *)
-let refusal ~selected ~live =
+   {b Nothing selected, over a non-empty list.} A [GtkDropDown] selects through an
+   internal [GtkSingleSelection] whose [autoselect] property is [true] and which no
+   drop-down method exposes, so [gtk_drop_down_set_selected] with the "nothing" sentinel
+   over a non-empty model does nothing at all: the item that was selected stays selected
+   and GTK does not even emit [notify::selected] (measured -- two items,
+   [set_selected invalid], zero notifications, selection unchanged).
+
+   {b An index past the end.} GTK ignores a position outside its model, silently and
+   without a notification (measured: [set_selected 5] on a three-item model leaves the
+   selection where it was). This is the state a model reaches by holding its items and its
+   index in two different pieces of Bonsai state and shrinking the list -- for one frame
+   the index is stale, and it is a frame every real application will have. It is the
+   drop-down's version of Tasks 6-8's ghost key, and it gets the ghost key's answer: inert
+   while it names nothing, selected on the frame the list grows to include it, and
+   reported once so that a model which is {i permanently} wrong is not silent.
+
+   Both are written once, read back, remembered against the index, and reported with the
+   node's path -- the treatment [w_text_view.ml] gives text a [GtkTextBuffer] will not
+   store. *)
+let n_items (d : W.Drop_down.t) =
+  match W.Drop_down.get_model d with
+  | None -> 0
+  | Some model -> List_model.get_n_items model
+;;
+
+let refusal (d : W.Drop_down.t) ~selected ~live =
+  let showing =
+    if live = -1 then "nothing is selected" else sprintf "item %d is still selected" live
+  in
   if selected = -1
   then
     sprintf
       "~selected:-1 asks for nothing to be selected, but a GtkDropDown over a non-empty \
        list keeps a selection (its GtkSingleSelection has autoselect set, and no \
-       GtkDropDown method turns that off); item %d is still selected. Render ~items:[] \
-       for a drop-down with nothing in it, or select an item."
-      live
-  else sprintf "GTK declined ~selected:%d and kept %d" selected live
+       GtkDropDown method turns that off); %s. Render ~items:[] for a drop-down with \
+       nothing in it, or select an item."
+      showing
+  else
+    sprintf
+      "~selected:%d names no item: the list holds %d. GTK ignores a position outside its \
+       model, so %s -- and %d will be selected on the frame the list grows to include \
+       it. If the index and the items come from different state, clamp the index where \
+       the view builds the node."
+      selected
+      (n_items d)
+      showing
+      selected
 ;;
 
 (* Write the selection and check that it landed.
@@ -152,14 +198,14 @@ let select (d : W.Drop_down.t) st ~selected =
   then st.refused <- None
   else (
     st.refused <- Some selected;
-    st.unreported <- Some (refusal ~selected ~live:(of_gtk live)))
+    st.unreported <- Some (refusal d ~selected ~live:(of_gtk live)))
 ;;
 
 (* Whether this exact selection has already been decided against.
 
    Safe to consult {i before} the comparison with the widget, on [w_text_view.ml]'s
    [already_refused] reasoning: [st.refused] is cleared by every write that lands and by
-   every model rebuild, which are the only two things that can change GTK's answer, so a
+   every items change, which are the only two things that can change GTK's answer, so a
    matching memo means the write can only fail again. Without it, a drop-down parked on
    [~selected:(-1)] over a non-empty list would set the property on every idle frame
    forever -- each one a C call GTK throws away, and each one inside a
@@ -194,7 +240,7 @@ let same_items a b = phys_equal a b || List.equal String.equal a b
    differences worth naming: the raw version is [~after:true] where the generated helpers
    and this one are [~after:false], and the raw version fires for the {i library's} writes
    too, where this one is behind the reentrancy guard -- which matters here more than for
-   most signals, because re-applying the selection after a model rebuild is a write the
+   most signals, because re-applying the selection after an items change is a write the
    library makes on the user's behalf inside a patch. *)
 let selected_changed : Signals.spec =
   Read_back

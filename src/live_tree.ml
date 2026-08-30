@@ -126,7 +126,7 @@ let selected_child_count (b : W.Flow_box.t) =
 (* The strings a [GtkDropDown] is showing, read back out of its model.
 
    Worth the trouble rather than printing the button and leaving the contents invisible:
-   without this a golden could not tell a drop-down whose model was rebuilt from one whose
+   without this a golden could not tell a drop-down whose model was written from one whose
    model was not, which is the claim [test/live/live_text.ml] is making.
 
    Three calls, each checked against its stub. [get_model] is transfer-none and its stub
@@ -146,7 +146,20 @@ let drop_down_items (d : W.Drop_down.t) =
     List.init (List_model.get_n_items model) ~f:(fun i ->
       match List_model.get_object model i with
       | None -> "<none>"
-      | Some o -> W.String_object.get_string (cast o))
+      (* The one unchecked downcast in the new code, so it is checked. [get_object]
+         answers [`object_] and there is no checked downcast in the binding --
+         [from_gobject] is an {i interface} cast and runs the other way -- so a model of
+         some other type would be type confusion here rather than a [Failure]. The
+         invariant is [w_drop_down.ml]'s (this library installs a [GtkStringList] and
+         nothing else), and it is enforced there by the same [g_type_is_a] rather than
+         assumed; asking again costs one type check per item in a test-only dump and keeps
+         the two ends honest independently. *)
+      | Some o ->
+        if Gobject.Type.is_a
+             (Gobject.get_type o)
+             (Gobject.Type.from_name "GtkStringObject")
+        then W.String_object.get_string (cast o)
+        else "<not a string>")
 ;;
 
 let level_bar_mode_name : Gtk_enums.levelbarmode -> string = function
@@ -637,7 +650,7 @@ let rec dump (w : Widget.t) : Sexp.t =
            ])
      (* [items] and [selected] are printed unconditionally, like a notebook's [pages] and
         [current-page]: they are what the node asked for rather than GTK defaults, and a
-        dump that omitted them could not show a model rebuild landing (or a controlled
+        dump that omitted them could not show an items change landing (or a controlled
         write failing to). [selected] prints as [()] for "nothing", which is the same
         nothing a stack prints as [(visible ())] -- a dump is the wrong place to make a
         reader know that 4294967295 is not an index. *)

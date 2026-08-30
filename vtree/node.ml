@@ -620,17 +620,25 @@ let notebook
     (List children)
 ;;
 
-(* The one selection in this library that is checkable at construction, because a
-   drop-down's items are props rather than children: the list and the index are both in
-   this call, so an index naming nothing is a mistake that can be caught at the line that
-   made it -- unlike a stack's [~visible_child] or a list box's [~selected], where "not
-   there yet" and "never" are the same thing until the tree exists.
+(* The check here is deliberately narrow, and the first round of this task got it wrong.
 
-   [-1] is the one out-of-range value with a meaning, and it means nothing is selected.
-   GTK's own sentinel is [GTK_INVALID_LIST_POSITION] -- [G_MAXUINT], which OCaml sees as
-   4294967295 -- and it is translated at the boundary in [w_drop_down.ml] and nowhere
-   else. See [node.mli] for what GTK does with a [-1] over a non-empty list, which is not
-   what it looks like. *)
+   An index {i past the end of the items} is not rejected, even though the list and the
+   index are both in this call and it would be trivial to. The two are not one value: in a
+   real view they come from different Bonsai state -- a list from a query, an index from
+   the user's picks -- so deleting the last row leaves the index stale for exactly one
+   frame. Raising on that frame does not report a mistake, it {i ends the application}:
+   the exception comes out of the Bonsai computation, [Driver.frame] marks the driver
+   broken and every later frame is a no-op (see the note at the top of this file's mli).
+   Every other selection in M2 chose inert-or-deferred to survive that transient, which is
+   Tasks 6-8's ghost-key rule, and this one now does too: [w_drop_down.ml] writes the
+   index, sees GTK ignore it, reports it once with the node's path, and selects it on the
+   frame the list grows to include it.
+
+   What is left is the number that can never become valid however the items change. [-1]
+   means "nothing selected"; anything below it is a typo. GTK's own sentinel is
+   [GTK_INVALID_LIST_POSITION] -- [G_MAXUINT], which OCaml sees as 4294967295 -- and it is
+   translated at the boundary in [w_drop_down.ml] and nowhere else. See [node.mli] for
+   what GTK does with a [-1] over a non-empty list, which is not what it looks like. *)
 let drop_down
   ?key
   ?attrs
@@ -640,15 +648,12 @@ let drop_down
   ~selected
   ()
   =
-  let n = List.length items in
-  if selected <> -1 && (selected < 0 || selected >= n)
+  if selected < -1
   then
     invalid_argf
-      "Node.drop_down: ~selected:%d names no item (there %s %d), and -1 is the only \
-       out-of-range value with a meaning"
+      "Node.drop_down: ~selected:%d is not an index and is not -1 (which means nothing \
+       is selected); no list of items could make it valid"
       selected
-      (if n = 1 then "is" else "are")
-      n
       ();
   make ?key ?attrs (Drop_down { items; selected; enable_search; show_arrow }) No_children
 ;;

@@ -75,9 +75,10 @@ mounted with unstorable text: "" (reports ((born/0"text is not valid UTF-8, whic
 selection alone: items=(60 90 120) selected=2 (same model: true, GTK emitted: 1, reached Bonsai: 0)
 nothing at all: items=(60 90 120) selected=2 (same model: true, GTK emitted: 0, reached Bonsai: 0)
 five idle frames: same model: true, selected=2, reached Bonsai: 0
-items changed: items=(60 90 120 144) selected=3 (same model: false, GTK emitted: 2, reached Bonsai: 0)
-items changed, selection unchanged: items=(50 70) selected=1 (same model: false, GTK emitted: 2, reached Bonsai: 0)
-after a drain: GTK emitted 5 in all, Bonsai heard 0
+items grew, selection moved: items=(60 90 120 144) selected=3 (same model: true, GTK emitted: 1, reached Bonsai: 0)
+items changed, selection unchanged and still in range: items=(60 90 121 144) selected=3 (same model: true, GTK emitted: 0, reached Bonsai: 0)
+items shrank under the selection: items=(50 70) selected=1 (same model: true, GTK emitted: 1, reached Bonsai: 0)
+after a drain: GTK emitted 3 in all, Bonsai heard 0
 user picked: selected=0 (reached Bonsai: 1)
 model declines: items=(50 70) selected=1 (same model: true, GTK emitted: 1, reached Bonsai: 0)
 mounted asking for none: selected=0 (reports ((none/0"~selected:-1 asks for nothing to be selected, but a GtkDropDown over a non-empty list keeps a selection (its GtkSingleSelection has autoselect set, and no GtkDropDown method turns that off); item 0 is still selected. Render ~items:[] for a drop-down with nothing in it, or select an item.")))
@@ -90,32 +91,46 @@ no items at all: selected=-1 (reports ())
 no items at all, five idle frames later: selected=-1 (reports ())
 items again: selected=0 (reports ((none/0"~selected:-1 asks for nothing to be selected, but a GtkDropDown over a non-empty list keeps a selection (its GtkSingleSelection has autoselect set, and no GtkDropDown method turns that off); item 0 is still selected. Render ~items:[] for a drop-down with nothing in it, or select an item.")))
 items again, five idle frames later: selected=0 (reports ())
-a fresh GtkStringList holds 2 references (1 is correct; 2 is the stub's extra ref_sink)
+three items, item 2 chosen: selected=2 (reports ())
+three items, item 2 chosen, five idle frames later: selected=2 (reports ())
+list shrank under the index: selected=0 (reports ((none/0"~selected:2 names no item: the list holds 1. GTK ignores a position outside its model, so item 0 is still selected -- and 2 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
+list shrank under the index, five idle frames later: selected=0 (reports ())
+list grew back to include it: selected=2 (reports ())
+list grew back to include it, five idle frames later: selected=2 (reports ())
+wrong again: selected=0 (reports ((none/0"~selected:2 names no item: the list holds 1. GTK ignores a position outside its model, so item 0 is still selected -- and 2 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
+wrong again, five idle frames later: selected=0 (reports ())
+wrong differently: selected=0 (reports ((none/0"~selected:7 names no item: the list holds 1. GTK ignores a position outside its model, so item 0 is still selected -- and 7 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
+wrong differently, five idle frames later: selected=0 (reports ())
+a fresh GtkStringList holds 2 references (1 is correct; 2 is the stub's extra ref_sink, which nothing on a reachable path pays any more)
 after 500 get_model wrappers and a full major: items=(a b c) selected=0
-after a rebuild and a full major: items=(d e) selected=1
+four items changes later: same model object throughout: true, references 4 -> 4, items=(a b c)
 (GtkWindow (title (levels)) (css (background)) hidden
  (children
   (GtkLevelBar (value 0.4) (css (horizontal continuous))
    (children
     (GtkGizmo
      (children (GtkGizmo (css (high filled))) (GtkGizmo (css (empty)))))))))
+offsets: high filled empty
 (GtkWindow (title (levels)) (css (background)) hidden
  (children
   (GtkLevelBar (value 3) (min 2) (max 10) (css (horizontal continuous))
    (children
     (GtkGizmo (children (GtkGizmo (css (filled))) (GtkGizmo (css (empty)))))))))
+offsets: filled empty
 (GtkWindow (title (levels)) (css (background)) hidden
  (children
   (GtkLevelBar (value 0.5) (css (horizontal continuous))
    (children
     (GtkGizmo
      (children (GtkGizmo (css (high filled))) (GtkGizmo (css (empty)))))))))
+offsets: high filled empty
 (GtkWindow (title (levels)) (css (background)) hidden
  (children
   (GtkLevelBar (value 0.5) (min 0.8) (css (horizontal continuous))
    (children
     (GtkGizmo
      (children (GtkGizmo (css (high filled))) (GtkGizmo (css (empty)))))))))
+offsets: high filled empty
 (GtkWindow (title (levels)) (css (background)) hidden
  (children
   (GtkLevelBar (value 3) (max 5) (mode discrete) inverted
@@ -125,6 +140,17 @@ after a rebuild and a full major: items=(d e) selected=1
      (children (GtkGizmo (css (empty))) (GtkGizmo (css (empty)))
       (GtkGizmo (css (filled))) (GtkGizmo (css (filled)))
       (GtkGizmo (css (filled)))))))))
+offsets: empty empty filled filled filled
+(GtkWindow (title (levels)) (css (background)) hidden
+ (children
+  (GtkLevelBar (value 4) (max 5) (mode discrete) inverted
+   (css (horizontal discrete))
+   (children
+    (GtkGizmo
+     (children (GtkGizmo (css (empty))) (GtkGizmo (css (filled)))
+      (GtkGizmo (css (filled))) (GtkGizmo (css (filled)))
+      (GtkGizmo (css (filled)))))))))
+offsets: empty filled filled filled filled
 raw widget, minimum written first: min=2 max=1 value=2
 raw widget, maximum written second: min=2 max=10 value=2 (the value the caller asked for is gone)
 driver, after mount: 0 (handler saw 0)

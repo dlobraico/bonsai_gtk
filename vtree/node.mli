@@ -8,6 +8,33 @@ type t =
   }
 [@@deriving sexp_of]
 
+(** {1 What a constructor's [Invalid_argument] costs}
+
+    Several constructors below reject a node they can prove is wrong — a
+    {!scrolled_window} whose minimum content size exceeds its maximum, a {!list_box} child
+    with no [~key], a {!level_bar} whose [~min] is above its [~max]. Each of those is a
+    mistake no model state can make correct, and rejecting it at the line that made it is
+    worth far more than a GTK critical nobody reads.
+
+    {b The cost of getting that judgement wrong is the whole application.} These
+    constructors run inside the Bonsai computation, so the exception comes out of
+    [Bonsai_gtk.Expert.Driver.frame], which marks the driver broken, abandons the pending
+    fixups and re-raises; every frame after it is a no-op and the window never repaints
+    again. There is no recovery and no partial render — it is not a widget that fails, it
+    is the process's UI.
+
+    So the rule these checks follow, and which a new one should follow:
+    {b reject only what no later frame could make valid.} A state a correct model passes
+    {i through} — an index that is stale for the one frame between a list shrinking and
+    the index being recomputed, a key naming a child that has not been added yet — is not
+    rejected here. It is inert while it names nothing, applied on the frame it becomes
+    meaningful, and reported once through the patcher's channel so that a model which is
+    {i permanently} wrong is not silent. That is Tasks 6–8's ghost-key rule, and
+    {!drop_down}'s [~selected] follows it.
+
+    A view that would rather fail loudly than render something odd can still assert
+    whatever it likes in its own code; what it cannot do is un-break the driver. *)
+
 (** A [GtkLabel]. Every optional property defaults to GTK's own default, so a label built
     from text alone is a plain [GtkLabel].
 
@@ -994,12 +1021,22 @@ val notebook
     an item has is its position. That is also why {!Attr.on_selected_changed} carries an
     index — the handler already holds the list it indexes into.
 
-    It is why [~selected] is checked {i here}. A stack's [~visible_child] and a list box's
-    [~selected] name children that may not exist yet, so "not there" and "never" are the
-    same thing until the whole tree is mounted, and those are applied from the fixup pass
-    and treat an unknown name as inert. A drop-down's items are in this call, so an index
-    naming no item is a mistake with an answer at the line that made it: any [~selected]
-    other than [-1] outside [0, length items) is [Invalid_argument] from this constructor.
+    It is {i not}, however, why an out-of-range [~selected] would be rejected here — and
+    it is not. Only a [~selected] below [-1] raises, because no list of items could make
+    that number valid. An index {i past the end} is a state a correct model passes
+    through: [~items] and [~selected] come from different Bonsai state in any real view (a
+    list from a query, an index from the user's picks), so deleting the last row leaves
+    the index stale for one frame, and raising on that frame would end the application
+    rather than report anything — see "What a constructor's [Invalid_argument] costs" at
+    the top of this file.
+
+    So an out-of-range index gets the ghost-key treatment {!list_box}'s [~selected] gets:
+    it is written to the widget, GTK ignores it (silently — a position outside the model
+    is a no-op there, with no notification), the divergence is reported once through the
+    patcher's channel with the node's path, and the index is selected {i on the frame} the
+    list grows to include it. A view that would rather clamp than wait writes
+    [~selected:(Int.min selected (List.length items - 1))], which is the one-line fix the
+    reported message names.
 
     And it is why [~selected] is controlled in the ordinary way — compared against the
     {i widget} on every frame, not against the previous node, so a choice the model
@@ -1018,12 +1055,21 @@ val notebook
     is left free to ask for something else. [~selected:(-1)] over [~items:[]] is honoured,
     which is the shape "nothing selected yet" usually has anyway.
 
-    Changing [~items] {i rebuilds} GTK's model, which is a real cost — it closes an open
-    popup and re-lays-out the button — so it happens only when the list actually differs
-    from the previous node's, never on an idle frame. Rebuilding also resets the widget's
-    selection (to item 0, GTK's autoselect again, not to "nothing"), so the library
-    re-applies [~selected] in the same frame and the drop-down is never left showing the
-    wrong item for a frame.
+    While a selection is parked like that, {b the prop is not being enforced}: the
+    remembered refusal is consulted before the widget is read, so a choice the user makes
+    afterwards is left standing rather than snapped back. That is the honest behaviour
+    rather than an oversight — the model asked for a state no item satisfies, so there is
+    nothing to snap back {i to} — and {!Attr.on_selected_changed} still reports the user's
+    choice, so a model that wants to take it can. The moment the model asks for a
+    selection GTK will hold, control resumes.
+
+    Changing [~items] writes the whole list into the model GTK already holds, in one call,
+    and only when the list actually differs from the previous node's — never on an idle
+    frame. The model object itself is never replaced after the widget is created, which is
+    what keeps a change cheap and keeps the selection: GTK carries the selected position
+    across, and moves it only when the new contents force it (deleting the item that was
+    selected). Where it does move, the library re-applies [~selected] in the same frame,
+    so the drop-down is never left showing an item the model did not choose.
 
     [~enable_search] adds a search entry to the popup and defaults to GTK's [false]; it is
     worth having over a few dozen items and pointless over four. [~show_arrow] defaults to

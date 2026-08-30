@@ -155,10 +155,10 @@ let controls (graph @ local) =
 
    The drop-down is here rather than on the Lists page for the same reason it is not a
    container: its items are props. The "add a preset" button is what that costs and what
-   it buys -- it changes the {i item list}, which is the one thing that rebuilds GTK's
-   model, and the selection survives it because the library re-applies it in the same
-   frame. Choosing a scale with the drop-down changes no items at all, so the model is
-   left alone. *)
+   it buys -- it changes the {i item list}, which is the one thing that writes GTK's
+   model, and the selection survives it because a whole-content splice carries the
+   position across. Choosing a scale with the drop-down changes no items at all, so the
+   model is not touched. *)
 let scales = [ "percent (0-100)"; "rating (0-5)"; "eighths (0-8)" ]
 
 let numbers (graph @ local) =
@@ -204,8 +204,10 @@ let numbers (graph @ local) =
         ~spacing:8
         [ Node.drop_down
             ~attrs:[ Attr.on_selected_changed set_scale ]
+              (* No guard on [~selected]: an index the list does not (yet) hold is inert
+                 and reported, not an exception, so the view says what the model means. *)
             ~items:scale_names
-            ~selected:(if List.is_empty scale_names then -1 else scale)
+            ~selected:scale
             ()
         ; Node.button
             ~attrs:
@@ -213,7 +215,7 @@ let numbers (graph @ local) =
                   (set_scale_names
                      (scale_names @ [ sprintf "preset %d" (List.length scale_names - 2) ]))
               ]
-            ~label:"Add a preset (rebuilds the model, keeps the selection)"
+            ~label:"Add a preset (writes the model, keeps the selection)"
             ()
         ]
     ; Node.level_bar

@@ -209,6 +209,20 @@ Tests:
 - **`test/handle/test_gallery.ml`'s "exactly once" comment is inaccurate** — `Node.button`
   appears three times. The substance ("at least once", all 29) holds. tests M3.
 
+## Documentation M2 owes M3 (Task 15)
+- **What a constructor's `Invalid_argument` costs, in one place.** Several `Node` constructors
+  reject a node they can prove is wrong (`scrolled_window`'s content bounds, a keyed
+  container's missing `~key`, `level_bar`'s inverted or negative range). Those run inside the
+  Bonsai computation, so the exception leaves `Driver.frame`, which marks the driver broken,
+  abandons the pending fixups and re-raises — **every later frame is a no-op and the window
+  never repaints again.** `vtree/node.mli` now opens with a section saying so and stating the
+  rule the checks follow: *reject only what no later frame could make valid*; a state a
+  correct model passes through (a stale index, a key whose child has not arrived) is inert,
+  applied on the frame it becomes meaningful, and reported once through
+  `Patcher.ctx.report`. The README's Limitations section should carry one sentence of this,
+  because it is the difference between a diagnostic and an outage and it is not discoverable
+  from a type. `Node.drop_down`'s `~selected` is the worked example (task-10-review.md I4).
+
 ## API shape decisions before they become breaking
 - `Bonsai_gtk_test.Action.t` is a public variant with the same exhaustive-match exposure as
   `Attr.t`; M1 took it from one constructor to five.
@@ -429,10 +443,14 @@ Do not "fix" these when an expected file surprises you:
   `Gobject.get_ref_count` on a fresh `String_list.new_` is **2**, and
   `test/live/live_text.ml` prints it, so the fix shows up in that golden when it lands.
 
-  `w_drop_down.ml` rebuilds its model with `String_list.new_`, so an application leaks one
-  `GtkStringList` (and the strings it owns) per *items change* — never per frame, which is
-  what keeps this a leak rather than a crisis. The create path avoids it by going through
-  `Drop_down.new_from_strings`, which builds the model inside GTK.
+  **Nothing in this library calls it on a reachable path any more.** `w_drop_down.ml`
+  originally replaced its model on every items change and leaked one `GtkStringList` (plus
+  the strings it owns) each time; it now splices the new contents into the model the
+  drop-down already holds, so the model is created once by
+  `Drop_down.new_from_strings` (inside GTK, no wrapper) and never replaced. The only
+  remaining caller is that file's defensive fallback for a model this library did not
+  install, which is unreachable through its own constructors. The entry stays because the
+  defect is the generator's and covers every non-widget `*_new` in the binding.
 
   **Generator fix, not a hand patch**: the rule is `ref_sink` iff the type is
   `GInitiallyUnowned` *or* the transfer is none/floating, and the generator currently

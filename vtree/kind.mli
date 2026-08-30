@@ -348,8 +348,8 @@ type notebook_props =
    widgets -- which is what makes this the one controlled selection in the library that
    lives in [Widget_impl.reassert] rather than in the fixup queue. See [Node.drop_down].
    The [items] comparison the derived [equal] performs is also what decides whether the
-   GTK model is rebuilt at all; [w_drop_down.ml] pays for a whole-model replacement only
-   when it really moved. *)
+   GTK model is written at all; [w_drop_down.ml] splices the whole content into the model
+   the drop-down already holds, and only when it really moved. *)
 type drop_down_props =
   { items : string list
   ; selected : int
