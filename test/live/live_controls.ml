@@ -362,6 +362,61 @@ let () =
       (capped_view ~max_length:3 ~text:"abcdefg")
   in
   print_s (Live_tree.dump capped.widget);
+  (* The truncation is silent -- the write happens inside the patch guard, so the
+     [changed] it emits never reaches Bonsai -- and the node keeps "abcdefg" while the
+     widget holds "abc". That divergence must not cost a write per frame: the controlled
+     text is compared against what the widget can *hold*, so an idle frame through
+     [reassert_only] (the cheapest frame there is, and the one Task 2 exists for) writes
+     nothing at all. Counting [changed] on the widget is how a write is detected: GTK
+     emits it for the library's own writes too, which is exactly why the guard exists. *)
+  let capped_writes = ref 0 in
+  let capped_entry =
+    match capped.children with
+    | Single (Some e) -> e.P.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Editable.on_changed (W.Editable.from_gobject capped_entry) ~callback:(fun () ->
+      incr capped_writes)
+  in
+  Scheduler.with_patch_guard scheduler (fun () ->
+    P.reassert_only ctx ~path:"cap" capped;
+    P.run_fixups ctx);
+  Scheduler.with_patch_guard scheduler (fun () ->
+    P.reassert_only ctx ~path:"cap" capped;
+    P.run_fixups ctx);
+  printf
+    "two idle frames over an over-long text wrote: %d (text still %s)\n"
+    !capped_writes
+    (W.Editable.get_text (W.Editable.from_gobject capped_entry));
+  (* GTK counts the limit in characters, not bytes, and so does the comparison. The dump
+     below is what pins that: three characters of this text are four bytes, so a byte-wise
+     cap would hand the widget "h\195\169" -- two characters, well inside a limit GTK
+     would have let reach three -- and the entry would quietly hold less than the user was
+     allowed to type. Invisible in ASCII, which is why the case is here. *)
+  let accented =
+    P.mount
+      ctx
+      ~path:"acc"
+      ~is_root:true
+      (capped_view ~max_length:3 ~text:"h\xc3\xa9llo w\xc3\xb6rld")
+  in
+  print_s (Live_tree.dump accented.widget);
+  let accented_writes = ref 0 in
+  let accented_entry =
+    match accented.children with
+    | Single (Some e) -> e.P.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let (_ : Gobject.Signal.handler_id) =
+    W.Editable.on_changed (W.Editable.from_gobject accented_entry) ~callback:(fun () ->
+      incr accented_writes)
+  in
+  Scheduler.with_patch_guard scheduler (fun () ->
+    P.reassert_only ctx ~path:"acc" accented;
+    P.run_fixups ctx);
+  printf "an idle frame over a multi-byte text wrote: %d\n" !accented_writes;
+  P.destroy ctx accented;
   (* Back to GTK's default, which the dump then drops. *)
   let capped =
     P.patch ctx ~path:"cap" ~is_root:true capped (capped_view ~max_length:0 ~text:"abc")

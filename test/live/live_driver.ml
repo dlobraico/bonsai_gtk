@@ -304,9 +304,15 @@ let () =
      is written to do *less* than a patch and nothing else pins that: routing [Window] to
      [on_window_created] from the walk -- which would re-present and refocus a real window
      on every idle tick -- left every golden in this suite byte-identical. One line per
-     window, and a second one means the walk started presenting. (The stack half of the
-     same hazard is already pinned: a [register_stack] from the walk raises
-     [two Node.stacks are named "phys-nav"].) *)
+     window, and a second one means the walk started presenting.
+
+     (The stack half of the same hazard used to be pinned by [register_stack] raising
+     [two Node.stacks are named "phys-nav"] on the second frame. It is not any more: stack
+     names became claims applied at the end of a [mount] or [patch], and [reassert_only]
+     applies none, so a claim enqueued from the reassert walk would sit in the queue and
+     raise from the *next* real patch -- one frame late, or never for a constant app like
+     this one. Unpinned rather than broken; the walk still enqueues nothing, and the line
+     above is what pins the half that can be pinned.) *)
   let phys =
     Expert.Driver.create
       ~time_source

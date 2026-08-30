@@ -657,10 +657,16 @@ let () =
   P.run_fixups ctx;
   print_s (Live_tree.dump live.widget);
   (* A page added and selected in the *same* pass, which is the one case the fixup queue
-     exists for: [W_stack.select] is a no-op while [get_child_by_name] has nothing, and
-     the enqueue is what guarantees the pages are attached by the time it runs. The
-     renders above only ever selected a page that already existed, so a regression in that
-     ordering would have left a wizard's "next" step silently on the previous one. *)
+     exists for: the enqueue is what guarantees the pages are attached by the time
+     [W_stack.select] runs. The renders above only ever selected a page that already
+     existed, so a regression in that ordering would have left a wizard's "next" step
+     silently on the previous one.
+
+     {b Do not simplify this case away.} Since [select] rejects a name no page carries, it
+     is also the whole proof that the rejection cannot fire on a legitimate frame: if the
+     fixup ordering ever changed so that a page added this frame were not attached when
+     [select] runs, this case would stop merely selecting the wrong page and would raise,
+     killing the driver. It is the only test that distinguishes "not yet" from "never". *)
   let live =
     P.patch
       ctx
@@ -1011,8 +1017,14 @@ let () =
    | (_ : P.live) -> print_endline "BUG: a nested window accepted"
    | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
   printf "fixups left behind by the failed pass: %d\n" (Queue.length ctx.fixups);
+  (* And the stack names it had claimed but not yet taken. A walk applies its claims only
+     when it finishes, so a pass that raised leaves them queued; carried into the next
+     pass they would surface as a [two Node.stacks are named] from a frame that had
+     nothing to do with this one. *)
+  printf "stack claims left behind: %d\n" (Queue.length ctx.stack_claims);
   P.abandon_fixups ctx;
   printf "fixups after abandon_fixups: %d\n" (Queue.length ctx.fixups);
+  printf "stack claims after abandon_fixups: %d\n" (Queue.length ctx.stack_claims);
   (* And renaming one stack *onto* another's name is the same collision arriving a frame
      later, so it has to be the same rejection: a patch that quietly rebound the name
      would silently re-point every switcher in the tree at the wrong stack. *)
@@ -1216,6 +1228,28 @@ let () =
     P.run_fixups ctx;
     P.destroy ctx live);
   P.abandon_fixups ctx;
+  (* A frame that *introduces* the typo is the same mistake arriving later, and has to be
+     the same rejection: the fixup is re-enqueued on every pass precisely so that a
+     selection can follow a page list that moves, so a change that made it mount-only
+     would leave the case above green and this one silent. *)
+  let retyped ~typo =
+    Node.window
+      ~title:"w"
+      (Node.stack
+         ~name:"retyped-nav"
+         ~visible_child:(if typo then "libary" else "library")
+         [ Node.label ~key:"library" "library"; Node.label ~key:"practice" "practice" ])
+  in
+  let retyped_live = P.mount ctx ~path:"retyped" ~is_root:true (retyped ~typo:false) in
+  P.run_fixups ctx;
+  raises "visible_child typo introduced by a patch" (fun () ->
+    let live =
+      P.patch ctx ~path:"retyped" ~is_root:true retyped_live (retyped ~typo:true)
+    in
+    P.run_fixups ctx;
+    ignore (live : P.live));
+  P.abandon_fixups ctx;
+  P.destroy ctx retyped_live;
   (* The one absent name that is not a mistake: a stack with no pages at all.
      [visible_child] is a required argument, so a model rendering an empty page list has
      no name it could pass that would be right, and the frame that adds the first page

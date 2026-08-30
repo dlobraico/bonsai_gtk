@@ -125,14 +125,25 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     [activates_default:true] makes Enter activate the window's default widget instead of
     only emitting [Attr.on_activate].
 
-    [max_length] is the number of characters the widget will accept, [0] (GTK's own) for
-    no limit. Unlike [text] it is {i not} controlled: it constrains what the user can put
-    in the widget rather than naming a value the model owns, so it is written when it
-    changes and left alone otherwise. Lowering it below the current text's length
-    truncates that text, which GTK does on the widget and which the model learns about
-    through [Attr.on_changed] like any other edit. It is a [GtkEntry] property, so
+    [max_length] is the number of characters (not bytes) the widget will accept, [0]
+    (GTK's own) for no limit. Unlike [text] it is {i not} controlled: it constrains what
+    the user can put in the widget rather than naming a value the model owns, so it is
+    written when it changes and left alone otherwise. It is a [GtkEntry] property, so
     {!password_entry} and {!search_entry} do not have it -- neither is a [GtkEntry]
     subclass in GTK4 and [GtkEditable] has no [set_max_length].
+
+    {b A [text] longer than [max_length] is an inconsistency in the application, and the
+      library tolerates it silently.}
+    GTK truncates the widget's contents to [max_length] characters, and nothing tells the
+    model: the truncation happens inside the patch, and the patcher's reentrancy guard
+    drops every signal GTK emits there, so no [Attr.on_changed] fires. The node keeps the
+    value it was rendered with, so the model and the screen disagree until some later
+    render or some user edit resolves it — the widget shows the first [max_length]
+    characters and the model still holds all of them. The library does not write the text
+    again on every subsequent frame (it compares against what the widget can hold, not
+    against the full string), so this costs correctness rather than performance. If the
+    model must see the truncated value, clamp the text where the model owns it rather than
+    relying on the widget.
 
     Not exposed: [GtkEntry]'s icon API ([set_icon_from_icon_name] and friends), whose
     [icon-press]/[icon-release] signals carry a [GtkEntryIconPosition] and so make a
@@ -544,8 +555,22 @@ val grid
     stack is being built -- a page GTK does not have yet cannot be selected -- so a test
     driving the patcher by hand must call [Patcher.run_fixups] before reading the
     selection back. Pair it with {!Attr.on_visible_child_changed} or the control is inert.
-    Naming a page that does not exist leaves the selection alone rather than raising: the
-    frame that adds the page will select it.
+
+    {b Naming a page this stack does not have is [Invalid_argument]}, raised from that
+    same fixup pass and carrying the stack's node path and the page names it does have.
+    The fixup pass is the earliest point at which the mistake is knowable: it runs after
+    the whole tree exists, so every page {i this frame renders} is already added, and a
+    name absent there is absent from the rendered tree rather than merely not added yet. A
+    page that arrives on a {i later} frame is therefore not the case being rejected — but
+    a page that arrives later than the frame naming it is, so a [~visible_child] fed by
+    state that can lag the page list by a frame (closing a tab, where one effect rewrites
+    the list and another the selection) must render the two together. It stops the driver
+    for good, like any exception from a frame.
+
+    The one exception is a stack with {b no pages at all}, which is left alone:
+    [~visible_child] is a required argument, so a model rendering an empty page list has
+    no name it could pass that would be right, and the frame that adds the first page
+    selects it.
 
     [~transition] ([None_]) and [~transition_duration] (200 ms, GTK's own) describe the
     animation between pages; a test that dumps the tree straight after a selection change

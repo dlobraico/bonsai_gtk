@@ -49,10 +49,15 @@ val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> 
     stack's visible page.
 
     Raises [Invalid_argument] if a [stack_switcher] or [stack_sidebar] names a stack no
-    node in the tree registered, naming both the switcher's path and the name it wanted. A
-    raise abandons the rest of the queue — the fixups queued behind the failing one do not
-    run, and are dropped with it — which matches the all-or-nothing a raising frame
-    already has: the driver stops for good rather than carrying a half-applied pass
+    node in the tree registered, naming both the switcher's path and the name it wanted,
+    and if a {!Bonsai_gtk_vtree.Node.stack} that has at least one page gives a
+    [~visible_child] naming none of them, naming the stack's path and the page names it
+    does have. That second one can only be decided here: [create], [update] and [reassert]
+    all run while the stack is still being built, so a page that is not there yet and one
+    that is never coming look the same to them; by the time this runs the whole tree
+    exists. A raise abandons the rest of the queue — the fixups queued behind the failing
+    one do not run, and are dropped with it — which matches the all-or-nothing a raising
+    frame already has: the driver stops for good rather than carrying a half-applied pass
     forward.
 
     A fixup may not enqueue another; nothing needs to, and a queue that feeds itself is a

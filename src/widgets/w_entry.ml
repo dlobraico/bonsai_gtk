@@ -23,6 +23,37 @@ let editable (w : Widget.t) : W.Editable.t = W.Editable.from_gobject w
    has to know which writes armed one. *)
 let needs_text (e : W.Editable.t) text = not (String.equal (W.Editable.get_text e) text)
 
+(* The most of [text] a widget with this [max_length] can hold.
+
+   [GtkEntryBuffer] truncates in *characters*, not bytes, so this counts the same unit GTK
+   does: a byte is a continuation byte exactly when its top two bits are [10], and every
+   other byte starts a character. (It does not validate; a malformed sequence counts as
+   more characters than it should, which is what GTK's own byte walk does too.)
+
+   This exists for the controlled-text rule, which compares against the *widget*. Handing
+   [reassert] the untruncated text would compare a node's ["abcdefg"] against a widget
+   forever stuck at ["abc"], so [needs_text] would be true on every frame and every frame
+   -- including every idle tick through [Patcher.reassert_only] -- would write the text
+   and re-place the caret. Comparing against what the widget can actually hold makes the
+   over-long case cost one write rather than one per frame. [0] is GTK's "no limit". *)
+let capped ~max_length text =
+  if max_length <= 0 || String.length text <= max_length
+  then text
+  else (
+    let len = String.length text in
+    let rec go i chars =
+      if i >= len || chars >= max_length
+      then i
+      else (
+        let j = ref (i + 1) in
+        while !j < len && Char.to_int text.[!j] land 0xc0 = 0x80 do
+          incr j
+        done;
+        go !j (chars + 1))
+    in
+    String.prefix text (go 0 0))
+;;
+
 let set_text_if_needed (e : W.Editable.t) text =
   if not (needs_text e text)
   then false
@@ -93,8 +124,9 @@ let impl : Widget_impl.t =
             (* Text last, here as in [reassert]: a width or alignment change re-lays-out
                the entry, and doing that after the write would re-run the caret placement
                the write just decided. [set_editable] is not a barrier — it gates the
-               user's edits, not the program's. *)
-            ignore (set_text_if_needed ed p.text : bool));
+               user's edits, not the program's. Written already capped, so that [create]
+               and [reassert] leave the widget in the same state for the same node. *)
+            ignore (set_text_if_needed ed (capped ~max_length:p.max_length p.text) : bool));
           w
         | k -> Widget_impl.wrong_kind "Entry" k)
   ; update =
@@ -134,9 +166,10 @@ let impl : Widget_impl.t =
                patch of an entry the model echoes -- must pay neither the write nor the
                freeze/thaw. See [Widget_impl.batch_if]. *)
             let e = editable w in
-            let writes = needs_text e p.text in
+            let text = capped ~max_length:p.max_length p.text in
+            let writes = needs_text e text in
             Widget_impl.batch_if writes w (fun () ->
-              if writes then ignore (set_text_if_needed e p.text : bool))
+              if writes then ignore (set_text_if_needed e text : bool))
           | k -> Widget_impl.wrong_kind "Entry" k)
   ; signals =
       [ changed

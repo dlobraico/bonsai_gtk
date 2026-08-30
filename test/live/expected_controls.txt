@@ -167,6 +167,12 @@ search_entry: changed events reaching Bonsai from patches: 0
 (GtkWindow (title (c)) (css (background)) hidden
  (children
   (GtkEntry (text abc) (max-length 3) (children (GtkText (cursor text))))))
+two idle frames over an over-long text wrote: 0 (text still abc)
+(GtkWindow (title (c)) (css (background)) hidden
+ (children
+  (GtkEntry (text "h\195\169l") (max-length 3)
+   (children (GtkText (cursor text))))))
+an idle frame over a multi-byte text wrote: 0
 (GtkWindow (title (c)) (css (background)) hidden
  (children (GtkEntry (text abc) (children (GtkText (cursor text))))))
 (GtkWindow (title (n)) (css (background)) hidden
