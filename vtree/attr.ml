@@ -35,7 +35,7 @@ module Name = struct
       | On_revealed
       | On_position_changed
       | On_visible_child_changed
-    [@@deriving sexp_of, compare, equal]
+    [@@deriving sexp_of, compare, equal, enumerate]
 
     (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
        the compiler is what forces each new one to be classified here. A name that says
@@ -78,44 +78,67 @@ module Name = struct
 
   include T
   include Comparable.Make_plain (T)
+
+  let to_string t = Sexp.to_string (sexp_of_t t)
 end
 
-type t =
-  | Css_class of string
-  | Margin_start of int
-  | Margin_end of int
-  | Margin_top of int
-  | Margin_bottom of int
-  | Halign of Align.t
-  | Valign of Align.t
-  | Hexpand of bool
-  | Vexpand of bool
-  | Sensitive of bool
-  | Visible of bool
-  | Tooltip of string
-  | Width_request of int
-  | Height_request of int
-  | Opacity of float
-  | Focusable of bool
-  | Can_focus of bool
-  | Widget_name of string
-  | Cursor_name of string
-  | Test_id of string
-  | Measure_overlay of bool
-  | Grid_cell of Grid_cell.t
-  | Page_title of string
-  | On_clicked of unit Handler.t
-  | On_toggled of bool Handler.t
-  | On_changed of string Handler.t
-  | On_activate of unit Handler.t
-  | On_search_changed of string Handler.t
-  | On_value_changed of float Handler.t
-  | On_expanded_changed of bool Handler.t
-  | On_revealed of bool Handler.t
-  | On_position_changed of int Handler.t
-  | On_visible_child_changed of string Handler.t
-  | Many of t list
-[@@deriving sexp_of]
+(* The variant lives in [Private] and reaches the rest of this file through [include],
+   which is what lets [attr.mli] publish [type t = Private.t] -- the constructors
+   documented in one place that carries no stability promise, and the type itself
+   documented without them.
+
+   [include] rather than a second spelling of the constructor list: [Attr.t] and
+   [Attr.Private.t] are the same type, so nothing converts and nothing allocates, and
+   there is no duplicated list to drift.
+
+   Note for anyone auditing the seal: OCaml's type-directed disambiguation still resolves
+   an unqualified [Css_class] against a scrutinee annotated [Attr.t], because [Attr.t]
+   expands to [Attr.Private.t]. The seal is therefore a statement about what is
+   {i documented and promised}, not a barrier the compiler enforces -- there is no way in
+   OCaml to make one type abstract to some clients and concrete to others. What it does
+   buy is real: the constructors are no longer part of [Attr]'s published surface, so an
+   application that reaches them has spelled [Private] somewhere, or has leaned on an
+   alias it was told not to lean on. *)
+module Private = struct
+  type t =
+    | Css_class of string
+    | Margin_start of int
+    | Margin_end of int
+    | Margin_top of int
+    | Margin_bottom of int
+    | Halign of Align.t
+    | Valign of Align.t
+    | Hexpand of bool
+    | Vexpand of bool
+    | Sensitive of bool
+    | Visible of bool
+    | Tooltip of string
+    | Width_request of int
+    | Height_request of int
+    | Opacity of float
+    | Focusable of bool
+    | Can_focus of bool
+    | Widget_name of string
+    | Cursor_name of string
+    | Test_id of string
+    | Measure_overlay of bool
+    | Grid_cell of Grid_cell.t
+    | Page_title of string
+    | On_clicked of unit Handler.t
+    | On_toggled of bool Handler.t
+    | On_changed of string Handler.t
+    | On_activate of unit Handler.t
+    | On_search_changed of string Handler.t
+    | On_value_changed of float Handler.t
+    | On_expanded_changed of bool Handler.t
+    | On_revealed of bool Handler.t
+    | On_position_changed of int Handler.t
+    | On_visible_child_changed of string Handler.t
+    | Many of t list
+  [@@deriving sexp_of]
+end
+
+include Private
 
 let name = function
   | Css_class _ | Many _ -> None

@@ -26,6 +26,20 @@ module Action : sig
         an out-of-range value reaches the handler unclamped, which is what lets a test
         show the {i model} clamping it. What the model does then shows up as the next
         render's [value] prop, which is the whole of what a controlled value guarantees. *)
+    | Search_changed of string * string
+    (** test_id of a [search_entry] carrying [Attr.on_search_changed], and the text the
+        user typed. Fires that handler with exactly that string.
+
+        Distinct from [Set_text] on the same node, which fires [Attr.on_changed]: the two
+        are different signals on the real widget — [changed] is immediate,
+        [search-changed] arrives [search_delay] ms after typing stops — and an app that
+        attaches both wants to test them apart. Neither consults the node's own [text]
+        prop, for the reason [Set_text] documents. *)
+    | Set_expanded of string * bool
+    (** test_id of an [expander] carrying [Attr.on_expanded_changed], and the state the
+        user dragged it to. Fires that handler with exactly that bool; the node's own
+        [expanded] prop is not consulted, so a test can show a model that declines to
+        open. *)
   [@@deriving sexp_of]
 end
 
@@ -40,18 +54,23 @@ module Handle = Bonsai_test.Handle
 (** Builds a headless test handle for [app]: no GTK, no display, just the [Node.t] sexp
     tree and [Action.t] actions dispatched against it by [test_id].
 
-    {b Structural validation happens at mount, not here.} This library depends on
-    [bonsai_gtk.vtree] alone -- that is what keeps it, and the view functions written
-    against it, free of ocgtk -- so it cannot see the widget implementations, and it does
-    not know which signals a kind can emit. The runtime does, and rejects the rest with
-    [Invalid_argument] on the first frame ([Signals.require_specs], spec §11): an
-    [Attr.on_clicked] on a [Node.label], an event attr on a [Node.native], a [Node.grid]
-    child with no [Attr.grid_cell], a [Node.stack] page with no [~key], two stacks under
-    one [~name], duplicate keys among siblings. None of those stops a handle here, and an
-    action that names such a node fires its handler and the expect test goes green -- so a
-    suite that is entirely headless can certify an application that raises the moment it
-    is shown. The escape from that is a live test, or running the app; the vtree-level
-    table that would let the handle check the event half of it is on the M2 backlog.
+    {b Event attrs are validated here; structural misuse still is not.} This library
+    depends on [bonsai_gtk.vtree] alone -- that is what keeps it, and the view functions
+    written against it, free of ocgtk -- so it cannot see the widget implementations. It
+    can, however, see [Bonsai_gtk_vtree.Events], which is the same table the runtime
+    consults, so an event attr the kind cannot emit ([Attr.on_toggled] on a [Node.label],
+    any event attr on a [Node.native]) raises [Invalid_argument] here as well, on the
+    first [Handle.show]/[Handle.recompute_view], with the message and the node path the
+    patcher would have produced. [test/live/live_events.ml] is what keeps that table and
+    the widget impls in agreement, so "the handle accepted it" really does mean "the
+    runtime will connect it".
+
+    What is still only checked at mount is the {i structural} half, which needs the widget
+    implementations: a [Node.grid] child with no [Attr.grid_cell], a [Node.stack] page
+    with no [~key], two stacks under one [~name], duplicate keys among siblings, a
+    [Node.window] anywhere but the root. None of those stops a handle here, so a suite
+    that is entirely headless can still certify a tree that raises the moment it is shown.
+    The escape from that is a live test, or running the app.
 
     [Handle.do_actions] looks up every action in the call against *one* view snapshot —
     the tree [Handle.show]/[Handle.recompute_view] last computed — not the tree as it

@@ -90,16 +90,25 @@ val clear_slots : slots -> unit
     controlled widget). *)
 val notify : prop:string -> Widget.t -> callback:(unit -> unit) -> connection
 
+(** The {!Attr.Name.t} a spec carries. Task 4 turns {!spec} into a variant; readers that
+    only want the name go through this so that change stays inside this module. *)
+val spec_attr : spec -> Attr.Name.t
+
 (** Raises [Invalid_argument] if [attrs] carries an event attr ({!Attr.Name.is_event})
-    that none of [specs] claims — [Attr.on_toggled] on a [Node.label], say. Such an attr
-    is inert rather than wrong-looking: no slot is created for it, so the handler simply
-    never runs. [node_path] and [impl_name] name the offending node in the message.
+    that this {!Kind.t} does not emit — [Attr.on_toggled] on a [Node.label], say. Such an
+    attr is inert rather than wrong-looking: no slot is created for it, so the handler
+    simply never runs. [node_path] and [impl_name] name the offending node in the message.
+
+    The verdict comes from {!Bonsai_gtk_vtree.Events}, which lives in [vtree] rather than
+    here precisely so that [Bonsai_gtk_test] can reach the same table and refuse the same
+    trees headlessly. The impl's own [spec list] is the second statement of that fact, and
+    [test/live/live_events.ml] is what holds the two together.
 
     Called by the patcher at mount, and again on any patch that changed the node's attrs —
     an event attr a later render adds conditionally lands on a widget mounted without it,
     and only the patch is in a position to see it (handlers are connected once, at mount,
     so no slot exists for a name no spec claims). *)
-val require_specs : node_path:string -> impl_name:string -> spec list -> Attrs.t -> unit
+val require_specs : node_path:string -> impl_name:string -> Kind.t -> Attrs.t -> unit
 
 (** Disconnects each handler from the object it was connected to. *)
 val disconnect : connection list -> unit

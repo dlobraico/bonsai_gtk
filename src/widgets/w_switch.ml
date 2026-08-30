@@ -14,7 +14,7 @@ let toggled : Signals.spec =
   { attr = Attr.Name.On_toggled
   ; connect = Signals.notify ~prop:"active"
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_toggled handler -> Some (handler (W.Switch.get_active (cast w)))
         | _ -> None)

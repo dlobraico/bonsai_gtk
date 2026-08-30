@@ -10,7 +10,7 @@ let value_changed : Signals.spec =
       (fun w ~callback ->
         Signals.connected w (W.Spin_button.on_value_changed (cast w) ~callback))
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         (* The value read back off the widget, not one carried by the signal: GTK's
            [value-changed] has no payload, and the widget's number is the clamped and

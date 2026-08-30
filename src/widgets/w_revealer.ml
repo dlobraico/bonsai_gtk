@@ -21,7 +21,7 @@ let revealed : Signals.spec =
   { attr = Attr.Name.On_revealed
   ; connect = Signals.notify ~prop:"child-revealed"
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_revealed handler -> Some (handler (W.Revealer.get_child_revealed (cast w)))
         | _ -> None)

@@ -25,6 +25,10 @@ type spec =
   ; fire : Widget.t -> Attr.t -> unit Ui_effect.t option
   }
 
+(* Task 4 turns [spec] into a variant; every reader that only wants the name goes through
+   this rather than through the field, so that change stays inside this module. *)
+let spec_attr spec = spec.attr
+
 type slots = (Attr.Name.t, Attr.t option ref) List.Assoc.t ref
 
 let dispatch ctx w slot spec =
@@ -78,20 +82,24 @@ let notify ~prop w ~callback =
 (* An [on_*] attr on a widget whose impl declares no spec for it is a typo that would
    otherwise be silently inert: the slot is never created, so nothing is ever written to
    it, no handler ever runs, and nothing says why (spec §5.1, §11). Run at mount and on
-   every attr-changing patch, because a conditionally-added attr misses the mount. *)
-let require_specs ~node_path ~impl_name specs attrs =
-  List.iter (Attrs.to_list attrs) ~f:(fun attr ->
-    match Attr.name attr with
-    | Some name when Attr.Name.is_event name ->
-      if not (List.exists specs ~f:(fun s -> Attr.Name.equal s.attr name))
-      then
-        invalid_argf
-          !"%s: %s does not emit %{sexp:Attr.Name.t}"
-          node_path
-          impl_name
-          name
-          ()
-    | Some _ | None -> ())
+   every attr-changing patch, because a conditionally-added attr misses the mount.
+
+   The answer comes from [Events], not from the impl's own [signals], so that this
+   rejection and [Bonsai_gtk_test]'s are the same function of the same data -- a headless
+   suite that goes green now means the runtime will accept the tree too.
+   [test/live/live_events.ml] is what keeps [Events] and the impls in agreement. *)
+let require_specs ~node_path ~impl_name kind attrs =
+  match Events.unsupported kind attrs with
+  | None -> ()
+  | Some name ->
+    (* Message shape unchanged from M1, deliberately: [Attr.Name.to_string] is
+       [Sexp.to_string (sexp_of_t _)], so the existing expected files do not churn. *)
+    invalid_argf
+      "%s: %s does not emit %s"
+      node_path
+      impl_name
+      (Attr.Name.to_string name)
+      ()
 ;;
 
 let disconnect connections =

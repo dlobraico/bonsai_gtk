@@ -1,5 +1,15 @@
 open! Core
 
+(** Which attribute an {!t} is, without its value: the key {!Attrs} stores attrs under,
+    and the thing an [Unset] names.
+
+    Unlike {!t}, this variant stays {b concrete} in the documented surface, deliberately.
+    It is only reachable through [Attrs.op], which is [Private]-adjacent already, and
+    [Attr_apply.unset]'s exhaustive match over it is the mechanism that makes "unset
+    restores the creation-time default" impossible to forget for a new attribute. Sealing
+    it would trade a compile error inside this library for a silent omission. The cost is
+    that a milestone which adds an attribute is a breaking change for an application that
+    matches on {!Name.t} exhaustively -- which no application has any reason to do. *)
 module Name : sig
   type t =
     | Margin_start
@@ -34,51 +44,86 @@ module Name : sig
     | On_revealed
     | On_position_changed
     | On_visible_child_changed
-  [@@deriving sexp_of, compare, equal]
+  [@@deriving sexp_of, compare, equal, enumerate]
 
   (** [true] for the handler-carrying names — the ones a widget impl must declare a signal
-      spec for, and which the patcher rejects at mount on a widget that declares none. *)
+      spec for, and which the patcher rejects at mount on a widget that declares none.
+      {!Bonsai_gtk_vtree.Events} is the table of which kind emits which. *)
   val is_event : t -> bool
+
+  (** Every attribute name, for tests that must not be able to forget one. The M1 review
+      found [is_event] pinned on 2 of 32 names, which is the same as unpinned. *)
+  val all : t list
+
+  (** The name as it appears in error messages — [Sexp.to_string (sexp_of_t t)], so
+      [On_toggled] prints as ["On_toggled"]. *)
+  val to_string : t -> string
 
   include Comparable.S_plain with type t := t
 end
 
-type t =
-  | Css_class of string
-  | Margin_start of int
-  | Margin_end of int
-  | Margin_top of int
-  | Margin_bottom of int
-  | Halign of Align.t
-  | Valign of Align.t
-  | Hexpand of bool
-  | Vexpand of bool
-  | Sensitive of bool
-  | Visible of bool
-  | Tooltip of string
-  | Width_request of int
-  | Height_request of int
-  | Opacity of float
-  | Focusable of bool
-  | Can_focus of bool
-  | Widget_name of string
-  | Cursor_name of string
-  | Test_id of string
-  | Measure_overlay of bool
-  | Grid_cell of Grid_cell.t
-  | Page_title of string
-  | On_clicked of unit Handler.t
-  | On_toggled of bool Handler.t
-  | On_changed of string Handler.t
-  | On_activate of unit Handler.t
-  | On_search_changed of string Handler.t
-  | On_value_changed of float Handler.t
-  | On_expanded_changed of bool Handler.t
-  | On_revealed of bool Handler.t
-  | On_position_changed of int Handler.t
-  | On_visible_child_changed of string Handler.t
-  | Many of t list
-[@@deriving sexp_of]
+module Private : sig
+  (** {b No stability promise.} The constructors of {!t}, for the library's own runtime
+      ([Attr_apply], [Signals], the widget impls) and its test harness.
+
+      They live here rather than in the documented surface because every milestone adds
+      constructors, and an application matching on them exhaustively would break on each
+      one. Build attrs with the smart constructors below; if you find yourself needing to
+      take one apart, that is a missing accessor and worth an issue.
+
+      This is the {i same} type as {!t} — [Attr.Private.Css_class "x"] and
+      [Attr.css_class "x"] are the same value — so nothing converts and nothing allocates,
+      and library code that matches on the variant needs an annotation, not a rewrite.
+
+      One honest caveat: because {!t} is an alias rather than an abstract type, OCaml's
+      type-directed disambiguation will still resolve an unqualified [Css_class] against a
+      scrutinee annotated [Attr.t]. OCaml offers no way to make one type abstract to some
+      clients and concrete to others, so the promise this module carries is a documented
+      one. An application that leans on the alias anyway is choosing to break on the next
+      milestone. *)
+  type t =
+    | Css_class of string
+    | Margin_start of int
+    | Margin_end of int
+    | Margin_top of int
+    | Margin_bottom of int
+    | Halign of Align.t
+    | Valign of Align.t
+    | Hexpand of bool
+    | Vexpand of bool
+    | Sensitive of bool
+    | Visible of bool
+    | Tooltip of string
+    | Width_request of int
+    | Height_request of int
+    | Opacity of float
+    | Focusable of bool
+    | Can_focus of bool
+    | Widget_name of string
+    | Cursor_name of string
+    | Test_id of string
+    | Measure_overlay of bool
+    | Grid_cell of Grid_cell.t
+    | Page_title of string
+    | On_clicked of unit Handler.t
+    | On_toggled of bool Handler.t
+    | On_changed of string Handler.t
+    | On_activate of unit Handler.t
+    | On_search_changed of string Handler.t
+    | On_value_changed of float Handler.t
+    | On_expanded_changed of bool Handler.t
+    | On_revealed of bool Handler.t
+    | On_position_changed of int Handler.t
+    | On_visible_child_changed of string Handler.t
+    | Many of t list
+end
+
+(** One attribute: a widget-wide property, a container-placement setting the parent reads,
+    or an event handler. Build them with the smart constructors below; the variant itself
+    is in {!Private} and carries no stability promise. *)
+type t = Private.t
+
+val sexp_of_t : t -> Sexp.t
 
 (** [None] for [Css_class] (accumulates, not keyed) and [Many]. *)
 val name : t -> Name.t option

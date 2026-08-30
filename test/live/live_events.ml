@@ -1,0 +1,81 @@
+open! Core
+open Bonsai_gtk_vtree
+module Native_gtk = Bonsai_gtk.Private.Native_gtk
+module Registry = Bonsai_gtk.Private.Registry
+module Signals = Bonsai_gtk.Private.Signals
+module Widget = Bonsai_gtk.Private.Gtk_import.Widget
+module W = Bonsai_gtk.Private.Gtk_import.W
+
+(* A native node needs a real impl to reach [Registry.for_kind]: [Native.Unit] has no Gtk
+   payload. Nothing here creates the widget -- the impl's [signals] is a record field --
+   but the impl has to exist for the lookup to succeed. *)
+module Native_thing = struct
+  type input = unit
+
+  let name = "thing"
+  let create () = (W.Label.new_ (Some "thing") :> Widget.t)
+  let update _ ~old:() () = ()
+  let destroy _ = ()
+end
+
+let thing_impl = Native_gtk.impl (module Native_thing)
+
+(* Every kind, built with its cheapest constructor. This list is the one place that has to
+   grow with [Kind.t]; there is no exhaustive-match trick that produces a *value* per
+   constructor, so a new kind missing from here is caught by the count assertion below
+   rather than by the compiler. *)
+let all_kinds : Kind.t list =
+  let child () = Node.label "x" in
+  [ (Node.label "x").kind
+  ; (Node.button ()).kind
+  ; (Node.toggle_button ~active:false ()).kind
+  ; (Node.check_button ~active:false ()).kind
+  ; (Node.switch ~active:false ()).kind
+  ; (Node.entry ~text:"" ()).kind
+  ; (Node.password_entry ~text:"" ()).kind
+  ; (Node.search_entry ~text:"" ()).kind
+  ; (Node.spin_button ~min:0. ~max:1. ~value:0. ()).kind
+  ; (Node.scale ~orientation:Horizontal ~min:0. ~max:1. ~value:0. ()).kind
+  ; (Node.progress_bar ~fraction:0. ()).kind
+  ; (Node.spinner ~spinning:false ()).kind
+  ; (Node.image (Icon_name "x")).kind
+  ; (Node.picture (Filename "x")).kind
+  ; (Node.separator ~orientation:Horizontal ()).kind
+  ; (Node.scrolled_window (child ())).kind
+  ; (Node.frame (child ())).kind
+  ; (Node.expander ~expanded:false ~label:"e" (child ())).kind
+  ; (Node.revealer ~reveal:false (child ())).kind
+  ; (Node.box ~orientation:Vertical []).kind
+  ; (Node.grid []).kind
+  ; (Node.stack ~name:"s" ~visible_child:"a" []).kind
+  ; (Node.stack_switcher ~stack:"s" ()).kind
+  ; (Node.stack_sidebar ~stack:"s" ()).kind
+  ; (Node.center_box ()).kind
+  ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
+  ; (Node.overlay (child ())).kind
+  ; (Node.window (child ())).kind
+  ; (Native_gtk.node thing_impl ()).kind
+  ]
+;;
+
+let () =
+  (* No display is needed: [Registry.for_kind] only reads a record. The file lives under
+     the live gate because it links ocgtk, which ppx_expect cannot. *)
+  List.iter all_kinds ~f:(fun kind ->
+    let from_impl =
+      (Registry.for_kind kind).signals
+      |> List.map ~f:Signals.spec_attr
+      |> List.sort ~compare:Attr.Name.compare
+    in
+    let from_table = List.sort (Events.for_kind kind) ~compare:Attr.Name.compare in
+    if not (List.equal Attr.Name.equal from_impl from_table)
+    then
+      print_s
+        [%message
+          "MISMATCH"
+            ~kind:(Kind.name kind)
+            ~impl_declares:(from_impl : Attr.Name.t list)
+            ~table_says:(from_table : Attr.Name.t list)]);
+  printf "kinds checked: %d\n" (List.length all_kinds);
+  printf "agreed\n"
+;;

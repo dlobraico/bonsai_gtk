@@ -63,7 +63,7 @@ let search_changed : Signals.spec =
       (fun w ~callback ->
         Signals.connected w (W.Search_entry.on_search_changed (cast w) ~callback))
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_search_changed handler ->
           let text = W.Editable.get_text (W_entry.editable w) in

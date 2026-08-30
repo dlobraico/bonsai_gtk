@@ -77,7 +77,7 @@ let set_height (w : Widget.t) height =
   Widget.set_size_request w width height
 ;;
 
-let set (w : Widget.t) (attr : Attr.t) =
+let set (w : Widget.t) (attr : Attr.Private.t) =
   match attr with
   | Css_class c -> Widget.add_css_class w c
   | Margin_start n -> Widget.set_margin_start w n

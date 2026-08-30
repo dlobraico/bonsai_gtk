@@ -8,7 +8,7 @@ let expanded_changed : Signals.spec =
   { attr = Attr.Name.On_expanded_changed
   ; connect = Signals.notify ~prop:"expanded"
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_expanded_changed handler -> Some (handler (W.Expander.get_expanded (cast w)))
         | _ -> None)

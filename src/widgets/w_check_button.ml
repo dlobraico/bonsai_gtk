@@ -8,7 +8,7 @@ let toggled : Signals.spec =
       (fun w ~callback ->
         Signals.connected w (W.Check_button.on_toggled (cast w) ~callback))
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_toggled handler -> Some (handler (W.Check_button.get_active (cast w)))
         | _ -> None)

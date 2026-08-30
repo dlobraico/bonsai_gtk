@@ -13,6 +13,7 @@ module Grid_cell = Grid_cell
 module Handler = Handler
 module Attr = Attr
 module Attrs = Attrs
+module Events = Events
 module Native = Native
 module Kind = Kind
 module Children = Children

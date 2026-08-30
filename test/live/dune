@@ -1,5 +1,11 @@
 (executables
- (names live_patcher live_driver live_signals live_controls live_containers)
+ (names
+  live_patcher
+  live_driver
+  live_signals
+  live_controls
+  live_containers
+  live_events)
  (libraries
   core
   bonsai
@@ -75,3 +81,15 @@
     output_containers.txt
     (run %{exe:live_containers.exe}))
    (diff expected_containers.txt output_containers.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_events.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_events.txt
+    (run %{exe:live_events.exe}))
+   (diff expected_events.txt output_events.txt))))

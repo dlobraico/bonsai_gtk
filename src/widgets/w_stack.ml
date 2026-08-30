@@ -64,7 +64,7 @@ let visible_child_changed : Signals.spec =
   { attr = Attr.Name.On_visible_child_changed
   ; connect = Signals.notify ~prop:"visible-child-name"
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_visible_child_changed handler ->
           (* [None] only while the stack is empty, which the user cannot click their way

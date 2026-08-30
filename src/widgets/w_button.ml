@@ -7,7 +7,7 @@ let clicked : Signals.spec =
   ; connect =
       (fun w ~callback -> Signals.connected w (W.Button.on_clicked (cast w) ~callback))
   ; fire =
-      (fun _w (attr : Attr.t) ->
+      (fun _w (attr : Attr.Private.t) ->
         match attr with
         | On_clicked handler -> Some (handler ())
         | _ -> None)

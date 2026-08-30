@@ -206,7 +206,7 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   Attr_apply.apply_all widget node.attrs;
   (* Before anything is connected: an event attr no spec claims would create no slot, so
      the handler would never run and nothing would say why (spec §11). *)
-  Signals.require_specs ~node_path:path ~impl_name:impl.name impl.signals node.attrs;
+  Signals.require_specs ~node_path:path ~impl_name:impl.name node.kind node.attrs;
   let slots, connections =
     Signals.connect_all ctx.signals ~node_path:path widget impl.signals
   in
@@ -384,11 +384,7 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
        the attr-free subtrees rather than the interesting ones that get skipped. *)
     if not (List.is_empty attr_ops)
     then
-      Signals.require_specs
-        ~node_path:path
-        ~impl_name:live.impl.name
-        live.impl.signals
-        node.attrs;
+      Signals.require_specs ~node_path:path ~impl_name:live.impl.name node.kind node.attrs;
     if not (Kind.equal_props live.node.kind node.kind)
     then live.impl.update live.widget ~old:live.node.kind node.kind;
     (* Unconditionally, and after [update]: a controlled prop is compared against the

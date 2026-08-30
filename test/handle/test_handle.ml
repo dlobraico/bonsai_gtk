@@ -298,3 +298,179 @@ let%expect_test "Set_value goes through the model, which may refuse it" =
            (children No_children))))))
     |}]
 ;;
+
+(* [Search_changed] and [Set_expanded] are the two M2 actions. Both models are real state
+   so that a golden here would change if the handler were not reached -- an action wired
+   to a handler that ignores its argument would print the same diff either way. *)
+let searcher (graph @ local) =
+  let query, set_query = Bonsai.state "" graph in
+  let expanded, set_expanded = Bonsai.state false graph in
+  let%arr query and set_query and expanded and set_expanded in
+  Node.window
+    ~title:"Search"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.search_entry
+           ~attrs:[ Attr.test_id "q"; Attr.on_search_changed set_query ]
+           ~text:query
+           ()
+       ; Node.expander
+           ~attrs:[ Attr.test_id "adv"; Attr.on_expanded_changed set_expanded ]
+           ~expanded
+           ~label:"advanced"
+           (Node.label ~attrs:[ Attr.test_id "hits" ] query)
+       ])
+;;
+
+let%expect_test "Search_changed and Set_expanded reach their handlers" =
+  let handle = Bonsai_gtk_test.create searcher in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Search))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Search_entry ((text ""))))
+             (attrs ((Test_id q) (On_search_changed <handler>)))
+             (children No_children))
+            ((kind (Expander ((label (advanced)) (expanded false))))
+             (attrs ((Test_id adv) (On_expanded_changed <handler>)))
+             (children
+              (Single
+               (((kind (Label ((text "")))) (attrs ((Test_id hits)))
+                 (children No_children))))))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Search_changed ("q", "bach") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Search))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (Search_entry ((text ""))))
+    +|       (((kind (Search_entry ((text bach))))
+               (attrs ((Test_id q) (On_search_changed <handler>)))
+               (children No_children))
+              ((kind (Expander ((label (advanced)) (expanded false))))
+               (attrs ((Test_id adv) (On_expanded_changed <handler>)))
+               (children
+                (Single
+    -|           (((kind (Label ((text "")))) (attrs ((Test_id hits)))
+    +|           (((kind (Label ((text bach)))) (attrs ((Test_id hits)))
+                   (children No_children))))))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_expanded ("adv", true) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Search))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Search_entry ((text bach))))
+               (attrs ((Test_id q) (On_search_changed <handler>)))
+               (children No_children))
+    -|        ((kind (Expander ((label (advanced)) (expanded false))))
+    +|        ((kind (Expander ((label (advanced)) (expanded true))))
+               (attrs ((Test_id adv) (On_expanded_changed <handler>)))
+               (children
+                (Single
+                 (((kind (Label ((text bach)))) (attrs ((Test_id hits)))
+                   (children No_children))))))))))))))
+    |}]
+;;
+
+let%expect_test "Search_changed and Set_expanded on a node that carries no handler" =
+  let no_handlers (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bare"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.search_entry ~attrs:[ Attr.test_id "q" ] ~text:"" ()
+            ; Node.expander
+                ~attrs:[ Attr.test_id "adv" ]
+                ~expanded:false
+                ~label:"advanced"
+                (Node.label "x")
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create no_handlers in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (bare))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Search_entry ((text "")))) (attrs ((Test_id q)))
+             (children No_children))
+            ((kind (Expander ((label (advanced)) (expanded false))))
+             (attrs ((Test_id adv)))
+             (children
+              (Single
+               (((kind (Label ((text x)))) (attrs ()) (children No_children))))))))))))))
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Search_changed ("q", "x") ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node q has no on_search_changed handler") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_expanded ("adv", true) ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node adv has no on_expanded_changed handler") |}]
+;;
+
+(* The whole point of [Events]: a handle that would have gone green on a tree the runtime
+   refuses at mount now refuses it here, with the same message shape. *)
+let%expect_test "an event attr the kind cannot emit is rejected by the handle" =
+  let bad (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bad"
+         (Node.label
+            ~attrs:[ Attr.on_toggled (fun _ -> Ui_effect.Ignore) ]
+            "not a switch"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create bad in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect {| (Invalid_argument "root/0: Label does not emit On_toggled") |}]
+;;
+
+(* ... and one the kind *can* emit is not, however deep it sits. *)
+let%expect_test "a supported event attr passes validation at every depth" =
+  let ok (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"ok"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.switch
+                ~attrs:[ Attr.on_toggled (fun _ -> Ui_effect.Ignore) ]
+                ~active:false
+                ()
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create ok in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (ok))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Switch ((active false)))) (attrs ((On_toggled <handler>)))
+             (children No_children))))))))))
+    |}]
+;;

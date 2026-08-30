@@ -25,7 +25,7 @@ let sexp_of_t t =
 
 let of_list attrs =
   let rec add t = function
-    | Attr.Many l -> List.fold l ~init:t ~f:add
+    | Attr.Private.Many l -> List.fold l ~init:t ~f:add
     | Css_class c ->
       if List.mem t.css_classes c ~equal:String.equal
       then t

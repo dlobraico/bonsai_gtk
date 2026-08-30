@@ -41,7 +41,7 @@ let changed : Signals.spec =
         let e = editable w in
         Signals.connected e (W.Editable.on_changed e ~callback))
   ; fire =
-      (fun w (attr : Attr.t) ->
+      (fun w (attr : Attr.Private.t) ->
         match attr with
         | On_changed handler -> Some (handler (W.Editable.get_text (editable w)))
         | _ -> None)
@@ -55,7 +55,7 @@ let activate ~connect : Signals.spec =
   { attr = Attr.Name.On_activate
   ; connect
   ; fire =
-      (fun _w (attr : Attr.t) ->
+      (fun _w (attr : Attr.Private.t) ->
         match attr with
         | On_activate handler -> Some (handler ())
         | _ -> None)
