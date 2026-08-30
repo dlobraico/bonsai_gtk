@@ -33,9 +33,12 @@ gc: after 400 get_buffer wrappers + full_major, same buffer true, text "kept"
 gc: after 500 get_buffer wrappers + full_major, same buffer true, text "kept"
 (GtkWindow (title (gc)) (css (background)) hidden
  (children (GtkTextView (text "still patchable") (css (view)) (cursor text))))
-bench: buffer holds 16 characters
-bench: buffer holds 1000000 characters
+bench: settled, buffer holds 16 characters (refusals so far 0)
+bench: settled, buffer holds 1000000 characters (refusals so far 0)
+bench: parked on a refused write, buffer holds 1000000 characters (refusals so far 1)
+bench: refusals reported across every frame above: 1
 bench: 20000 idle frames over 16 and over 1000000 characters, cost ratio under 5: true
+bench: an idle frame parked on a refused 1 MB write, against a settled one, under 5: true
 long text length: 129
 dump truncates:
 (GtkWindow (title (long)) (css (background)) hidden

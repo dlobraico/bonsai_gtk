@@ -380,9 +380,35 @@ let () =
      thousand puts each measurement in the milliseconds, where the ratio is stable. *)
   let frames = 20_000 in
   let scheduled = ref 0 in
+  let refusals = ref 0 in
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
-  let ctx = ctx_of scheduler ~scheduled in
-  let idle_frame_ms ~len =
+  (* A [report] of its own, counted rather than printed: the default would put a line on
+     stderr in the middle of the gate's output, and the count is a better assertion anyway
+     -- it is what says the refusal really happened and happened exactly once, which is
+     the state the third measurement claims to be timing. *)
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path:_ _ -> incr refusals)
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  (* One measurement: mount a view holding [len] characters, optionally park it on a
+     refused write, and time [frames] idle frames through the fixup queue.
+
+     [~refused:true] is the case the first two measurements structurally cannot reach
+     (task-9-review.md R1). The refused text is the {i same length} as the one the buffer
+     holds and differs only in its last byte, which is the worst case on purpose:
+     [String.equal] short-circuits on length, so a refusal whose text is a different
+     length from the buffer's costs nothing to notice and would flatter this. Same length,
+     one byte apart, is a full memcmp -- and a log tail or a file preview re-rendering a
+     similar-length document is exactly where the lengths coincide. *)
+  let idle_frame_ms ~len ~refused =
     let text = String.make len 'x' in
     let live =
       P.mount
@@ -391,11 +417,27 @@ let () =
         ~is_root:true
         (Node.window ~title:"bench" (Node.text_view ~text ()))
     in
-    (* The buffer really holds it, which is what stops this timing a [reassert] that has
-       quietly stopped doing anything. *)
+    let live =
+      if not refused
+      then live
+      else (
+        let unstorable = String.make (len - 1) 'x' ^ "\xe9" in
+        Scheduler.with_patch_guard scheduler (fun () ->
+          P.patch
+            ctx
+            ~path:"bench"
+            ~is_root:true
+            live
+            (Node.window ~title:"bench" (Node.text_view ~text:unstorable ()))))
+    in
+    (* The buffer really holds the storable text -- in the refused case because the write
+       was refused, which is the state under test. Printed, because it is also what stops
+       this timing a [reassert] that has quietly stopped doing anything. *)
     printf
-      "bench: buffer holds %d characters\n"
-      (W.Text_buffer.get_char_count (buffer live));
+      "bench: %s, buffer holds %d characters (refusals so far %d)\n"
+      (if refused then "parked on a refused write" else "settled")
+      (W.Text_buffer.get_char_count (buffer live))
+      !refusals;
     let start = Time_ns.now () in
     for _ = 1 to frames do
       Scheduler.with_patch_guard scheduler (fun () ->
@@ -408,19 +450,34 @@ let () =
     P.destroy ctx live;
     ms
   in
-  let small = idle_frame_ms ~len:16 in
-  let big = idle_frame_ms ~len:1_000_000 in
+  let small = idle_frame_ms ~len:16 ~refused:false in
+  let big = idle_frame_ms ~len:1_000_000 ~refused:false in
+  let big_refused = idle_frame_ms ~len:1_000_000 ~refused:true in
+  (* Still one, after twenty thousand frames parked on it: the memo is consulted before
+     anything else, so the frames after the refusal neither compare nor report. *)
+  printf "bench: refusals reported across every frame above: %d\n" !refusals;
   let ratio = big /. small in
+  let refused_ratio = big_refused /. big in
   printf
     "bench: %d idle frames over 16 and over 1000000 characters, cost ratio under %g: %b\n"
     frames
     bound_ratio
     Float.(ratio < bound_ratio);
+  printf
+    "bench: an idle frame parked on a refused 1 MB write, against a settled one, under \
+     %g: %b\n"
+    bound_ratio
+    Float.(refused_ratio < bound_ratio);
   eprintf
     "bench: %.5f ms at 16 chars, %.5f ms at 1 MB, ratio %.2f (bound %g)\n%!"
     small
     big
     ratio
+    bound_ratio;
+  eprintf
+    "bench: %.5f ms parked on a refused 1 MB write, ratio %.2f (bound %g)\n%!"
+    big_refused
+    refused_ratio
     bound_ratio
 ;;
 

@@ -185,6 +185,33 @@ let unwritable text =
   else None
 ;;
 
+(* Whether a write of [text] has already been decided against, and reported.
+
+   The memo is against the {i text} rather than against the widget: a model that keeps
+   asking for the same unstorable text pays one validation and one message, and a model
+   that changes to a different unstorable text is a new datum and is validated and
+   reported again.
+
+   The string is adopted on a match, exactly as [holds] adopts, and for the same reason: a
+   model that rebuilds an equal string every frame would otherwise re-run [String.equal]
+   against the memo forever. (The first round's comment claimed this adoption and the code
+   did not do it -- task-9-review.md R1.)
+
+   [unwritable] is pure, so a text refused once is refused always, and [st.refused] is
+   cleared by every successful write. That is what makes it safe for [reassert] to consult
+   this {i before} [holds]: a matching memo means the write can only fail, so the frame
+   has nothing to do and need not compare anything or bracket anything. *)
+let already_refused st text =
+  match st.refused with
+  | Some refused ->
+    phys_equal refused text
+    || (String.equal refused text
+        &&
+        (st.refused <- Some text;
+         true))
+  | None -> false
+;;
+
 (* Controlled, on spec §6.5's rule: written only when the buffer's current text differs
    from the model's, never when the previous node's did.
 
@@ -212,15 +239,11 @@ let set_text_if_needed w text =
   let st = state w in
   if holds w st text
   then false
-  else if (* Already decided, and already reported. The refusal is remembered against
-             the *text* rather than against the widget, and the string is adopted so that
-             the frames after it answer in a pointer comparison -- otherwise a model that
-             keeps asking for the same unstorable text would re-validate it, and emit a
-             message, on every frame forever. A model that changes to a different
-             unstorable text is a new datum and is validated and reported again. *)
-          match st.refused with
-          | Some refused -> phys_equal refused text || String.equal refused text
-          | None -> false
+  else if (* Already decided, and already reported. This keeps the function correct on its
+             own, whoever calls it; [reassert] additionally asks the same question
+             {i first}, which is what makes a frame parked on a refusal cost nothing at
+             all. *)
+          already_refused st text
   then false
   else (
     match unwritable text with
@@ -371,11 +394,25 @@ let impl : Widget_impl.t =
             (* The comparison comes first because the bracket has to be outside the
                decision: a text view patched with the text it already shows -- which is
                every patch of one the model echoes, and every idle frame -- must pay
-               neither the write nor the freeze/thaw. See [Widget_impl.batch_if]. The
-               second comparison inside [set_text_if_needed] is the same pointer test
-               against the same cache, on the rare frame that writes. *)
+               neither the write nor the freeze/thaw. See [Widget_impl.batch_if].
+
+               [already_refused] comes first in turn, and that ordering is the whole of
+               task-9-review.md R1. After a refusal the buffer holds the old text and
+               [st.text] correctly describes it, while [p.text] is the unstorable one --
+               so [holds] answers false on {i every} subsequent frame, and without this
+               line each of them ran a whole-buffer [String.equal] here, took the
+               freeze/thaw, and ran [String.equal] a second time inside
+               [set_text_if_needed] before reaching the memo. Measured at 1 MB with a
+               refused text of the same length (the case where [String.equal] cannot
+               short-circuit): 0.062 ms per idle frame against 0.00012 ms settled, 518x,
+               forever, on the very property this widget's bench exists to pin. Asking the
+               memo first makes the parked frame a pointer comparison like any other.
+
+               Skipping [holds] also skips its [refresh], which is right: [stale] simply
+               stays set until the model offers a text GTK will take, and that frame pays
+               the one read it genuinely needs. *)
             let st = state w in
-            let writes = not (holds w st p.text) in
+            let writes = (not (already_refused st p.text)) && not (holds w st p.text) in
             Widget_impl.batch_if writes w (fun () ->
               if writes then ignore (set_text_if_needed w p.text : bool))
           | k -> Widget_impl.wrong_kind "TextView" k)
