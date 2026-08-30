@@ -1,0 +1,35 @@
+before the caller parents it: stack holds 0, root's parent is nothing
+(GtkWindow (title ()) (css (background)) hidden
+ (children
+  (GtkStack (visible (page))
+   (children
+    (GtkBox (spacing 0) (css (vertical))
+     (children (GtkLabel (text "count 0"))
+      (GtkButton (label (+)) (css (text-button))
+       (children (GtkLabel (text +))))))))))
+(GtkBox (spacing 0) (css (vertical))
+ (children (GtkLabel (text "count 1"))
+  (GtkButton (label (+)) (css (text-button)) (children (GtkLabel (text +))))))
+broken: false
+window root: Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make the root a container.
+nested window: root/1: a Node.window may only be the root node, not a child of another node
+misplaced attr on the root: root: Attr.grid_cell is on the root node, which has no container to read it (a placement attribute is read by the container, and this one holds children for Grid)
+a second embed alongside the first: stack holds 2
+after two clicks on the second: "count 1" and "second 2"
+after the breaker's frame raised: breaker true, first false, second false
+the first embed still renders: "count 2"
+after stop: stack holds 2, the root is still a GtkBox under a GtkStack
+stop then remove: stack holds 1, the root's parent is nothing
+remove then stop: stack holds 0 before the stop
+remove then stop: the root is a GtkBox under nothing, still usable: "second 2"
+frame after stop: Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph and tears the widget tree down; build a new driver instead)
+the host is presented and the page renders: "orphan 1"
+after gtk_window_destroy: broken false, root's parent GtkStack, realized false
+a frame after the host was destroyed still patches: "orphan 2"
+after two full majors: "orphan 3", children 2, type GtkBox
+stop after the host was destroyed: broken false
+before the destroy: broken false
+after the root's destroy fired: broken true
+a frame on it was a no-op, still broken: true
+stopped a broken embed
+bench: 2000 idle frames, embedded/windowed cost ratio under 1.2: true

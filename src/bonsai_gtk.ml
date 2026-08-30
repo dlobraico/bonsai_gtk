@@ -43,6 +43,9 @@ let start = Loop.start
 
 module Expert = struct
   module Driver = Driver
+  module Embedded = Embed
+
+  let embed = Embed.create
 end
 
 (** No stability promise: this is what the library's own tests reach through. *)

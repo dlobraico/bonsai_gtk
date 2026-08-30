@@ -37,7 +37,17 @@ let start
        | Some _ -> ()
        | None ->
          (match
-            let d = Driver.create ?time_source ?optimize ~on_window_created app in
+            (* Named rather than defaulted: [start] and [Expert.embed] are the two callers
+               of [Driver.create] and they want opposite rules, so both say which they
+               are. *)
+            let d =
+              Driver.create
+                ?time_source
+                ?optimize
+                ~root_kind:`Window
+                ~on_window_created
+                app
+            in
             driver := Some d;
             (* The first frame is what mounts the window, so it has to happen before the
                loop starts spinning, not on the first tick. *)

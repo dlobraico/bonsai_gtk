@@ -120,7 +120,13 @@ type live =
 
     [path] identifies the node for exception reporting; children extend it with their
     index. [is_root] must be [true] only for the node the runtime treats as the tree's
-    root; every recursive call passes [false].
+    root; every recursive call passes [false]. It says {i where} the node is, not what it
+    is allowed to be: it exempts the root from the below-the-root window rule below, and
+    whether a window is legal {i there} is the runtime's — see
+    {!Bonsai_gtk.Expert.Driver.root_kind}, which requires one under [Bonsai_gtk.start] and
+    refuses one under [Bonsai_gtk.Expert.embed], and does so before this is reached. So an
+    embedded root is passed [~is_root:true] like any other root, and the window it may not
+    be has already been rejected with a better message than this file could give.
 
     Some of the work is deferred to {!run_fixups}, which the caller runs once the whole
     pass is done: a [stack_switcher] resolving the stack it names, and a stack selecting

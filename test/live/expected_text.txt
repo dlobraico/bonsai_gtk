@@ -268,6 +268,8 @@ driver, after the frame the choice armed: 2026-08-31
 driver, user picked the 29th (a Saturday), before the frame: 2026-08-29
 driver, after the frame the refusal armed: 2026-08-31 (handler saw (2026-08-31 2026-08-29))
 driver, one more frame: 2026-08-31 (handler saw 0 more)
+driver, the user picks the same Saturday again: 2026-08-29 (handler saw 1 more)
+driver, refused a second time: 2026-08-31 (handler saw 1 more)
 driver, user walked to the next month, before the frame: 2026-09-30
 driver, after the frame the walk armed: 2026-09-30 (handler saw 1 more)
 driver, and a year forward: 2027-09-30 (handler saw 1 more)

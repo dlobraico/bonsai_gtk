@@ -123,6 +123,28 @@ val start
 (** For code that already owns a main loop, or wants to drive frames by hand. *)
 module Expert : sig
   module Driver = Driver
+
+  (** A Bonsai tree rendering into a container the caller owns: the entry point that makes
+      porting an existing GTK application one screen at a time possible. Its own
+      documentation says what differs from {!start} and what the caller then owns. *)
+  module Embedded = Embed
+
+  (** {!Embedded.create}, under the name the call site reads best.
+
+      Builds [app], mounts it with one frame, and starts a tick at
+      [target_frames_per_second] (default 60) on the main loop the caller is already
+      running. The root must not be a [Node.window]; nothing is parented for you — take
+      {!Embedded.widget} and put it where your container puts children; and
+      {!Embedded.stop} tears the tree down without unparenting it.
+
+      [time_source] and [optimize] are {!Driver.create}'s. Raises out of here if that
+      first frame does, having torn down what it built. *)
+  val embed
+    :  ?time_source:Bonsai.Time_source.t
+    -> ?optimize:bool
+    -> ?target_frames_per_second:float
+    -> (local_ Bonsai.graph -> Node.t Bonsai.t)
+    -> Embedded.t
 end
 
 (** No stability promise: this is what the library's own tests reach through. *)

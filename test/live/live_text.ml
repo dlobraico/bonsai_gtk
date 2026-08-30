@@ -2125,6 +2125,33 @@ let () =
     "driver, one more frame: %s (handler saw %d more)\n"
     (showing ())
     (List.length !seen - before);
+  (* {b The re-pick.} The user, having watched the calendar snap back to the Monday, tries
+     the same Saturday again. It must be refusable a second time -- and a third -- which
+     is what the [st.last_fired <- None] in [w_calendar.ml]'s [set_date] is for and what
+     task-11-review.md asked to be named by a test rather than only by a comment.
+
+     The dedup memo exists so that one user action reaching [day-selected] and two
+     [notify::]s delivers one call. It is keyed on the date the handler was last told
+     about, so without that line it still says "2026-08-29" after the correcting write has
+     moved the widget to the 31st: the second pick of the 29th would read the same date
+     the memo holds and be coalesced away against a state nothing on screen matches.
+
+     Measured by deleting that one line: both lines below become [handler saw 0 more], and
+     the first of them prints 2026-08-29 -- the declined Saturday standing on the calendar
+     with no frame coming to take it away, because a handler that never fired scheduled no
+     effect and so armed no idle. That is the bug in its most visible form: the refusal
+     works once and then the widget is stuck. *)
+  let before = List.length !seen in
+  W.Calendar.set_day (driven ()) 29;
+  printf
+    "driver, the user picks the same Saturday again: %s (handler saw %d more)\n"
+    (showing ())
+    (List.length !seen - before);
+  drain ();
+  printf
+    "driver, refused a second time: %s (handler saw %d more)\n"
+    (showing ())
+    (List.length !seen - before);
   (* {b The C1 regression.} The user walks with the heading arrows, which is the other way
      a calendar's date moves and the one the first round could not report at all. A walk
      emits no [day-selected] -- only [notify::month] or [notify::year] -- so on the first

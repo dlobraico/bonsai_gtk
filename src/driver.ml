@@ -1,10 +1,16 @@
 open! Core
 open Bonsai_gtk_vtree
 
+type root_kind =
+  [ `Window
+  | `Not_window
+  ]
+
 type t =
   { bonsai : Node.t Bonsai_driver.t
   ; time_source : Bonsai.Time_source.t
   ; advance_wall_clock : bool
+  ; root_kind : root_kind
   ; scheduler : Scheduler.t
   ; ctx : Patcher.ctx
   ; mutable root : Patcher.live option
@@ -25,14 +31,30 @@ let schedule_event t effect =
     Scheduler.request_frame t.scheduler)
 ;;
 
-let check_root (node : Node.t) =
-  match node.kind with
-  | Window _ -> ()
-  | k ->
+(* The two entry points' root rules, written once each because [root_kind] is a variant
+   rather than a bool: there is no way to spell the wrong one and have it read plausibly
+   at the call site.
+
+   The rules are opposites rather than one being a relaxation of the other. [start] shows
+   the root itself, and a [GtkWindow] is the only thing GTK can show on its own; [embed]
+   parents the root into a container the caller owns, and a [GtkWindow] is a toplevel that
+   cannot be parented at all. So a window root is required by one and refused by the
+   other, and each message names the entry point the caller evidently wanted. *)
+let check_root ~(root_kind : root_kind) (node : Node.t) =
+  match root_kind, node.kind with
+  | `Window, Window _ -> ()
+  | `Window, k ->
     invalid_argf
       "Bonsai_gtk: the root node must be a Node.window, got %s"
       (Kind.name k)
       ()
+  | `Not_window, Window _ ->
+    invalid_arg
+      "Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is \
+       parented into a container the caller owns and a GtkWindow is a toplevel that \
+       cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make \
+       the root a container."
+  | `Not_window, _ -> ()
 ;;
 
 let frame_body t =
@@ -57,7 +79,7 @@ let frame_body t =
      find and nothing for [Kind.equal_props] to admit, so a full patch would walk the same
      tree to reach the same two calls. Frames only happen on an event or on the tick, and
      an idle tick is now nearly free. *)
-  check_root node;
+  check_root ~root_kind:t.root_kind node;
   Scheduler.with_patch_guard t.scheduler (fun () ->
     (match t.root with
      | Some live when phys_equal node live.Patcher.node ->
@@ -115,7 +137,7 @@ let frame t =
       Stdlib.Printexc.raise_with_backtrace exn backtrace)
 ;;
 
-let create ?time_source ?(optimize = true) ~on_window_created app =
+let create ?time_source ?(optimize = true) ?(root_kind = `Window) ~on_window_created app =
   let advance_wall_clock = Option.is_none time_source in
   let time_source =
     Option.value_or_thunk time_source ~default:(fun () ->
@@ -158,6 +180,7 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
     { bonsai
     ; time_source
     ; advance_wall_clock
+    ; root_kind
     ; scheduler
     ; ctx
     ; root = None
@@ -169,6 +192,12 @@ let create ?time_source ?(optimize = true) ~on_window_created app =
 ;;
 
 let root_widget t = Option.map t.root ~f:(fun live -> live.Patcher.widget)
+
+(* Deliberately not [stop]: the caller reaching for this is one that has just been told
+   the widgets are going away, and [stop] would walk the whole shadow tree disconnecting
+   handlers from exactly those widgets. Marking broken removes the tick and turns every
+   later frame into the no-op [broken] already promises, and touches nothing. *)
+let mark_broken t = Scheduler.mark_broken t.scheduler
 let start_tick t ~fps = Scheduler.start_tick t.scheduler ~fps
 let broken t = Scheduler.broken t.scheduler
 

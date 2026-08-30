@@ -1,5 +1,5 @@
 (executables
- (names counter gallery)
- (libraries core bonsai bonsai_gtk)
+ (names counter gallery embed)
+ (libraries core bonsai bonsai_gtk ocgtk.gtk ocgtk.gio ocgtk.common)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))

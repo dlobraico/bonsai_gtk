@@ -9,7 +9,31 @@ open Gtk_import
     loop (or want to drive frames by hand) use this directly. *)
 type t
 
+(** What the runtime will do with the root widget, and therefore what the root node is
+    allowed to be. The two entry points are the two constructors, so neither can pass the
+    other's rule by accident and each rejection message is written exactly once.
+
+    - [`Window] — {!Bonsai_gtk.start}'s. The root {i must} be a [Node.window]: the
+      application adds it and presents it, and nothing else can be shown on its own.
+    - [`Not_window] — {!Bonsai_gtk.Expert.embed}'s. The root must be anything {i but} a
+      [Node.window]: the result is parented into a container the caller owns, and a
+      [GtkWindow] is a toplevel that cannot be parented. So the rule inverts rather than
+      relaxes.
+
+    Below the root the rule is the same for both and is the patcher's: a [Node.window]
+    that is not the root is [Invalid_argument] wherever it appears — which, for a
+    [`Not_window] tree, means anywhere at all. *)
+type root_kind =
+  [ `Window
+  | `Not_window
+  ]
+
 (** Builds the driver but renders nothing: the first {!frame} mounts the tree.
+
+    [root_kind] defaults to [`Window], which is {!Bonsai_gtk.start}'s rule and the one an
+    escape-hatch caller who is showing a window wants. Pass [`Not_window] to render into a
+    container someone else owns — or, more simply, use {!Bonsai_gtk.Expert.embed}, which
+    is this plus the frame driving.
 
     [time_source] defaults to one started at [Time_ns.now ()] that each {!frame} advances
     to the current wall clock, which is what makes [Bonsai.Clock] work in a real app.
@@ -22,6 +46,7 @@ type t
 val create
   :  ?time_source:Bonsai.Time_source.t
   -> ?optimize:bool
+  -> ?root_kind:root_kind
   -> on_window_created:(Widget.t -> unit)
   -> (local_ Bonsai.graph -> Node.t Bonsai.t)
   -> t
@@ -37,10 +62,10 @@ val create
     change, so it is the one that has to put the widget back. See [Patcher.reassert_only].
 
     Raises whatever the computation or the patcher raises — in particular
-    [Invalid_argument] if the root node is not a [Node.window], or if a [Node.window]
-    appears anywhere below the root. Under {!Bonsai_gtk.start} frames are driven by the
-    scheduler, which logs the exception and stops the driver instead of raising; see
-    {!broken}.
+    [Invalid_argument] if the root node does not match this driver's [root_kind], or if a
+    [Node.window] appears anywhere below the root. Under {!Bonsai_gtk.start} frames are
+    driven by the scheduler, which logs the exception and stops the driver instead of
+    raising; see {!broken}.
 
     Raises [Invalid_argument] if called after {!stop}.
 
@@ -83,6 +108,20 @@ val start_tick : t -> fps:float -> unit
     keeps running, so the window does not vanish; nothing updates it again. The fix is to
     the application. {!Bonsai_gtk.start} reports this as a non-zero exit status. *)
 val broken : t -> bool
+
+(** Marks this driver {!broken} without touching the widget tree, and removes the tick.
+
+    For an embedder that learns from GTK — rather than from a frame that raised — that the
+    tree it is rendering into must not be patched again. Unlike {!stop} it destroys
+    nothing and invalidates nothing, because the widgets it would walk are exactly the
+    ones that are in question; unlike a raising frame it costs no exception. Idempotent,
+    and a no-op relative to {!stop} (a stopped driver already refuses frames).
+
+    {!Bonsai_gtk.Expert.embed} connects this to its root widget's [destroy]. GTK's
+    ordinary teardown does not emit that signal on a widget anything still holds a
+    reference to — see {!Bonsai_gtk.Expert.Embedded} for what was measured — so this is a
+    backstop for a host that disposes its children outright, not the normal path. *)
+val mark_broken : t -> unit
 
 (** Stops the scheduler, tears the widget tree down, and invalidates the Bonsai
     computation's incremental observers. The driver is dead afterwards: {!root_widget} is

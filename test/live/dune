@@ -9,7 +9,8 @@
   live_controllers
   live_keyvals
   live_lists
-  live_text)
+  live_text
+  live_embed)
  (libraries
   core
   bonsai
@@ -146,3 +147,15 @@
     output_text.txt
     (run %{exe:live_text.exe}))
    (diff expected_text.txt output_text.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_embed.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_embed.txt
+    (run %{exe:live_embed.exe}))
+   (diff expected_embed.txt output_embed.txt))))

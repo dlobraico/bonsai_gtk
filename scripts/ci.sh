@@ -63,8 +63,8 @@ echo "== example smoke"
 # the build as well, and a cold cache or a contended dune lock would have
 # `timeout` kill the compiler at 124 -- which the check below would read as "the
 # window came up and stayed up".
-dune build examples/counter.exe examples/gallery.exe
-for ex in counter gallery; do
+dune build examples/counter.exe examples/gallery.exe examples/embed.exe
+for ex in counter gallery embed; do
   set +e
   xvfb-run -a timeout -k 2 3 "_build/default/examples/$ex.exe"
   code=$?
