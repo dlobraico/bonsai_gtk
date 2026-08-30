@@ -446,6 +446,115 @@ let%expect_test "an event attr the kind cannot emit is rejected by the handle" =
   [%expect {| (Invalid_argument "root/0: Label does not emit On_toggled") |}]
 ;;
 
+(* The same point for [Placement], and it is the sharper one: a misplaced placement attr
+   is applied by nobody and read by nobody, so before this check a headless suite was the
+   only place it could have been caught -- and it passed. Both messages are the string
+   [Placement.rejection] builds, so they are the runtime's byte for byte rather than a
+   second spelling of them. *)
+let%expect_test "a placement attr the parent does not read is rejected by the handle" =
+  let misplaced_title (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bad"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.label ~attrs:[ Attr.page_title "Library" ] "not a stack page" ]))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create misplaced_title in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.page_title is not read by Box (a placement attribute is read by the container, and this one holds children for Stack)")
+    |}];
+  let misplaced_cell (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"bad"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.label ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "not a grid child"
+            ]))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create misplaced_cell in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: Attr.grid_cell is not read by Box (a placement attribute is read by the container, and this one holds children for Grid)")
+    |}];
+  (* The root has no container above it, so every placement attr is misplaced there. *)
+  let on_the_root (_graph @ local) =
+    Bonsai.return
+      (Node.window ~title:"bad" ~attrs:[ Attr.measure_overlay true ] (Node.label "x"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create on_the_root in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root: Attr.measure_overlay is on the root node, which has no container to read it (a placement attribute is read by the container, and this one holds children for Overlay)")
+    |}]
+;;
+
+(* ... and the containers that do read one accept it, which is what stops the check above
+   from being a table of names nothing satisfies. *)
+let%expect_test "a placement attr the parent does read passes validation" =
+  let placed (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"ok"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.grid
+                [ Node.label ~attrs:[ Attr.grid_cell ~column:1 ~row:2 () ] "cell" ]
+            ; Node.stack
+                ~name:"nav"
+                ~visible_child:"p"
+                [ Node.label ~key:"p" ~attrs:[ Attr.page_title "P" ] "p" ]
+            ; Node.overlay
+                ~overlays:[ Node.label ~attrs:[ Attr.measure_overlay true ] "over" ]
+                (Node.label "under")
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create placed in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (ok))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Grid ())) (attrs ())
+             (children
+              (List
+               (((kind (Label ((text cell))))
+                 (attrs ((Grid_cell ((column 1) (row 2) (width 1) (height 1)))))
+                 (children No_children))))))
+            ((kind (Stack ((name nav) (visible_child p)))) (attrs ())
+             (children
+              (List
+               (((kind (Label ((text p)))) (key p) (attrs ((Page_title P)))
+                 (children No_children))))))
+            ((kind (Overlay ())) (attrs ())
+             (children
+              (Slots
+               ((child
+                 (Single
+                  (((kind (Label ((text under)))) (attrs ())
+                    (children No_children)))))
+                (overlays
+                 (List
+                  (((kind (Label ((text over)))) (attrs ((Measure_overlay true)))
+                    (children No_children)))))))))))))))))
+    |}]
+;;
+
 (* ... and one the kind *can* emit is not, however deep it sits. *)
 let%expect_test "a supported event attr passes validation at every depth" =
   let ok (_graph @ local) =

@@ -254,86 +254,13 @@ let note_interest
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
-(* Which parent-held attrs each container reads off its children. A child carrying one the
-   container does not read is a typo -- [Attr.grid_cell] on a box child, [Attr.page_title]
-   on a stack's *switcher* rather than on a page -- and there is no other diagnostic for
-   it: nothing applies these to the child, so a wrong one is simply never read.
-
-   The empty list is the common case and the wildcard is deliberate: a container that
-   reads none of them rejects all of them, which is what makes this a diagnostic rather
-   than a list of exceptions.
-
-   The granularity is the parent's kind, not the parent's slot: [Attr.measure_overlay] on
-   an overlay's {i main} child is accepted here and is still inert, because only the
-   [~overlays] slot reads it. Tightening that means threading the slot name in beside the
-   kind, which is worth doing when a slot container reads two different placement attrs on
-   two different slots and not before. Tasks that add a container reading a parent-held
-   attr add an arm here ([List_box -> [ Row_selectable; Row_activatable ]],
-   [Notebook -> [ Tab_label ]]). *)
-let placement_attrs_read_by : Kind.t -> Attr.Name.t list = function
-  | Grid _ -> [ Grid_cell ]
-  | Stack _ -> [ Page_title ]
-  | Overlay _ -> [ Measure_overlay ]
-  | _ -> []
-;;
-
-(* Which container reads each parent-held attr -- the other half of the table above, and
-   the useful half of the message: a misplaced placement attr is nearly always a child
-   that ended up in the wrong parent, so naming the container that *does* read it says
-   what to do about it.
-
-   Exhaustive with no wildcard, so an attribute added to [Attr.Name] cannot skip the
-   decision "is this held by the parent?". [None] is every ordinary widget property and
-   every event. *)
-let placement_attr_reader : Attr.Name.t -> string option = function
-  | Grid_cell -> Some "Grid"
-  | Page_title -> Some "Stack"
-  | Measure_overlay -> Some "Overlay"
-  | Margin_start
-  | Margin_end
-  | Margin_top
-  | Margin_bottom
-  | Halign
-  | Valign
-  | Hexpand
-  | Vexpand
-  | Sensitive
-  | Visible
-  | Tooltip
-  | Width_request
-  | Height_request
-  | Opacity
-  | Focusable
-  | Can_focus
-  | Widget_name
-  | Cursor_name
-  | Test_id
-  | On_clicked
-  | On_toggled
-  | On_changed
-  | On_activate
-  | On_search_changed
-  | On_value_changed
-  | On_expanded_changed
-  | On_revealed
-  | On_position_changed
-  | On_visible_child_changed -> None
-;;
-
-let placement_attr_names =
-  List.filter Attr.Name.all ~f:(fun name -> Option.is_some (placement_attr_reader name))
-;;
-
-(* The smart constructor's spelling, which is what the caller wrote: [Attr.Name] prints
-   [Grid_cell] and the mistake is in a line that says [Attr.grid_cell]. *)
-let attr_spelling name = String.lowercase (Attr.Name.to_string name)
-
 (* Spec §11: structural misuse is rejected loudly and early. A [GtkWindow] is a toplevel,
    so parenting one would make GTK log a critical and leave a silently broken tree — and
    under [Loop] the runtime would additionally present it as if it were a real window.
 
    [parent_kind] is [None] for the root only. A placement attr there is rejected on the
-   same rule as anywhere else: there is no container above it to read one. *)
+   same rule as anywhere else: there is no container above it to read one -- see
+   [Bonsai_gtk_vtree.Placement], which holds the table and the message. *)
 let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t) =
   (match node.kind with
    | Window _ when not is_root ->
@@ -342,35 +269,11 @@ let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t
        path
        ()
    | _ -> ());
-  let read =
-    match parent_kind with
-    | Some kind -> placement_attrs_read_by kind
-    | None -> []
-  in
-  List.iter placement_attr_names ~f:(fun name ->
-    if Option.is_some (Attrs.find node.attrs name)
-       && not (List.mem read name ~equal:Attr.Name.equal)
-    then (
-      let reader = Option.value_exn (placement_attr_reader name) in
-      match parent_kind with
-      | Some parent ->
-        invalid_argf
-          "%s: Attr.%s is not read by %s (a placement attribute is read by the \
-           container, and this one holds children for %s)"
-          path
-          (attr_spelling name)
-          (Kind.name parent)
-          reader
-          ()
-      | None ->
-        invalid_argf
-          "%s: Attr.%s is on the root node, which has no container to read it (a \
-           placement attribute is read by the container, and this one holds children for \
-           %s)"
-          path
-          (attr_spelling name)
-          reader
-          ()))
+  (* [Placement] rather than a table here: it is pure [Kind.t]/[Attr.Name.t] data, and
+     [Bonsai_gtk_test] -- which cannot link ocgtk, so cannot see this file -- runs the
+     same check over the same table at handle time. Both raise the string [rejection]
+     builds, so the two messages are identical by construction rather than by inspection. *)
+  Option.iter (Placement.rejection ~path ~parent:parent_kind node.attrs) ~f:invalid_arg
 ;;
 
 let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =

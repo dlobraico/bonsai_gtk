@@ -54,24 +54,37 @@ module Handle = Bonsai_test.Handle
 (** Builds a headless test handle for [app]: no GTK, no display, just the [Node.t] sexp
     tree and [Action.t] actions dispatched against it by [test_id].
 
-    {b Event attrs are validated here; structural misuse still is not.} This library
-    depends on [bonsai_gtk.vtree] alone -- that is what keeps it, and the view functions
-    written against it, free of ocgtk -- so it cannot see the widget implementations. It
-    can, however, see [Bonsai_gtk_vtree.Events], which is the same table the runtime
-    consults, so an event attr the kind cannot emit ([Attr.on_toggled] on a [Node.label],
-    any event attr on a [Node.native]) raises [Invalid_argument] here as well, on the
-    first [Handle.show]/[Handle.recompute_view], with the message and the node path the
-    patcher would have produced — the widget is named by [Kind.name] on both sides, so the
-    two messages are identical by construction. When the handle accepts an event attr, the
-    runtime will connect {i that attr}: [test/live/live_events.ml] checks the table
-    against every widget impl's own signal list, and [Signals.require_slots] raises at
-    mount if the two ever drift. (That live test runs only under
-    [BONSAI_GTK_LIVE_TESTS=1]; the mount assertion is unconditional.)
+    {b Event attrs and container-placement attrs are validated here; the rest of the
+      structural checking still is not.}
+    This library depends on [bonsai_gtk.vtree] alone -- that is what keeps it, and the
+    view functions written against it, free of ocgtk -- so it cannot see the widget
+    implementations. It can, however, see the two pure tables the runtime consults:
 
-    What is still only checked at mount is the {i structural} half, which needs the widget
-    implementations: a [Node.grid] child with no [Attr.grid_cell], a [Node.stack] page
-    with no [~key], two stacks under one [~name], duplicate keys among siblings, a
-    [Node.window] anywhere but the root. None of those stops a handle here, so a suite
+    - [Bonsai_gtk_vtree.Events], so an event attr the kind cannot emit ([Attr.on_toggled]
+      on a [Node.label], any event attr on a [Node.native]) raises [Invalid_argument] here
+      as well, with the message and the node path the patcher would have produced — the
+      widget is named by [Kind.name] on both sides, so the two messages are identical by
+      construction. When the handle accepts an event attr, the runtime will connect
+      {i that attr}: [test/live/live_events.ml] checks the table against every widget
+      impl's own signal list, and [Signals.require_slots] raises at mount if the two ever
+      drift. (That live test runs only under [BONSAI_GTK_LIVE_TESTS=1]; the mount
+      assertion is unconditional.)
+    - [Bonsai_gtk_vtree.Placement], so a container-placement attr on a child whose parent
+      does not read it ([Attr.grid_cell] on a box child, [Attr.page_title] anywhere but a
+      stack page, [Attr.measure_overlay] outside an overlay) raises here too. Both sides
+      call [Placement.rejection] for the string, so these messages are identical outright
+      rather than by convention. This one matters more than it looks: a misplaced
+      placement attr is applied by nobody and read by nobody, so without this check a
+      headless suite is the {i only} place it could ever have been caught, and it passed.
+
+    Both are checked on the first [Handle.show]/[Handle.recompute_view], and on every
+    later one.
+
+    What is still only checked at mount is the structural half that needs the widget
+    implementations or the live tree: a [Node.grid] child with no [Attr.grid_cell], a
+    [Node.stack] page with no [~key] or a [~visible_child] naming no page, two stacks
+    under one [~name], a [stack_switcher] naming no stack, duplicate keys among siblings,
+    a [Node.window] anywhere but the root. None of those stops a handle here, so a suite
     that is entirely headless can still certify a tree that raises the moment it is shown.
     The escape from that is a live test, or running the app.
 

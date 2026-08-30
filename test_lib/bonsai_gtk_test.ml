@@ -29,12 +29,24 @@ let current_active (node : Node.t) id =
     failwithf "Bonsai_gtk_test: %s (test_id %s) has no toggle state" (Kind.name k) id ()
 ;;
 
-(* The event half of what the runtime checks at mount, checked here from the same table
-   ([Events]) so that a headless suite cannot certify a tree the runtime refuses. The
-   message shape and the path spelling are the patcher's: [Kind.name] is what
-   [Widget_impl.name] is set to for every impl, [Children.iteri] walks the paths the
-   patcher builds, and the root is ["root"] because that is what [Driver] mounts under. *)
-let rec require_supported_events ~path (node : Node.t) =
+(* The two halves of what the runtime checks from pure vtree data, checked here from the
+   same two tables ([Events] and [Placement]) so that a headless suite cannot certify a
+   tree the runtime refuses. The message shape and the path spelling are the patcher's:
+   [Kind.name] is what [Widget_impl.name] is set to for every impl, [Children.iteri] walks
+   the paths the patcher builds, and the root is ["root"] because that is what [Driver]
+   mounts under.
+
+   Placement first, then events, because that is the order a mount reaches them --
+   [Patcher.check_placement] runs at the top of [mount] and [Signals.require_specs]
+   further down -- so a node carrying both mistakes reports the same one here and there.
+
+   [~parent] is the kind of the node above, [None] at the root: a placement attr is read
+   by the container, so it is the parent that decides. The event half does not need it. *)
+let rec require_supported ~path ~parent (node : Node.t) =
+  (* Unlike the event message below, this one is built by [Placement] itself and not
+     rebuilt here: it has two shapes and names three things, which is more than two
+     consumers can be trusted to spell the same way twice. *)
+  Option.iter (Placement.rejection ~path ~parent node.attrs) ~f:invalid_arg;
   (match Events.unsupported node.kind node.attrs with
    | None -> ()
    | Some name ->
@@ -45,7 +57,7 @@ let rec require_supported_events ~path (node : Node.t) =
        (Attr.Name.to_string name)
        ());
   Children.iteri node.children ~path ~f:(fun path child ->
-    require_supported_events ~path child)
+    require_supported ~path ~parent:(Some node.kind) child)
 ;;
 
 module Result_spec = struct
@@ -53,7 +65,7 @@ module Result_spec = struct
   type incoming = Action.t
 
   let view node =
-    require_supported_events ~path:"root" node;
+    require_supported ~path:"root" ~parent:None node;
     Sexp.to_string_hum (Node.sexp_of_t node)
   ;;
 

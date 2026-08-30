@@ -236,6 +236,11 @@ Tests:
   default to compare against (the pristine-widget read-back in `live_patcher.ml`). Task 2.
 - Task 10's headless sweep covers every M1 widget; there is still no single live
   `Live_tree.dump` golden over the whole catalogue.
+- `Bonsai_gtk_vtree.Placement`'s granularity is the parent's *kind*, not its slot, so
+  `Attr.measure_overlay` on a `Node.overlay`'s **main** child is accepted and stays inert
+  (only the `~overlays` slot reads it). Tightening it means threading the slot name in
+  beside the kind; worth doing when a slot container reads two different placement attrs
+  on two different slots, and not before. M2 task-3 review, Minor 6.
 - Nothing distinguishes `Driver.frame`'s phys-equal fast path from the slow one: replacing
   `phys_equal node live.Patcher.node` (`src/driver.ml`) with `false` leaves the whole suite
   green, because the two paths are behaviourally identical by design. Tolerable — the

@@ -14,6 +14,7 @@ module Handler = Handler
 module Attr = Attr
 module Attrs = Attrs
 module Events = Events
+module Placement = Placement
 module Native = Native
 module Kind = Kind
 module Children = Children
