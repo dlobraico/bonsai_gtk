@@ -125,6 +125,14 @@ let update_slots (slots : slots) attrs =
 
 let clear_slots (slots : slots) = List.iter !slots ~f:(fun (_, slot) -> slot := None)
 
+(* Introspection, for tests. [connect_all] prepends, so [!slots] is in reverse spec order;
+   sorted here so a golden pins the set rather than the order a spec list happened to be
+   written in. *)
+let armed (slots : slots) =
+  List.filter_map !slots ~f:(fun (name, slot) -> Option.map !slot ~f:(fun _ -> name))
+  |> List.sort ~compare:Attr.Name.compare
+;;
+
 (* ocgtk generates no [on_notify_*]: a detailed signal name goes through the generic
    marshaller, which carries no payload at all, so the handler reads the property back off
    the widget with the class getter (spec §6.4). That is the same shape [fire] already has

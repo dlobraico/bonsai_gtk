@@ -143,6 +143,16 @@ val update_slots : slots -> Attrs.t -> unit
     widget is detached, so a signal GTK emits during teardown cannot fire a stale handler. *)
 val clear_slots : slots -> unit
 
+(** Which slots currently hold a handler, in {!Attr.Name} order.
+
+    Introspection for tests, and the only way to see the difference between a connected
+    callback that will fire and one that is inert: an emptied slot is not observable from
+    GTK's side at all, and for a signal that cannot be synthesised (a click, a key press)
+    it is not observable from the handler's side either. [test/live/live_controllers.ml]
+    uses it to assert that one controller family being removed does not disarm another's
+    slots. *)
+val armed : slots -> Attr.Name.t list
+
 (** Connects to the detailed signal [notify::<prop>], which GTK emits whenever that
     property changes — however it changed, so a spec built on this fires for the library's
     own writes as well as the user's, and relies on the {!ctx.in_patch} guard to drop the

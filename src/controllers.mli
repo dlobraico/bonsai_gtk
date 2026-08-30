@@ -33,7 +33,12 @@ val create : Signals.ctx -> node_path:string -> Widget.t -> t
 
     Called at mount after {!create}, and on every patch. Unconditional for the same reason
     [Signals.update_slots] is: every frame rebuilds its closures, so "the attrs changed"
-    is true of any node carrying a handler at all, and the two calls sit together. *)
+    is true of any node carrying a handler at all, and the two calls sit together.
+
+    Every slot is emptied once up front and re-armed per family, so no slot is armed while
+    a controller is being removed (removal can provoke a leave or a cancel), and every
+    family that survives the frame ends it armed whatever order the families are visited
+    in. Both matter: a removed family must not disarm the ones beside it. *)
 val update : t -> Attrs.t -> unit
 
 (** Empties every slot, leaving the controllers attached and connected — so a signal GTK
@@ -60,6 +65,16 @@ val release : t -> unit
     not what GTK reports: [Widget.observe_controllers] is the other half of that assertion
     and is what [test/live/live_controllers.ml] compares this against. *)
 val attached_count : t -> int
+
+(** Which controller-attr slots currently hold a handler, across every attached family, in
+    {!Attr.Name} order.
+
+    Introspection for tests, and the only evidence there is that a click slot is armed: no
+    click can be synthesised through this binding, so "the gesture is attached" and "the
+    gesture will call anything" are two different facts and only this one says the second.
+    [test/live/live_controllers.ml] uses it to assert that removing one family does not
+    disarm another's slots. *)
+val armed : t -> Attr.Name.t list
 
 (** Whether a controller [Widget.observe_controllers] reported is one this module
     attached, by the debugging name it sets on every controller it creates.

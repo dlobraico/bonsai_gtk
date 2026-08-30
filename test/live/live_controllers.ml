@@ -63,11 +63,12 @@ let names w =
    the whole reason the filter exists. *)
 let controllers label (live : P.live) w =
   printf
-    !"%s: gtk=%{sexp: string list} bonsai=%d total=%d\n"
+    !"%s: gtk=%{sexp: string list} bonsai=%d total=%d armed=%{sexp: Attr.Name.t list}\n"
     label
     (names w)
     (Controllers.attached_count live.controllers)
     (List.length (all_controllers w))
+    (Controllers.armed live.controllers)
 ;;
 
 (* [~button] and [~phase] are read back off the live [GtkGestureClick] rather than
@@ -114,6 +115,28 @@ let pump () =
 (* Once, before anything below: every block here needs GTK initialised, and the regression
    case has to run before the assertions that depend on the thing it pins. *)
 let () = ignore (Ocgtk_gtk.GMain.init () : string array)
+
+(* What the handlers saw, drained and labelled per assertion. Shared by the blocks below
+   so that "nothing fired" and "this fired" read the same way everywhere. *)
+let events = ref []
+let record s = events := s :: !events
+
+let drain label =
+  printf "%s: %s\n" label (String.concat ~sep:"," (List.rev !events));
+  events := []
+;;
+
+(* A window whose focus assertions work: presented, not merely created. *)
+let presenting_ctx scheduler =
+  P.create_ctx
+    ~signals:
+      { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+      ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+      ; on_exn =
+          (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+      }
+    ~on_window_created:(fun w -> W.Window.present (cast w))
+;;
 
 (* Regression for the [set_static_name] bug (review C1).
 
@@ -230,13 +253,116 @@ let () =
   printf "every controller attr attaches a controller\n"
 ;;
 
+(* Regression for N1: removing one controller family must not disarm the families beside
+   it, in either direction.
+
+   [Controllers.update] visits the families in [Events.Family.all] order and each family's
+   own [sync] is the only thing that re-arms it, so an emptying that happens *between* two
+   [sync] calls undoes the arming the earlier ones just did. Round 1 put a whole-widget
+   [clear] in [sync]'s removal branch, and it did exactly that: dropping the focus attrs
+   while keeping [on_click] left the gesture attached with an empty slot, so a middle
+   click between that frame and the next render reached nothing. It was invisible because
+   no click can be delivered -- hence [Controllers.armed], which is the only way to tell a
+   gesture that will call something from one that will not.
+
+   Both directions, because the order of [Events.Family.all] decides which family is the
+   victim and Task 5 appends a third: the click-dropped direction is asserted through the
+   focus handlers actually firing, *in the same frame as the patch* (no second render
+   intervenes), and the focus-dropped direction through the click slot still being armed,
+   which is all that can be observed of it. *)
 let () =
-  let events = ref [] in
-  let record s = events := s :: !events in
-  let drain label =
-    printf "%s: %s\n" label (String.concat ~sep:"," (List.rev !events));
-    events := []
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx = presenting_ctx scheduler in
+  let view ~with_click ~with_focus =
+    Node.window
+      ~title:"n1"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.button
+             ~attrs:
+               (List.filter_opt
+                  [ (if with_click
+                     then
+                       Some
+                         (Attr.on_click (fun _ ->
+                            record "click";
+                            Ui_effect.Ignore))
+                     else None)
+                  ; (if with_focus
+                     then
+                       Some
+                         (Attr.on_focus_enter (fun () ->
+                            record "focus-enter";
+                            Ui_effect.Ignore))
+                     else None)
+                  ; (if with_focus
+                     then
+                       Some
+                         (Attr.on_focus_leave (fun () ->
+                            record "focus-leave";
+                            Ui_effect.Ignore))
+                     else None)
+                  ])
+             ~label:"target"
+             ()
+         ; Node.button ~label:"other" ()
+         ])
   in
+  let patch live v =
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"n1" ~is_root:true live v)
+    in
+    P.run_fixups ctx;
+    live
+  in
+  (* Focus into the target and back out again. Every round below starts with focus parked
+     on [other], so each one prints the same two events when the controller is live and
+     nothing when it is not -- which is what makes the lines comparable rather than each
+     needing its own reading. *)
+  let focus_round live =
+    ignore (W.Widget.grab_focus (nth live 0).widget : bool);
+    pump ();
+    ignore (W.Widget.grab_focus (nth live 1).widget : bool);
+    pump ()
+  in
+  let live =
+    P.mount ctx ~path:"n1" ~is_root:true (view ~with_click:true ~with_focus:true)
+  in
+  P.run_fixups ctx;
+  controllers "n1 baseline" (nth live 0) (nth live 0).widget;
+  (* Presenting the window focuses its first focusable child, which is the target -- and
+     the controller is live from mount, so that arrives as an [enter]. Drained here so the
+     baseline round and the rounds after each patch print the same shape and can be
+     compared directly, which is the whole of what this block asserts. *)
+  pump ();
+  drain "n1 focus from presenting the window";
+  ignore (W.Widget.grab_focus (nth live 1).widget : bool);
+  pump ();
+  drain "n1 focus parked off the target";
+  focus_round live;
+  drain "n1 baseline focus";
+  (* Direction 1: drop the click family, keep focus. The focus attrs are byte-identical
+     across this frame, so anything that stops them firing came from the click family's
+     removal. Driven immediately, before any further render. *)
+  let live = patch live (view ~with_click:false ~with_focus:true) in
+  controllers "n1 click family dropped" (nth live 0) (nth live 0).widget;
+  focus_round live;
+  drain "n1 focus in the same frame that dropped on_click";
+  (* Direction 2: back to both, then drop the focus family and keep click. Nothing can
+     deliver a click, so the assertion is the slot: [armed=(On_click)] is a gesture that
+     will call the handler, [armed=()] is one that is attached and inert. *)
+  let live = patch live (view ~with_click:true ~with_focus:true) in
+  controllers "n1 both back" (nth live 0) (nth live 0).widget;
+  let live = patch live (view ~with_click:true ~with_focus:false) in
+  controllers "n1 focus family dropped" (nth live 0) (nth live 0).widget;
+  focus_round live;
+  drain "n1 focus after its own family was dropped";
+  P.destroy ctx live;
+  printf "n1 regression done\n"
+;;
+
+let () =
   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
   let ctx =
     P.create_ctx

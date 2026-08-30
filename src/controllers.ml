@@ -69,6 +69,14 @@ let clear t =
     Option.iter (attached t family) ~f:Signals.clear_slots)
 ;;
 
+let armed t =
+  List.concat_map Events.Family.all ~f:(fun family ->
+    match attached t family with
+    | None -> []
+    | Some slots -> Signals.armed slots)
+  |> List.sort ~compare:Attr.Name.compare
+;;
+
 (* [wanted] is whether any of this family's attrs is present. Attach on the first, detach
    on the last, and in between only re-slot and re-configure.
 
@@ -93,14 +101,15 @@ let sync
   match get t, wanted with
   | None, false -> ()
   | Some a, false ->
-    (* Every family's slots, not just this one's, and for the reason [release] gives:
-       [remove_controller] can itself provoke a leave or a cancel, and a still-armed slot
-       on a *sibling* controller of the same widget would reach Bonsai from inside it.
-       Unreachable today -- [update] only runs from a patch, which the driver wraps in the
-       reentrancy guard -- but the slot-emptying exists precisely as belt-and-braces
-       against that guard not being the whole story, and the two removal paths must not
-       disagree about it. *)
-    clear t;
+    (* This family's slots only. Emptying every family's here would be wrong: [update]
+       calls [sync] once per family in order, and each family's own [sync] is the only
+       thing that re-arms it, so a family removed at iteration i would wipe the slots of
+       every family already processed -- and nothing would re-arm them until the next
+       patch of this node. The invariant that motivated the wider clear (no sibling slot
+       armed while [remove_controller] runs, which can itself provoke a leave or a cancel)
+       is kept by [update]'s single up-front [clear], which happens before any family is
+       touched and is undone for the survivors by their own [update_slots]. *)
+    Signals.clear_slots a.slots;
     Signals.disconnect a.connections;
     W.Widget.remove_controller t.widget (upcast a.controller);
     set t None
@@ -210,6 +219,21 @@ let configure_click (gc : W.Gesture_click.t) attrs =
    named there and attached by nothing -- accepted everywhere, wired nowhere, with no
    diagnostic. Task 5 adds [Key] to the variant and the compiler asks for its arm here. *)
 let update t attrs =
+  (* Once, before any family is touched, rather than inside [sync]'s removal branch.
+
+     Two things have to hold at the same time and only this ordering gets both. No slot
+     may be armed while [gtk_widget_remove_controller] runs, because it can itself provoke
+     a leave or a cancel and a sibling family's handler would then reach Bonsai from
+     inside a patch -- that is the invariant [release] states and it is why the emptying
+     is wide. And every family that *survives* this frame has to end it armed -- so the
+     emptying cannot happen between two families' [sync] calls, where it would undo the
+     arming the earlier ones just did. Up front satisfies both: each surviving family's
+     own [update_slots], below, re-arms it.
+
+     Unconditional rather than "only when some family is going away": the condition is one
+     more thing to get wrong, and the cost is a walk of at most three short assoc lists
+     per patched node. *)
+  clear t;
   List.iter Events.Family.all ~f:(fun (family : Events.Family.t) ->
     let wanted = wanted attrs family in
     match family with
