@@ -31,7 +31,7 @@ type spec =
 
 and read_back =
   { attr : Attr.Name.t
-  ; connect : Widget.t -> callback:(unit -> unit) -> connection
+  ; connect : Widget.t -> callback:(unit -> unit) -> connection list
   ; fire : Widget.t -> Attr.t -> unit Ui_effect.t option
   }
 
@@ -97,7 +97,7 @@ let dispatch_payload ctx ~node_path ~declined ~fire w slot p =
 let connect_all ctx ~node_path (w : Widget.t) specs : slots * connection list =
   let slots = ref [] in
   let connections =
-    List.map specs ~f:(fun spec ->
+    List.concat_map specs ~f:(fun spec ->
       let slot = ref None in
       slots := (spec_attr spec, slot) :: !slots;
       match spec with
@@ -113,8 +113,9 @@ let connect_all ctx ~node_path (w : Widget.t) specs : slots * connection list =
         (* No [try] around this one: [dispatch_payload] has to catch the exception itself,
            because the frame owes GTK a value even when it raised and only the spec knows
            which value is safe. *)
-        connect w ~callback:(fun p ->
-          dispatch_payload ctx ~node_path ~declined ~fire w slot p))
+        [ connect w ~callback:(fun p ->
+            dispatch_payload ctx ~node_path ~declined ~fire w slot p)
+        ])
   in
   slots, connections
 ;;
@@ -140,11 +141,13 @@ let armed (slots : slots) =
 
    [~after:false] matches every generated [on_*], each of which defaults [?after] to
    false. *)
-let notify ~prop w ~callback =
+let notify_connection ~prop obj ~callback =
   connected
-    w
-    (Gobject.Signal.connect_simple w ~name:("notify::" ^ prop) ~callback ~after:false)
+    obj
+    (Gobject.Signal.connect_simple obj ~name:("notify::" ^ prop) ~callback ~after:false)
 ;;
+
+let notify ~prop w ~callback = [ notify_connection ~prop w ~callback ]
 
 (* An [on_*] attr on a widget whose impl declares no spec for it is a typo that would
    otherwise be silently inert: the slot is never created, so nothing is ever written to

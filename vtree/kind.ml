@@ -392,9 +392,17 @@ type drop_down_props =
    because it is short, because [equal_calendar_props] then compares it in list order
    (which is what a view producing a sorted list already gives), and because the impl
    applies it with [clear_marks] followed by one [mark_day] per entry -- an operation for
-   which order and duplicates make no difference. Marks are per day-of-month and survive a
-   month change: day 31 marked while February is showing is still marked in March
-   (measured). *)
+   which order and duplicates make no difference.
+
+   {b The comparison is stricter than the write}, and deliberately: [[1; 2]] and [[2; 1]]
+   are unequal here and cost a [clear_marks], 31 [mark_day]s at worst and a redraw for no
+   visible change. Making them equal would mean sorting (or set-ifying) on every
+   comparison -- an allocation per calendar per differing frame, to save a redraw for a
+   view that rebuilds its marks in a different order each time, which is not a view
+   anybody writes. If one ever appears, the fix belongs in the {i view} (hand a sorted
+   list) rather than here (task-11-review.md Minor 6). Marks are per day-of-month and
+   survive a month change: day 31 marked while February is showing is still marked in
+   March (measured). *)
 type calendar_props =
   { date : Date.t
   ; show_day_names : bool [@sexp_drop_if Bool.equal Defaults.Calendar.show_day_names]

@@ -51,7 +51,7 @@ let unwritable text =
   if String.mem text '\000'
   then
     Some
-      "text contains a NUL byte, which GTK would silently truncate at \
+      "text contains a NUL byte, which GTK would silently truncate the text at \
        (gtk_editable_set_text takes a NUL-terminated string); the write was refused and \
        the label was left as it was"
   else None
@@ -225,11 +225,17 @@ let impl : Widget_impl.t =
       (fun _w ~(old : Kind.t) (new_ : Kind.t) ->
         match old, new_ with
         (* Nothing at all: both props are controlled, so both belong to [reassert], which
-           the patcher runs immediately after this and on every other patch too. The
-           [match] is kept rather than collapsed to [fun _ ~old:_ _ -> ()] so that a prop
-           added to this kind is a compile error here rather than a silently ignored
-           field. *)
-        | Editable_label _, Editable_label _ -> ()
+           the patcher runs immediately after this and on every other patch too.
+
+           The fields are spelled out rather than matched with [_], which is what makes
+           the claim true: warning 9 is on, so a prop added to [Kind.editable_label_props]
+           is a compile error {i here} and its author has to decide whether it is
+           controlled (and so [reassert]'s) or an ordinary property this function must
+           write. The first round wrote [Editable_label _, Editable_label _] and claimed
+           the same thing, which binds nothing and would have let a new prop be silently
+           ignored (task-11-review.md Minor 1). *)
+        | ( Editable_label { text = _; editing = _ }
+          , Editable_label { text = _; editing = _ } ) -> ()
         | _, k -> Widget_impl.wrong_kind "EditableLabel" k)
   ; reassert =
       Some reassert

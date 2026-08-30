@@ -179,7 +179,7 @@ let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
       { attr = Attr.Name.On_focus_enter
       ; connect =
           (fun _w ~callback ->
-            Signals.connected fc (W.Event_controller_focus.on_enter fc ~callback))
+            [ Signals.connected fc (W.Event_controller_focus.on_enter fc ~callback) ])
       ; fire =
           (fun _w attr ->
             match (attr :> Attr.Private.t) with
@@ -190,7 +190,7 @@ let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
       { attr = Attr.Name.On_focus_leave
       ; connect =
           (fun _w ~callback ->
-            Signals.connected fc (W.Event_controller_focus.on_leave fc ~callback))
+            [ Signals.connected fc (W.Event_controller_focus.on_leave fc ~callback) ])
       ; fire =
           (fun _w attr ->
             match (attr :> Attr.Private.t) with

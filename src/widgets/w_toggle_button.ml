@@ -7,7 +7,7 @@ let toggled : Signals.spec =
     { attr = Attr.Name.On_toggled
     ; connect =
         (fun w ~callback ->
-          Signals.connected w (W.Toggle_button.on_toggled (cast w) ~callback))
+          [ Signals.connected w (W.Toggle_button.on_toggled (cast w) ~callback) ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with

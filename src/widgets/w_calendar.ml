@@ -123,6 +123,9 @@ type cached =
        [Patcher.enqueue_fixups], which is the one place holding both this widget and the
        path of the node it came from. *)
     mutable unreported : string option
+  ; (* The date the handler was last told about, so that one user action reaching this
+       widget through more than one GTK emission is delivered once. See {!fire_date}. *)
+    mutable last_fired : Date.t option
   }
 
 let cache : cached Cache.t = Cache.create 8
@@ -131,7 +134,7 @@ let state w =
   match Cache.find_opt cache w with
   | Some st -> st
   | None ->
-    let st = { refused = None; unreported = None } in
+    let st = { refused = None; unreported = None; last_fired = None } in
     Cache.replace cache w st;
     st
 ;;
@@ -178,7 +181,13 @@ let set_date c st date =
     st.unreported <- Some reason
   | None ->
     write_date c date;
-    st.refused <- None
+    st.refused <- None;
+    (* The dedup memo is about what the {i user} was last told, and this write moves the
+       widget out from under it. Without this line a date the model {i declined} could be
+       chosen only once: the handler fired for it, [reassert] put the model's date back,
+       and a second attempt at the same day would be coalesced away against a memo that no
+       longer describes anything the user can see. *)
+    st.last_fired <- None
 ;;
 
 (* Marks, applied whole rather than diffed.
@@ -201,30 +210,102 @@ let set_marks (c : W.Calendar.t) days =
 
 let same_marks a b = phys_equal a b || List.equal Int.equal a b
 
-(* [day-selected] carries no payload -- it is GTK saying "the date moved", not saying to
-   what -- so this is a read-back spec, which is exactly what a read-back spec is for. The
-   payload the handler wants is assembled by [read_date] from the same three getters the
-   write used, so the zero-based month is converted in one place for both directions.
+(* {1 Every way the displayed date can change}
 
-   It is the only one of [GtkCalendar]'s five signals this library exposes, and
-   [vtree/events.ml] says why: [next-month], [prev-month], [next-year] and [prev-year]
-   report that the heading was clicked rather than what the calendar now shows, and
-   walking to another month moves the day, so [day-selected] fires for all four anyway.
+   The date is a controlled prop, so the attr beside it has to fire whenever the date the
+   calendar {i shows} changes -- not merely when GTK emits the signal named after days.
+   The first round got this wrong, and got it wrong from a premise its own golden already
+   disproved: it exposed [day-selected] alone, on the ground that "walking to another
+   month moves the day too, so [day-selected] fires for all four anyway".
+
+   {b It does not.} Measured on GTK 4.22 by emitting [clicked] on the calendar's own
+   heading buttons, which is the exact path a user click takes:
+
+   {v
+     next/prev-month : month moves, day survives -> notify::month only, day-selected +0
+     next/prev-year  : year moves,  day survives -> notify::year only,  day-selected +0
+     Jan 31 -> Feb   : month AND day move        -> notify::day + notify::month,
+                                                    day-selected STILL +0
+   v}
+
+   The heading path never emits [day-selected] at all, even when it moves the day. So a
+   user who walked to September was never reported, the model went on holding August, and
+   the next [reassert] -- any frame, any event, the idle tick -- wrote August back and the
+   calendar snapped. The widget could not be browsed, and no application could have been
+   written that kept up, because there was no attr through which to learn.
+
+   {b Three connections, one attr name, one slot.} [day-selected] is GTK's own event for
+   the user picking a day and is what the grid path emits; [notify::month] and
+   [notify::year] are the two components a heading walk moves. Together they cover the
+   date completely, because the date {i is} those three properties and every write goes
+   through [calendar_set_date], which notifies each component that changed. (A fourth,
+   [notify::day], would make that argument structural rather than measured -- it fires on
+   every day change including the heading ones. It is not connected because no reachable
+   path changes the day alone without [day-selected]: the heading buttons cannot, and the
+   grid emits it. If one is ever found, adding it here is one line and the dedup below
+   already absorbs the extra emission.)
+
+   They share one [Attr.Name.t] and therefore one slot, so [Signals.update_slots],
+   [Signals.armed] and [Signals.require_slots] are untouched and [live_events.ml]'s
+   comparison against [Events.for_kind] still sees exactly one name. What
+   [Signals.read_back.connect] returning a list buys is only that all three are torn down.
+
+   {b Coalescing.} One user action can reach more than one of the three -- a grid click on
+   a day drawn from the adjacent month moves the month as well as the day -- so the
+   handler is deduped against the date it was last told about. That is exact rather than
+   approximate, and it is safe, because every emission in a burst reads the
+   {i same final date}: [calendar_set_date] updates its date before notifying anything
+   (measured -- each of the logged callbacks above reports the post-walk date, never the
+   pre-walk one). So a burst delivers the new date exactly once, never zero times and
+   never twice.
+
+   The memo is cleared by every library write ({!set_date}), which is what keeps a date
+   the model {i declined} choosable again. It is not cleared anywhere else, and does not
+   need to be: any other way the widget's date changes is itself an emission that updates
+   it. *)
+let fire_date w =
+  let st = state w in
+  let date = read_date (cast w) in
+  match st.last_fired with
+  | Some d when Date.equal d date -> None
+  | Some _ | None ->
+    st.last_fired <- Some date;
+    Some date
+;;
+
+(* [day-selected] carries no payload -- it is GTK saying "the date moved", not saying to
+   what -- and a [notify::] carries none either, so this is a read-back spec, which is
+   exactly what a read-back spec is for. The payload the handler wants is assembled by
+   [read_date] from the same three getters the write uses, so the zero-based month is
+   converted in one place for both directions.
+
+   [next-month], [prev-month], [next-year] and [prev-year] are still not exposed, and now
+   for a reason that holds: they say the heading was clicked rather than what the calendar
+   shows, and the two [notify::] connections above already carry what they change. An
+   application that genuinely wants "the user is browsing" as distinct from "the date
+   changed" would need them; nothing in M2 does.
 
    The guard matters here as much as anywhere in the library: [write_date] emits
-   [day-selected] once or twice on every date change the model makes, and every one of
-   those is a write the library made on the user's behalf inside a patch. *)
+   [day-selected] and up to two [notify::] per date change the model makes, and every one
+   of those is a write the library made on the user's behalf inside a patch. *)
 let day_selected : Signals.spec =
   Read_back
     { attr = Attr.Name.On_day_selected
     ; connect =
         (fun w ~callback ->
           let c : W.Calendar.t = cast w in
-          Signals.connected c (W.Calendar.on_day_selected c ~callback))
+          [ Signals.connected c (W.Calendar.on_day_selected c ~callback)
+          ; Signals.notify_connection ~prop:"month" c ~callback
+          ; Signals.notify_connection ~prop:"year" c ~callback
+          ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with
-          | On_day_selected handler -> Some (handler (read_date (cast w)))
+          | On_day_selected handler ->
+            (* [None] when this emission is one the application has already been told
+               about, which [Signals.dispatch] reads as "nothing to schedule" -- the same
+               answer it gives for an attr this spec does not handle. *)
+            Option.map (fire_date w) ~f:handler
           | _ -> None)
     }
 ;;

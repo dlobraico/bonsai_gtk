@@ -292,7 +292,7 @@ let selected_rows_changed : Signals.spec =
     { attr = Attr.Name.On_selected_rows_changed
     ; connect =
         (fun w ~callback ->
-          Signals.connected w (W.List_box.on_selected_rows_changed (cast w) ~callback))
+          [ Signals.connected w (W.List_box.on_selected_rows_changed (cast w) ~callback) ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with

@@ -273,7 +273,10 @@ let selected_children_changed : Signals.spec =
     { attr = Attr.Name.On_selected_children_changed
     ; connect =
         (fun w ~callback ->
-          Signals.connected w (W.Flow_box.on_selected_children_changed (cast w) ~callback))
+          [ Signals.connected
+              w
+              (W.Flow_box.on_selected_children_changed (cast w) ~callback)
+          ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with

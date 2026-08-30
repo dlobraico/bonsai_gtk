@@ -62,7 +62,7 @@ let search_changed : Signals.spec =
     { attr = Attr.Name.On_search_changed
     ; connect =
         (fun w ~callback ->
-          Signals.connected w (W.Search_entry.on_search_changed (cast w) ~callback))
+          [ Signals.connected w (W.Search_entry.on_search_changed (cast w) ~callback) ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with
@@ -126,7 +126,7 @@ let impl : Widget_impl.t =
       [ W_entry.changed
       ; search_changed
       ; W_entry.activate ~connect:(fun w ~callback ->
-          Signals.connected w (W.Search_entry.on_activate (cast w) ~callback))
+          [ Signals.connected w (W.Search_entry.on_activate (cast w) ~callback) ])
       ]
   ; children = Widget_impl.No_children
   }

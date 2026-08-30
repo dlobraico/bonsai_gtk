@@ -82,7 +82,7 @@ let changed : Signals.spec =
              connection has to name -- even though [from_gobject] is a checked cast to the
              same instance for all three entry kinds. *)
           let e = editable w in
-          Signals.connected e (W.Editable.on_changed e ~callback))
+          [ Signals.connected e (W.Editable.on_changed e ~callback) ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with
@@ -185,7 +185,7 @@ let impl : Widget_impl.t =
   ; signals =
       [ changed
       ; activate ~connect:(fun w ~callback ->
-          Signals.connected w (W.Entry.on_activate (cast w) ~callback))
+          [ Signals.connected w (W.Entry.on_activate (cast w) ~callback) ])
       ]
   ; children = Widget_impl.No_children
   }

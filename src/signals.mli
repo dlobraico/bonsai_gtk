@@ -71,15 +71,27 @@ type spec =
 
 and read_back =
   { attr : Attr.Name.t
-  ; connect : Widget.t -> callback:(unit -> unit) -> connection
-  (** Connect [callback] and return the resulting {!connection}.
+  ; connect : Widget.t -> callback:(unit -> unit) -> connection list
+  (** Connect [callback] and return the resulting {!connection}s.
 
       The object connected to need {i not} be the widget: it is whatever GObject actually
       emits the signal — a [GtkEditable] delegate, an event controller [Controllers]
-      attached, and in later milestones a [GtkTextBuffer] or a list model. What is
-      required is that the returned {!connection} name that object, because that is what
-      teardown disconnects from. Build it with {!connected} and the returned id, never by
-      pairing an id with a different object. *)
+      attached, a [GtkTextBuffer] or a list model. What is required is that each returned
+      {!connection} name the object it was made on, because that is what teardown
+      disconnects from. Build them with {!connected} and the returned ids, never by
+      pairing an id with a different object.
+
+      {b A list, because one attr may need more than one GTK emission.} Almost every spec
+      returns a singleton. The exception is a controlled prop whose value the user can
+      change by more than one route that GTK reports differently: a [GtkCalendar]'s date
+      moves by a day click ([day-selected]) {i or} by a heading walk (which emits only
+      [notify::month] or [notify::year] and no [day-selected] at all — measured), and an
+      attr that heard about one and not the other would be a prop the application cannot
+      keep up with. All of them share {i one} attr name and therefore {i one} slot, so
+      [update_slots], {!armed} and {!require_slots} are unchanged and no duplicate name
+      reaches the slot list; what changes is only how many places the same callback is
+      wired to. The consequent duplicate deliveries are the spec's own to coalesce in
+      {!read_back.fire}. *)
   ; fire : Widget.t -> Attr.t -> unit Ui_effect.t option
   (** Turn the attr currently in the slot into the effect to schedule. [None] if the attr
       is not the one this spec handles, or if this particular emission is not one the
@@ -161,7 +173,15 @@ val armed : slots -> Attr.Name.t list
     This is the connector for properties whose class has no dedicated signal
     ([GtkSwitch]'s [active], for instance, whose [state-set] is the wrong hook for a
     controlled widget). *)
-val notify : prop:string -> Widget.t -> callback:(unit -> unit) -> connection
+val notify : prop:string -> Widget.t -> callback:(unit -> unit) -> connection list
+
+(** {!notify}'s single connection, for a spec that connects to more than one thing and so
+    has to build its own list — and for one made on an object other than the widget. *)
+val notify_connection
+  :  prop:string
+  -> 'a Gobject.obj
+  -> callback:(unit -> unit)
+  -> connection
 
 (** The {!Attr.Name.t} a spec carries, whichever arm it is. Readers that only want the
     name go through this rather than matching, so the variant stays inside this module. *)

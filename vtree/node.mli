@@ -1107,6 +1107,14 @@ val drop_down
     carries no payload, so the handler reads the three getters back through the same
     conversion.
 
+    That attr fires for a {i heading walk} as well as a day click, and it has to: a walk
+    to another month emits no [day-selected] at all (GTK reports it as [notify::month]),
+    so an attr that carried only day clicks would leave the model holding the old date and
+    this prop would write the walk away on the next frame. A calendar without an
+    [on_day_selected] therefore cannot be browsed either — which is correct and is what a
+    controlled prop means, but is worth knowing before rendering one as a read-only
+    display.
+
     {b A date GTK cannot hold.} GTK's year range is 1-9999 ([gtk_calendar_set_year]
     asserts it) and [Core.Date] allows year 0, so a date in year 0 is a value the widget
     will not take. It is not rejected here, for the reason {!text_view}'s unstorable text

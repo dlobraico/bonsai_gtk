@@ -551,13 +551,25 @@ val on_selected_changed : (int -> unit Ui_effect.t) -> t
     months. [src/widgets/w_calendar.ml] reads the three getters back and assembles the
     date, and it is the only code in this library that ever sees the raw month.
 
-    [day-selected] is the only calendar signal this library exposes, and it is enough: GTK
-    emits it whenever the {i day-of-month} changes, and moving to another month or year
-    through the heading buttons moves the day too. (Measured: [set_month] and [set_year]
-    alone emit [notify::month]/[notify::year] but {i not} [day-selected], which is why the
-    library's own writes always end with the day.) [next-month], [prev-month], [next-year]
-    and [prev-year] are not exposed: they say the heading was clicked rather than what the
-    calendar now shows, and a handler that wants the date already has it here.
+    {b It fires whenever the date the calendar shows changes — a day click or a heading
+      walk.}
+    That is one attr over three GTK emissions, and it has to be, because GTK reports the
+    two routes differently: clicking a day emits [day-selected], while walking to another
+    month or year with the heading buttons emits only [notify::month] or [notify::year]
+    and {b no [day-selected] at all} — measured, and true even for the walk from 31
+    January to February, where the day does move. An attr that heard about one route and
+    not the other would be a controlled prop the application could not keep up with: the
+    walk would go unreported, the model would still hold the old date, and the next frame
+    would write it back.
+
+    One user action is delivered {i once}: the handler is deduped against the date it was
+    last told about, which is exact because every emission in a burst reads the same final
+    date (GTK updates the date before notifying anything). The memo is cleared by every
+    write the library makes, so a day the model declines can be chosen again.
+
+    [next-month], [prev-month], [next-year] and [prev-year] are not exposed: they say the
+    heading was clicked rather than what the calendar now shows, and the two [notify::]
+    connections already carry what they change.
 
     [~date] is {i controlled} (spec §6.5), so a calendar that carries no [on_day_selected]
     — or whose model declines the day — snaps back to the model's date on the next frame.

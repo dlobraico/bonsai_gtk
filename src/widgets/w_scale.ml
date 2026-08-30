@@ -11,7 +11,7 @@ let value_changed : Signals.spec =
     { attr = Attr.Name.On_value_changed
     ; connect =
         (fun w ~callback ->
-          Signals.connected w (W.Range.on_value_changed (cast w) ~callback))
+          [ Signals.connected w (W.Range.on_value_changed (cast w) ~callback) ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with

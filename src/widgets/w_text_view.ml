@@ -309,11 +309,12 @@ let changed : Signals.spec =
              The closure captures neither the record nor the buffer, so it adds no
              reference of its own to the object it is connected to. *)
           let b = buffer w in
-          Signals.connected
-            b
-            (W.Text_buffer.on_changed b ~callback:(fun () ->
-               (state w).stale <- true;
-               callback ())))
+          [ Signals.connected
+              b
+              (W.Text_buffer.on_changed b ~callback:(fun () ->
+                 (state w).stale <- true;
+                 callback ()))
+          ])
     ; fire =
         (fun w attr ->
           match (attr :> Attr.Private.t) with

@@ -1365,6 +1365,31 @@ let () =
 
 (* ------------------------------------------------------------------------------------ *)
 
+(* The four buttons in a [GtkCalendar]'s heading, in tree order: prev-month, next-month,
+   prev-year, next-year. Found by walking the widget tree for [GtkButton]s rather than by
+   index into a layout, so a GTK that rearranges the heading still finds them.
+
+   Clicking one is [Gobject.Signal.emit_by_name ~name:"clicked"], which is the exact path
+   a real click takes: [GtkCalendar] connects its own [calendar_set_month_prev] and
+   friends to that signal, so emitting it runs the same handler a pointer press would.
+   This is the one place in the suite where a user gesture can be synthesised at all --
+   there is no [GdkEvent] constructor in the binding (see [docs/m1-backlog.md]) -- and it
+   works here only because the gesture GTK cares about has already been reduced to an
+   action signal on an ordinary button. *)
+let heading_buttons w =
+  let rec go w =
+    (if String.equal (Bonsai_gtk.Private.Gtk_import.type_name w) "GtkButton"
+     then [ w ]
+     else [])
+    @ List.concat_map (Bonsai_gtk.Private.Gtk_import.widget_children w) ~f:go
+  in
+  go w
+;;
+
+let click_heading w i =
+  Gobject.Signal.emit_by_name (List.nth_exn (heading_buttons w) i) ~name:"clicked"
+;;
+
 (* {b The calendar's write order, measured against the order that reads as careful.}
 
    This is the block the whole widget turns on, and it is run against a raw [GtkCalendar]
@@ -1481,7 +1506,52 @@ let () =
   printf
     "  mark_day 40 and mark_day 0 are silent no-ops: %b %b\n"
     (W.Calendar.get_day_is_marked c 40)
-    (W.Calendar.get_day_is_marked c 0)
+    (W.Calendar.get_day_is_marked c 0);
+  (* {b What a heading walk emits, which is the whole of fix round 1's C1.} The first
+     round exposed [day-selected] alone on the premise that "walking to another month
+     moves the day too, so [day-selected] fires for all four anyway". It does not fire at
+     all. Each line below logs the date {i as seen from inside the callback}, which is the
+     second thing this block establishes: every emission in a burst already reads the
+     final date, which is what makes deduping against the last fired date exact rather
+     than a guess. *)
+  let log = ref [] in
+  let note tag = log := sprintf "%s@%s" tag (show (read ())) :: !log in
+  List.iter [ "month"; "year"; "day" ] ~f:(fun prop ->
+    let (_ : Gobject.Signal.handler_id) =
+      Gobject.Signal.connect_simple
+        (c :> Bonsai_gtk.Private.Gtk_import.Widget.t)
+        ~name:("notify::" ^ prop)
+        ~callback:(fun () -> note ("notify::" ^ prop))
+        ~after:false
+    in
+    ());
+  let (_ : Gobject.Signal.handler_id) =
+    W.Calendar.on_day_selected c ~callback:(fun () -> note "day-selected")
+  in
+  let walk label i =
+    log := [];
+    let before = show (read ()) in
+    click_heading (c :> Bonsai_gtk.Private.Gtk_import.Widget.t) i;
+    printf
+      "  %-28s %s -> %s | %s\n"
+      label
+      before
+      (show (read ()))
+      (String.concat ~sep:" " (List.rev !log))
+  in
+  printf
+    "heading walks (buttons found: %d):\n"
+    (List.length (heading_buttons (c :> Bonsai_gtk.Private.Gtk_import.Widget.t)));
+  force (2026, 6, 15);
+  walk "prev-month" 0;
+  walk "next-month" 1;
+  walk "prev-year" 2;
+  walk "next-year" 3;
+  (* The walk that {i does} move the day, and still emits no [day-selected]: 31 January to
+     February, where GTK clamps the day to the 28th. This is the case the first round's
+     premise was least wrong about and is still wrong about. *)
+  force (2026, 0, 31);
+  walk "next-month off Jan 31" 1
 ;;
 
 (* ------------------------------------------------------------------------------------ *)
@@ -1672,6 +1742,64 @@ let () =
   let before = !scheduled in
   W.Calendar.set_day (calendar live) 20;
   printf "the same write outside a patch: reached Bonsai %d\n" (!scheduled - before);
+  (* 6. Every route the date can move by, and how many times each reaches the handler.
+
+     A day click (here [set_day], which is what the grid path calls) emits [notify::day],
+     [day-selected], [notify::day]; a month walk emits one [notify::month]; a year walk
+     one [notify::year]. All three are connected to the one attr, so all three are heard
+     -- which is fix round 1's C1 -- and all three are coalesced against the last date
+     delivered, so each user action reaches Bonsai exactly once rather than once per
+     emission. Delete either [notify::] connection in [w_calendar.ml] and the matching
+     line below drops to 0. *)
+  let route label f =
+    let before = !scheduled in
+    f ();
+    printf
+      "  %-22s -> %s, reached Bonsai %d\n"
+      label
+      (Date.to_string (W_calendar.read_date (calendar live)))
+      (!scheduled - before)
+  in
+  printf "every route the date moves by:\n";
+  route "a day click" (fun () -> W.Calendar.set_day (calendar live) 21);
+  route "next-month" (fun () -> click_heading (child live) 1);
+  route "prev-month" (fun () -> click_heading (child live) 0);
+  route "next-year" (fun () -> click_heading (child live) 3);
+  route "prev-year" (fun () -> click_heading (child live) 2);
+  (* Two walks in a row, to show the memo is not a one-shot: each is a new date and each
+     is delivered. *)
+  route "two months forward" (fun () ->
+    click_heading (child live) 1;
+    click_heading (child live) 1);
+  (* And the memo does not swallow a re-attempt at a date the model declined. Here the
+     model puts the calendar back and the user picks the same day again; both attempts
+     reach Bonsai, because a library write forgets what the handler was last told. *)
+  let before = !scheduled in
+  W.Calendar.set_day (calendar live) 5;
+  let live =
+    patch live (cal ~date:(Date.to_string (W_calendar.read_date (calendar live))) ())
+  in
+  let picked_once = !scheduled - before in
+  let live = patch live (cal ~date:"2026-02-15" ()) in
+  let before = !scheduled in
+  W.Calendar.set_day (calendar live) 5;
+  printf
+    "  the same day picked, declined, and picked again: %d then %d\n"
+    picked_once
+    (!scheduled - before);
+  P.destroy ctx live;
+  (* 7. A refusal at {i mount} rather than at patch, which the patch cases above cannot
+     show: [create] calls [reassert], so the write is refused before the widget is ever
+     parented -- and what the calendar is then left showing is {b today}, GTK's own
+     starting date, which is a value nothing chose. Printed as "today" rather than as a
+     date, so this golden does not change tomorrow. *)
+  let live = P.mount ctx ~path:"cal2" ~is_root:true (cal ~date:"0000-01-01" ()) in
+  printf
+    "mounted with a year-0 date: showing today: %b (reports %s)\n"
+    (Date.equal
+       (W_calendar.read_date (calendar live))
+       (Date.today ~zone:(force Timezone.local)))
+    (take_reports ());
   P.destroy ctx live
 ;;
 
@@ -1720,6 +1848,15 @@ let () =
          ~text
          ())
   in
+  (* Minor 4: [~editing:true] at {i mount}, which [create] applies by calling
+     [start_editing] on a widget that is not yet parented and not yet realized. The raw
+     widget takes that (measured in the report); this is the library path, and it is
+     mounted first so the block that follows starts from an ordinary label. *)
+  let mounted_editing =
+    P.mount ctx ~path:"lbl0" ~is_root:true (node ~editing:true ~text:"Straight in" ())
+  in
+  print_s (Live_tree.dump mounted_editing.widget);
+  P.destroy ctx mounted_editing;
   let live = P.mount ctx ~path:"lbl" ~is_root:true (node ~text:"Set One" ()) in
   (* 1. The props. The dump prints the text through [GtkEditable] and [editing] only when
         it is on, and prints no children: a [GtkEditableLabel] holds a whole
@@ -1796,9 +1933,40 @@ let () =
      edit mode put them rather than where a text write did. *)
   let live = patch live (node ~editing:true ~text:"Rewritten" ()) in
   state "both props at once" live;
-  printf "  position after it: %d\n" (W.Editable.get_position (editable live));
+  (* {b The pin for "text first, then editing"}, and the {i position} is not it: swapping
+     the two writes leaves the position at 9 either way, because
+     [W_entry.set_text_if_needed] saves and restores it around the write. What the order
+     changes is the {i selection}. [start_editing] selects the whole text; a text write
+     after it collapses that to a bare caret at the end. Swap the two lines in
+     [w_editable_label.ml]'s [reassert] and this reads [selection=false 9 9]
+     (task-11-review.md I1 -- the first round offered the position line as the pin and it
+     was insensitive to the very thing it claimed to defend). *)
+  let has, a, b = W.Editable.get_selection_bounds (editable live) in
+  printf
+    "  position after it: %d, selection=%b %d %d\n"
+    (W.Editable.get_position (editable live))
+    has
+    a
+    b;
   let live = patch live (node ~editing:false ~text:"Rewritten" ()) in
   state "and back out" live;
+  (* The other decline direction, and the one the first round did not cover: the {i user}
+     leaves editing mode (Escape, Enter, or the focus moving away -- here [stop_editing],
+     which is what all three end in) while the model still renders [~editing:true]. The
+     model declined the exit, so the node does not move, [update] is skipped, and
+     [reassert] must re-enter. It is also the direction where the write order matters
+     most: re-entering selects the text, and it must do so {i after} whatever text write
+     the same frame makes. *)
+  let live = patch live (node ~editing:true ~text:"Rewritten" ()) in
+  state "the model asked to stay in editing mode" live;
+  W.Editable_label.stop_editing (ed_label live) true;
+  state "the user left it anyway" live;
+  let live = patch live (node ~editing:true ~text:"Rewritten" ()) in
+  let has, a, b = W.Editable.get_selection_bounds (editable live) in
+  state "the same node again: reassert re-entered" live;
+  printf "  and the selection came back: %b %d %d\n" has a b;
+  let live = patch live (node ~editing:false ~text:"Rewritten" ()) in
+  state "back out for the frames below" live;
   (* A patch that changes nothing writes nothing: the comparison is against the widget. *)
   let notifies = ref 0 in
   let (_ : Gobject.Signal.handler_id) =
@@ -1869,6 +2037,16 @@ let () =
   printf
     "invalid UTF-8 is stored rather than refused: %b (reports %s)\n"
     (String.equal (W.Editable.get_text (editable live)) "caf\xe9 latte")
+    (take_reports ());
+  P.destroy ctx live;
+  (* And the refusal at {i mount} rather than at patch (task-11-review.md Minor 3):
+     [create] calls [reassert], so the write is refused before the widget is parented and
+     the label is left holding the [""] the constructor was given -- not a truncated
+     prefix, which is what GTK would have stored. *)
+  let live = P.mount ctx ~path:"lbl2" ~is_root:true (node ~text:"ab\000cd" ()) in
+  printf
+    "mounted with a NUL in the text: text=%S (reports %s)\n"
+    (W.Editable.get_text (editable live))
     (take_reports ());
   P.destroy ctx live
 ;;
@@ -1947,6 +2125,49 @@ let () =
     "driver, one more frame: %s (handler saw %d more)\n"
     (showing ())
     (List.length !seen - before);
+  (* {b The C1 regression.} The user walks with the heading arrows, which is the other way
+     a calendar's date moves and the one the first round could not report at all. A walk
+     emits no [day-selected] -- only [notify::month] or [notify::year] -- so on the first
+     round's code the handler never ran and the model went on holding August.
+
+     Measured by deleting the two [notify_connection] lines from [w_calendar.ml]: every
+     "handler saw" below becomes 0, and the {i settling} frame at the end of the block
+     prints 2026-08-31 instead of 2027-09-30 -- the model's stale date written back over
+     two walks the user made. Note where the failure surfaces: not on the line after the
+     walk, because with nothing scheduled there is no idle frame for [drain] to run, but
+     on the next frame from any source. That is what makes the trailing [Driver.frame]
+     line the load-bearing one and why the walk cannot simply be checked "before the
+     frame". *)
+  let seen_before = List.length !seen in
+  click_heading
+    (Option.value_exn (Bonsai_gtk.Expert.Driver.root_widget d)
+     |> fun root -> List.hd_exn (Bonsai_gtk.Private.Gtk_import.widget_children root))
+    1;
+  printf "driver, user walked to the next month, before the frame: %s\n" (showing ());
+  drain ();
+  printf
+    "driver, after the frame the walk armed: %s (handler saw %d more)\n"
+    (showing ())
+    (List.length !seen - seen_before);
+  (* And a year walk, the other pair of buttons and the other [notify::]. *)
+  let seen_before = List.length !seen in
+  click_heading
+    (Option.value_exn (Bonsai_gtk.Expert.Driver.root_widget d)
+     |> fun root -> List.hd_exn (Bonsai_gtk.Private.Gtk_import.widget_children root))
+    3;
+  drain ();
+  printf
+    "driver, and a year forward: %s (handler saw %d more)\n"
+    (showing ())
+    (List.length !seen - seen_before);
+  (* A settling frame with nothing having happened: the walks above are not a loop. *)
+  let seen_before = List.length !seen in
+  Bonsai_gtk.Expert.Driver.frame d;
+  drain ();
+  printf
+    "driver, one more frame after the walks: %s (handler saw %d more)\n"
+    (showing ())
+    (List.length !seen - seen_before);
   Bonsai_gtk.Expert.Driver.stop d
 ;;
 
@@ -2006,4 +2227,104 @@ let () =
     (W.Editable.get_text (W.Editable.from_gobject w))
     (Gobject.get_ref_count w);
   P.destroy ctx live
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* What an idle frame over these two widgets costs, in the shape Tasks 9 and 10 both used.
+
+   Two claims, one per widget, and both are about the {i memo} rather than about the
+   widget: a controlled prop the widget will not take leaves [reassert] deciding not to
+   write on every frame forever, and the deciding is what has to be cheap. Task 9's R1 is
+   where that was first got wrong, and both of these follow its fix.
+
+   A ratio rather than a timing, for [live_lists.ml]'s reason: the absolute number depends
+   on the machine and on how oversubscribed CI is, and contention scales both measurements
+   equally.
+
+   The absolute numbers go to stderr, and they carry the third fact -- the one the report
+   named as a carry rather than a claim. A calendar's idle comparison is three integer
+   getters and a [Date.create_exn] over an immediate, so it does not move with anything.
+   An editable label's is [String.equal] against a fresh copy of the widget's text, so it
+   is O(len) exactly as every [Node.entry] in the tree already is; the long-text figure is
+   printed so that stays visible rather than becoming folklore. *)
+let () =
+  let bound_ratio = 5.0 in
+  let frames = 20_000 in
+  let scheduled = ref 0 in
+  let refusals = ref 0 in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path:_ _ -> incr refusals)
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let idle_frame_ms ~path node =
+    let live = P.mount ctx ~path ~is_root:true node in
+    let start = Time_ns.now () in
+    for _ = 1 to frames do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path live;
+        P.run_fixups ctx)
+    done;
+    let ms =
+      Time_ns.Span.to_ms (Time_ns.diff (Time_ns.now ()) start) /. Int.to_float frames
+    in
+    P.destroy ctx live;
+    ms
+  in
+  let cal date =
+    Node.window
+      ~title:"bench"
+      (Node.calendar
+         ~attrs:[ Attr.on_day_selected (fun _ -> Ui_effect.Ignore) ]
+         ~date:(Date.of_string date)
+         ())
+  in
+  let lbl text =
+    Node.window
+      ~title:"bench"
+      (Node.editable_label
+         ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+         ~text
+         ())
+  in
+  let cal_settled = idle_frame_ms ~path:"bench" (cal "2026-08-30") in
+  let cal_refused = idle_frame_ms ~path:"bench" (cal "0000-01-01") in
+  let short = String.make 16 'x' in
+  let long = String.make 100_000 'x' in
+  let lbl_settled = idle_frame_ms ~path:"bench" (lbl short) in
+  let lbl_refused = idle_frame_ms ~path:"bench" (lbl (short ^ "\000tail")) in
+  let lbl_long = idle_frame_ms ~path:"bench" (lbl long) in
+  (* Two refusals, each reported exactly once across forty thousand frames. *)
+  printf "bench: refusals reported across every frame above: %d\n" !refusals;
+  printf
+    "bench: %d idle frames over a settled calendar and one parked on a refused date, \
+     ratio under %g: %b\n"
+    frames
+    bound_ratio
+    Float.(cal_refused /. cal_settled < bound_ratio);
+  printf
+    "bench: the same for an editable label, ratio under %g: %b\n"
+    bound_ratio
+    Float.(lbl_refused /. lbl_settled < bound_ratio);
+  eprintf
+    "bench: calendar %.5f ms settled, %.5f ms parked on a refused date, ratio %.2f\n%!"
+    cal_settled
+    cal_refused
+    (cal_refused /. cal_settled);
+  eprintf
+    "bench: editable label %.5f ms at 16 chars, %.5f ms parked on a refused write, %.5f \
+     ms at 100 000 chars (the compare is O(len), as every entry's already is)\n\
+     %!"
+    lbl_settled
+    lbl_refused
+    lbl_long
 ;;

@@ -510,6 +510,13 @@ let layout (graph @ local) =
    [Widget_impl.reassert] is the only thing left to put the calendar back. Click a
    Saturday and watch it snap.
 
+   Walking with the heading arrows works too, and it is worth knowing why that is a claim
+   rather than an obvious truth: a walk emits no [day-selected] at all, only
+   [notify::month] or [notify::year], so [Attr.on_day_selected] is connected to all three
+   and the model follows the walk. Wire only the day signal and the calendar snaps back to
+   the model's month on the next frame -- which is what the first round of this widget
+   did.
+
    The marks are the other half and are deliberately {i not} controlled: nothing the user
    does marks a day, so the button is how one gets marked. They are days of the month and
    survive a month change, which is visible by marking a day and then walking to another

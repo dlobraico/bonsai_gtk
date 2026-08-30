@@ -53,12 +53,19 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      [On_selected_rows_changed], on this table's usual rule: a line copied from a stack or
      a list box is rejected here instead of being accepted and never firing. *)
   | Drop_down _ -> [ On_selected_changed ]
-  (* One signal out of five. [GtkCalendar] also emits [next-month], [prev-month],
-     [next-year] and [prev-year], and none of them is exposed: each says the heading was
-     clicked rather than what the calendar now shows, and walking to another month moves
-     the day too -- so [day-selected] fires for all four anyway and carries the answer.
-     (Measured: [day-selected] is emitted whenever the day-of-month changes, and
-     [set_month]/[set_year] alone emit only their own [notify::].) *)
+  (* One attr, and behind it three GTK emissions: [day-selected] plus [notify::month] and
+     [notify::year]. That is not an implementation detail leaking into this table -- it is
+     what makes the {i attr} mean what its name says. A heading walk moves the month or
+     the year and leaves the day-of-month alone, so it emits {b no} [day-selected] at all
+     (measured, by clicking the calendar's own heading buttons -- and true even for Jan 31
+     -> Feb, where the day does move). The first round exposed [day-selected] alone on the
+     opposite premise, and the result was a controlled date the user could not browse: the
+     walk was never reported, so no model could follow it, and the next [reassert] wrote
+     the old date back. [w_calendar.ml] has the measurements.
+
+     [next-month], [prev-month], [next-year] and [prev-year] are still not exposed: they
+     say the heading was clicked rather than what the calendar now shows, and the two
+     [notify::] connections already carry what they change. *)
   | Calendar _ -> [ On_day_selected ]
   (* Two, and the first is the {i entry's} name rather than one of its own: a
      [GtkEditableLabel] reaches its text through [GtkEditable], so [changed] is literally

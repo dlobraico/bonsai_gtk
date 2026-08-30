@@ -183,6 +183,12 @@ per-call emissions:
   marked 31 while June shows: true
   still marked in January: true
   mark_day 40 and mark_day 0 are silent no-ops: false false
+heading walks (buttons found: 4):
+  prev-month                   2026-07-15 -> 2026-06-15 | notify::month@2026-06-15
+  next-month                   2026-06-15 -> 2026-07-15 | notify::month@2026-07-15
+  prev-year                    2026-07-15 -> 2025-07-15 | notify::year@2025-07-15
+  next-year                    2025-07-15 -> 2026-07-15 | notify::year@2026-07-15
+  next-month off Jan 31        2026-01-31 -> 2026-02-28 | notify::day@2026-02-28 notify::month@2026-02-28
 (GtkWindow (title (when)) (css (background)) hidden
  (children (GtkCalendar (date 2026-01-15) (css (view)))))
 (GtkWindow (title (when)) (css (background)) hidden
@@ -213,6 +219,17 @@ year 1, the first GTK holds: showing 0001-01-01 (reports ())
 year 0 again, a different date: showing 0001-01-01 (reports ((cal/0"~date:0000-06-06 is in year 0, and GTK's calendar holds years 1 to 9999 (gtk_calendar_set_year asserts it and writes nothing); the write was refused and the calendar was left showing the date it had")))
 a programmatic date change: GTK emitted 2, reached Bonsai 0
 the same write outside a patch: reached Bonsai 1
+every route the date moves by:
+  a day click            -> 2026-02-21, reached Bonsai 1
+  next-month             -> 2026-03-21, reached Bonsai 1
+  prev-month             -> 2026-02-21, reached Bonsai 1
+  next-year              -> 2027-02-21, reached Bonsai 1
+  prev-year              -> 2026-02-21, reached Bonsai 1
+  two months forward     -> 2026-04-21, reached Bonsai 2
+  the same day picked, declined, and picked again: 1 then 1
+mounted with a year-0 date: showing today: true (reports ((cal2/0"~date:0000-01-01 is in year 0, and GTK's calendar holds years 1 to 9999 (gtk_calendar_set_year asserts it and writes nothing); the write was refused and the calendar was left showing the date it had")))
+(GtkWindow (title (title)) (css (background)) hidden
+ (children (GtkEditableLabel (text "Straight in") editing (css (editing)))))
 (GtkWindow (title (title)) (css (background)) hidden
  (children (GtkEditableLabel (text "Set One"))))
 the model rewrote the text: text="Set Two" editing=false
@@ -229,21 +246,34 @@ the text the user typed survived leaving edit mode: true
 raw widget, stop_editing false: text="before" (2 changed emitted undoing the edit)
 raw widget, stop_editing true: text="Xbefore" (0 changed emitted committing it)
 both props at once: text="Rewritten" editing=true
-  position after it: 9
+  position after it: 9, selection=true 0 9
 and back out: text="Rewritten" editing=false
+the model asked to stay in editing mode: text="Rewritten" editing=true
+the user left it anyway: text="Rewritten" editing=false
+the same node again: reassert re-entered: text="Rewritten" editing=true
+  and the selection came back: true 0 9
+back out for the frames below: text="Rewritten" editing=false
 a no-op patch and five idle frames: 0 changed, 0 notify::editing
 a programmatic write of both props: GTK emitted 2 changed and 1 notify::editing, reached Bonsai 0
 the same writes outside a patch: reached Bonsai 3
 put back by the next patch: text="Programmatic" editing=false
-asked for a text with a NUL: text="Programmatic" (reports ((lbl/0"text contains a NUL byte, which GTK would silently truncate at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the label was left as it was")))
+asked for a text with a NUL: text="Programmatic" (reports ((lbl/0"text contains a NUL byte, which GTK would silently truncate the text at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the label was left as it was")))
 five idle frames parked on it: text="Programmatic" (reports ())
 and a text GTK does take: text="caf\195\169 latte" (reports ())
 invalid UTF-8 is stored rather than refused: true (reports ())
+mounted with a NUL in the text: text="" (reports ((lbl2/0"text contains a NUL byte, which GTK would silently truncate the text at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the label was left as it was")))
 driver, after mount: 2026-08-28 (handler saw 0)
 driver, user picked the 31st (a Monday), before the frame: 2026-08-31
 driver, after the frame the choice armed: 2026-08-31
 driver, user picked the 29th (a Saturday), before the frame: 2026-08-29
 driver, after the frame the refusal armed: 2026-08-31 (handler saw (2026-08-31 2026-08-29))
 driver, one more frame: 2026-08-31 (handler saw 0 more)
+driver, user walked to the next month, before the frame: 2026-09-30
+driver, after the frame the walk armed: 2026-09-30 (handler saw 1 more)
+driver, and a year forward: 2027-09-30 (handler saw 1 more)
+driver, one more frame after the walks: 2027-09-30 (handler saw 0 more)
 after 500 from_gobject wrappers and a full major: text="Rehearsal", references 3 -> 3
 after 5000 idle frames: text="Rehearsal", references 3
+bench: refusals reported across every frame above: 2
+bench: 20000 idle frames over a settled calendar and one parked on a refused date, ratio under 5: true
+bench: the same for an editable label, ratio under 5: true
