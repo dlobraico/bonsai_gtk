@@ -19,6 +19,33 @@ At the end of M2, stavekeeper's `library_window.ml` (FlowBox of cards, search en
 
 **Spec:** `docs/superpowers/specs/2026-08-28-bonsai-gtk-design.md`
 
+## Pre-flight corrections (2026-08-30, override the task text below)
+
+The scout's report is `.superpowers/sdd/2026-08-30-bonsai-gtk-m2/preflight-report.md`.
+Every checklist item verified as stated except these four; where a task below disagrees
+with this section, this section wins.
+
+1. **Task 5 — no synthetic key press exists.** `Event_controller_key.forward` only re-routes
+   an event the controller is already processing; there is no `GdkEvent` constructor in the
+   pinned binding. The task's open question is closed: **no**. Land the plumbing-only
+   fallback for both click (Task 4) and key (Task 5) up front — attach/detach asserted live,
+   handler logic proved headlessly through `Bonsai_gtk_test` — and put the end-to-end gap on
+   the backlog with the gallery Input section and Task 16's real-display click-through as
+   the compensating controls.
+2. **Task 4 — the `live_controllers.ml` sample must present its window** before exercising
+   focus (`Widget.grab_focus` only drives the focus chain on a realized, mapped widget); as
+   written `on_window_created` is a no-op and the focus assertions would read `false`.
+3. **Task 4 — use `Widget.observe_controllers : t -> Gio.List_model.t`** (exists in the
+   binding, missing from the ocgtk-facts table) to make the attach/detach assertion
+   concrete: item count N → N+1 on attach → N on unmount / attr removal.
+4. **Task 2 — `batch_if` stays.** Measured: `Widget_impl.batch` on a `GtkLabel` is
+   ~79.5 ns/call (100k calls = 7.95 ms) — cheap, not free; the "skip if free" escape hatch
+   does not trigger. Record the numbers in the task report.
+
+Minor, no action: `gdk_constants.mli` declares `val key_a` twice (harmless);
+`w_password_entry.ml` has no `Attr.t` references, so Task 1 Step 4's file list is one
+short.
+
 ## Global Constraints
 
 Carried from the spec and from what M0 and M1 established. These hold for every task below; read them before Task 1 and again if a review says "this does not match the codebase".
