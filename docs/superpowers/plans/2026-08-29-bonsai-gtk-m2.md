@@ -46,6 +46,20 @@ Minor, no action: `gdk_constants.mli` declares `val key_a` twice (harmless);
 `w_password_entry.ml` has no `Attr.t` references, so Task 1 Step 4's file list is one
 short.
 
+## Global Constraints addendum (2026-08-30, Task 12 re-review N1)
+
+**Never connect a handler to a signal a GObject's dispose can emit** (`destroy`, `unrealize`,
+`notify::` on a widget being disposed), and if one is unavoidable, disconnect it before the
+widget can become collectable. Reason, measured with plain ocgtk and no bonsai_gtk involved:
+when ocgtk's wrapper finaliser unrefs a widget, GTK's dispose emits `destroy` and the
+marshaller calls back into OCaml **from inside the collector**; a callback that allocates
+segfaults (three of three runs), one that does not may survive — a threshold no author can
+reason about. bonsai_gtk obeys the rule (`Embed.stop` disconnects its backstop, which is also
+what makes the wrapper finalisable — the closure cycle is documented there). Task 13 puts the
+rule in `signals.mli`; **Task 14 fixes it in the fork** (the marshaller must refuse to call
+back during finalisation, or the finaliser must defer the unref to an idle) so every consumer
+is covered.
+
 ## Global Constraints
 
 Carried from the spec and from what M0 and M1 established. These hold for every task below; read them before Task 1 and again if a review says "this does not match the codebase".
