@@ -8,6 +8,7 @@ module P = Bonsai_gtk.Private.Patcher
 module W = Bonsai_gtk.Private.Gtk_import.W
 
 let cast = Bonsai_gtk.Private.Gtk_import.cast
+let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children
 
 (* Exercises the native escape hatch, whose [input] projection is the one unsafe cast in
    the library: [create]/[update]/[destroy] must all reach this module. *)
@@ -24,6 +25,20 @@ end
    witness the patcher matches on, so a fresh one per render would be a different widget. *)
 let counter_impl = Native_gtk.impl (module Native_counter)
 let counter n = Native_gtk.node counter_impl n
+
+(* A native widget whose [destroy] raises, which is the one way application code can raise
+   from inside a teardown. Used at the bottom of this file. *)
+module Native_boom = struct
+  type input = unit
+
+  let name = "boom"
+  let create () = (W.Label.new_ (Some "boom") :> Widget.t)
+  let update _ ~old:() () = ()
+  let destroy _ = failwith "this native destroy raises"
+end
+
+let boom_impl = Native_gtk.impl (module Native_boom)
+let boom () = Native_gtk.node boom_impl ()
 
 (* The [a]-keyed button, which the second render moves and relabels. Reaching for it by
    position is how we show it is the *same* GTK widget across the patch. *)
@@ -260,15 +275,127 @@ let () =
   print_s (Live_tree.dump live.widget);
   P.destroy ctx live;
   (* Spec §11: a window below the root is structural misuse, not something to render. *)
-  match
+  (match
+     P.mount
+       ctx
+       ~path:"root"
+       ~is_root:true
+       (Node.window
+          ~title:"outer"
+          (Node.box ~orientation:Vertical [ Node.window ~title:"inner" (Node.label "x") ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: nested window accepted"
+   | exception Invalid_argument msg -> printf "nested window rejected: %s\n" msg);
+  (* Two [Node.stack]s with one [~name] in one tree: an ordinary application mistake (a
+     panel factory reused, a sidebar duplicated across two branches of a match), rejected
+     by [apply_stack_claims] after the walk rather than during it.
+
+     What is under test is not the rejection -- that has always worked -- but what is left
+     behind. The rejection happens after the whole tree is built, connected, and, for a
+     window root, {i presented}: [on_window_created] has already run. So if the rejection
+     escapes [mount]'s exception-safe region, the caller gets an exception and no [live],
+     while a fully wired window stays on screen for good, holding the driver through its
+     signal closures. This block pins the opposite: the window is destroyed (its child is
+     gone) and the handlers are disconnected (a [clicked] emitted on the button that was
+     in it reaches nothing). With the guard removed both lines flip. *)
+  let presented = ref None in
+  let button_in_window = ref None in
+  let stack_scheduled = ref 0 in
+  let stack_ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun (_ : unit Ui_effect.t) -> incr stack_scheduled)
+        ; in_patch = (fun () -> false)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w ->
+        (* What [Loop.start] does with a window, so that the failure under test is the
+           real one: by the time the rejection happens, the window is on screen. *)
+        W.Window.present (cast w);
+        (* And the last chance to hold anything from this tree: the mount is about to
+           raise and will never hand back a [live]. *)
+        presented := Some w;
+        match widget_children w with
+        | [ box ] -> button_in_window := List.hd (widget_children box)
+        | _ :: _ | [] -> ())
+      ()
+  in
+  (match
+     P.mount
+       stack_ctx
+       ~path:"root"
+       ~is_root:true
+       (Node.window
+          ~title:"dup"
+          (Node.box
+             ~orientation:Vertical
+             [ Node.button
+                 ~attrs:[ Attr.on_clicked (Ui_effect.print_s [%sexp "clicked"]) ]
+                 ~label:"B"
+                 ()
+             ; Node.stack ~name:"nav" ~visible_child:"one" [ Node.label ~key:"one" "1" ]
+             ; Node.stack ~name:"nav" ~visible_child:"two" [ Node.label ~key:"two" "2" ]
+             ]))
+   with
+   | (_ : P.live) -> print_endline "BUG: duplicate stack name accepted"
+   | exception Invalid_argument msg -> printf "duplicate stack name rejected: %s\n" msg);
+  printf "the window was presented before the rejection: %b\n" (Option.is_some !presented);
+  (* [gtk_window_destroy] hides the window and drops GTK's toplevel reference to it
+     (gtkwindow.c:7047-7072), which is what takes it off screen and lets
+     [Bonsai_gtk.start] return; [Patcher.destroy]'s [Window] arm is what calls it. Without
+     the guard this reads [true]: a fully rendered window that nothing will ever patch
+     again. *)
+  printf
+    "the presented window is still on screen: %b\n"
+    (Option.value_map !presented ~default:true ~f:Widget.get_visible);
+  Option.iter !button_in_window ~f:(fun b ->
+    Gobject.Signal.emit_by_name b ~name:"clicked");
+  printf "effects scheduled by that button: %d\n" !stack_scheduled;
+  (* The other direction: a teardown that raises part-way must not strand the siblings it
+     had not reached yet. [Native_gtk.S.destroy] is the one place teardown calls
+     application code, and [Native_boom]'s raises.
+
+     Before the collect-and-reraise, the [c] button below stayed connected and armed on a
+     widget the box had already given up -- a permanently rooted GClosure holding the
+     driver, which is the leak [mount]'s exception-safety exists to prevent, arriving from
+     the other side. The [clicked] line is what says it is disarmed; the
+     [destroy re-raised] line is what says the caller still hears about it. *)
+  let boom_scheduled = ref 0 in
+  let boom_ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun (_ : unit Ui_effect.t) -> incr boom_scheduled)
+        ; in_patch = (fun () -> false)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let click k =
+    Node.button
+      ~key:k
+      ~attrs:[ Attr.on_clicked (Ui_effect.print_s [%sexp (k : string)]) ]
+      ~label:k
+      ()
+  in
+  let live =
     P.mount
-      ctx
+      boom_ctx
       ~path:"root"
       ~is_root:true
       (Node.window
-         ~title:"outer"
-         (Node.box ~orientation:Vertical [ Node.window ~title:"inner" (Node.label "x") ]))
-  with
-  | (_ : P.live) -> print_endline "BUG: nested window accepted"
-  | exception Invalid_argument msg -> printf "nested window rejected: %s\n" msg
+         ~title:"boom"
+         (Node.box ~orientation:Vertical [ click "a"; boom (); click "c" ]))
+  in
+  let a = nth_box_child live 0 in
+  let c = nth_box_child live 2 in
+  (match P.destroy boom_ctx live with
+   | () -> print_endline "BUG: a raising native destroy was swallowed"
+   | exception exn -> printf "destroy re-raised: %s\n" (Exn.to_string exn));
+  Gobject.Signal.emit_by_name a ~name:"clicked";
+  Gobject.Signal.emit_by_name c ~name:"clicked";
+  (* [c] is the one that matters: it is the sibling {i after} the raising node. *)
+  printf "effects scheduled after the raising teardown: %d\n" !boom_scheduled
 ;;

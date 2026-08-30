@@ -149,6 +149,31 @@ let raises_after_two_natives (_graph @ local) =
        ])
 ;;
 
+(* The other kind of failing first frame: one the {i walk} completes. Two stacks with one
+   [~name] is an ordinary application mistake (a panel factory reused, a sidebar
+   duplicated across two branches of a match), and it is decided by [apply_stack_claims]
+   once the walk is over -- with everything above built, connected and, under
+   [Bonsai_gtk.start], presented. The two natives are the same observable the block above
+   uses. *)
+let two_stacks_one_name (_graph @ local) =
+  Bonsai.return
+    (Node.box
+       ~orientation:Vertical
+       [ Native.node counted "one"
+       ; Node.stack
+           ~name:"nav"
+           ~transition:None_
+           ~visible_child:"a"
+           [ Node.label ~key:"a" "a" ]
+       ; Native.node counted "two"
+       ; Node.stack
+           ~name:"nav"
+           ~transition:None_
+           ~visible_child:"b"
+           [ Node.label ~key:"b" "b" ]
+       ])
+;;
+
 let click w =
   Gobject.Signal.emit_by_name w ~name:"clicked";
   drain ()
@@ -385,6 +410,22 @@ let () =
    | exception Invalid_argument m -> printf "a mount that raises: %s\n" m);
   printf
     "the siblings it had already built were torn down: %d native destroys of 2\n"
+    !Counted.destroyed;
+  (* The same guarantee for the one rejection that happens {i after} the walk rather than
+     during it: two [Node.stack]s claiming one [~name] are refused by
+     [Patcher.apply_stack_claims], by which point the whole tree is built and connected.
+
+     [Embed.create]'s failure path can do nothing about that on its own -- it calls
+     [Driver.stop], and the driver never assigned [t.root], so [stop] has nothing to walk.
+     Either [mount] tore the tree down before raising or nobody ever will. The counter is
+     the same observable as above, and it reads 0 of 2 with the guard removed. *)
+  Counted.destroyed := 0;
+  (match Expert.embed ~time_source:(time_source ()) two_stacks_one_name with
+   | _ -> printf "a first frame rejected after the walk: NO RAISE\n"
+   | exception Invalid_argument m ->
+     printf "a first frame rejected after the walk: %s\n" m);
+  printf
+    "the tree the walk had finished was torn down: %d native destroys of 2\n"
     !Counted.destroyed;
   ()
 ;;

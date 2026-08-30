@@ -644,20 +644,49 @@ and mount_children
   | (Single _ | List _ | Slots _), _ ->
     invalid_argf "%s: node's children do not match %s's shape" path impl_name ()
 
+(* Teardown is exception-safe in the other direction from [mount]'s: every stage runs
+   whatever the stages before it did, and the {i first} exception is re-raised at the end
+   with its own backtrace.
+
+   [mount] can unwind because nothing it built is reachable yet; [destroy] cannot unwind
+   at all -- there is no putting a disconnected handler back -- so the only useful
+   guarantee is that a raise part-way does not strand the rest. It matters because the one
+   place teardown calls application code, [Native_gtk.destroy_payload] in [release_kind],
+   may raise (see {!Native_gtk.S.destroy}), and because [release_kind] itself raises
+   [Invalid_argument] on a payload no [Native_gtk.node] built. Without the collection, a
+   native node whose [destroy] raises leaves every later sibling connected and armed on a
+   widget GTK has already unparented -- permanently rooted GClosures capturing the driver,
+   which is exactly the leak class [mount]'s exception-safety exists to close.
+
+   Collect-and-reraise rather than swallow: the caller still learns that teardown failed,
+   and [Driver.stop]/[Embed.stop] reach their own trailing steps through an [Exn.protect]
+   of their own rather than by this function pretending nothing happened. *)
 and destroy ctx (live : live) =
+  let first = ref None in
+  let step f =
+    match f () with
+    | () -> ()
+    | exception exn ->
+      if Option.is_none !first
+      then first := Some (exn, Stdlib.Printexc.get_raw_backtrace ())
+  in
   (* Keep in step with [mount]'s [unwind], which does these same four stages in this same
      order over a subtree that only half exists. *)
   (* Slots are emptied before anything is torn down: GTK emits signals synchronously from
      [remove]/[set_child], and a handler firing here would run against a node that is
      already gone. *)
-  Signals.clear_slots live.slots;
+  step (fun () -> Signals.clear_slots live.slots);
   (* [release] empties its own slots before it removes anything, so by the time
      [gtk_widget_remove_controller] runs -- which can itself provoke a leave or a cancel
      -- every slot on this widget, its own and its controllers', is already empty. *)
-  Controllers.release live.controllers;
-  Signals.disconnect live.connections;
-  Children.iter live.children ~f:(destroy ctx);
-  release_kind ctx ~kind:live.node.kind ~widget:live.widget
+  step (fun () -> Controllers.release live.controllers);
+  step (fun () -> Signals.disconnect live.connections);
+  (* Per child rather than around the loop: a raise on the third child must not strand the
+     fourth, which is the whole point. *)
+  Children.iter live.children ~f:(fun c -> step (fun () -> destroy ctx c));
+  step (fun () -> release_kind ctx ~kind:live.node.kind ~widget:live.widget);
+  Option.iter !first ~f:(fun (exn, backtrace) ->
+    Stdlib.Printexc.raise_with_backtrace exn backtrace)
 
 (* Empties every slot in a subtree without tearing anything down.
 
@@ -985,7 +1014,25 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
    out of a frame that died. *)
 let mount ctx ~path ~is_root node =
   let live = mount ctx ~path ~is_root ~parent_kind:None node in
-  apply_stack_claims ctx;
+  (* Inside the exception-safe region, not beside it. [apply_stack_claims] is the one
+     thing a mount does after the walk that can raise -- two [Node.stack]s with one name,
+     an ordinary application mistake -- and the walk's own unwinding cannot see it.
+     Without this the rejected tree is fully built, fully connected and reachable from
+     nobody: the caller has no [live] to destroy, [Driver.stop] finds [t.root] still
+     [None], and under [Bonsai_gtk.start] the window has already been presented by
+     [on_window_created], so the user is left looking at a rendered window that will never
+     update again while the whole driver leaks (the cycle {!mount}'s comment above
+     describes). [destroy] on a [Window] root is also what takes that window back off
+     screen, so these three lines close both halves.
+
+     [patch]'s wrapper needs none of this: it mutates [live] in place and the driver still
+     points at it, so a failed pass leaves a tree the driver can still tear down. *)
+  (match apply_stack_claims ctx with
+   | () -> ()
+   | exception exn ->
+     let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+     destroy ctx live;
+     Stdlib.Printexc.raise_with_backtrace exn backtrace);
   live
 ;;
 

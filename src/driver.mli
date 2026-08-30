@@ -131,10 +131,12 @@ val broken : t -> bool
     ones that are in question; unlike a raising frame it costs no exception. Idempotent,
     and a no-op relative to {!stop} (a stopped driver already refuses frames).
 
-    {!Bonsai_gtk.Expert.embed} connects this to its root widget's [destroy]. GTK's
-    ordinary teardown does not emit that signal on a widget anything still holds a
-    reference to — see {!Bonsai_gtk.Expert.Embedded} for what was measured — so this is a
-    backstop for a host that disposes its children outright, not the normal path. *)
+    {!Bonsai_gtk.Expert.embed} connects this to the [destroy] of the wrapper it hands the
+    embedder — not of the rendered root, whose identity changes on a root-kind change, and
+    which the embedder never holds. GTK's ordinary teardown does not emit that signal on a
+    widget anything still holds a reference to — see {!Bonsai_gtk.Expert.Embedded} for
+    what was measured — so this is a backstop for a host that disposes its children
+    outright, not the normal path. *)
 val mark_broken : t -> unit
 
 (** Stops the scheduler, tears the widget tree down, invalidates the Bonsai computation's
@@ -146,5 +148,11 @@ val mark_broken : t -> unit
     Bonsai graph stays reachable from Incremental's global state for the life of the
     process — so anything a callback of the caller's closes over would outlive the tree it
     belonged to. {!Bonsai_gtk.Expert.embed}'s closes over the wrapper it hands the
-    embedder, and this is what makes "after [stop] you may drop it" true. *)
+    embedder, and this is what makes "after [stop] you may drop it" true.
+
+    Raises only what tearing the tree down raises, which in practice means a native node's
+    [destroy] (see {!Bonsai_gtk.Private.Native_gtk.S.destroy}). The driver is stopped
+    either way: the root is dropped, the last pass's deferred work is abandoned and the
+    observers are invalidated before the exception goes up, so a misbehaving native widget
+    cannot leave a half-stopped driver behind. *)
 val stop : t -> unit

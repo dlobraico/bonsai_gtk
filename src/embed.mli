@@ -158,5 +158,11 @@ val broken : t -> bool
     [destroy] handler there would re-enter OCaml from the collector. Measured: left
     connected, the next [embed] after a stopped embed is dropped never returns.
 
-    Idempotent. {!frame} afterwards raises. *)
+    Idempotent. {!frame} afterwards raises.
+
+    Raises only what tearing the tree down raises — a native node's [destroy], in practice
+    — and the unparenting and the disconnect still happen when it does, before the
+    exception goes up. So there is no need to call [stop] a second time after one raised,
+    and a raise never leaves the tree parented in {!widget} with the backstop connected,
+    which is the state the paragraph above calls unsafe. *)
 val stop : t -> unit

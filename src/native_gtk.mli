@@ -30,7 +30,15 @@ module type S = sig
 
       Only that. Do not unparent or destroy the widget: the patcher owns the widget's
       place in the tree and removes it itself, and a [destroy] that races it will either
-      double-free or leave the patcher holding a dead widget. *)
+      double-free or leave the patcher holding a dead widget.
+
+      This is the one place a teardown calls application code, so what happens when it
+      raises is part of the contract: the rest of the teardown still runs — the later
+      siblings in the same list, the enclosing node's own release, and (under
+      {!Bonsai_gtk.Expert.Driver.stop}) the driver's trailing steps — and the exception is
+      then re-raised to whoever called [stop] or drove the frame. Nothing retries it and
+      nothing else releases what this node held, so an implementation that raises has
+      leaked whatever [create] acquired: catch inside if there is anything to do about it. *)
   val destroy : Widget.t -> unit
 end
 

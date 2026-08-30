@@ -240,13 +240,24 @@ let stop t =
        wrapper" into a promise the runtime quietly breaks. Measured: without this, a
        stopped-and-dropped embed's wrapper is never finalized; with it, it is. *)
     t.on_root_widget_changed <- (fun (_ : Widget.t) -> ());
-    Option.iter t.root ~f:(Patcher.destroy t.ctx);
-    t.root <- None;
-    (* A last frame that raised inside [mount]/[patch] left its deferred work behind, and
-       those closures hold widgets from that pass. *)
-    Patcher.abandon_fixups t.ctx;
-    (* Without this the incremental graph and every observer Bonsai built for it stay
-       reachable from [t.bonsai] for as long as the driver value is, which for an embedder
-       that creates a driver per dialog is a real leak. *)
-    Bonsai_driver.Expert.invalidate_observers t.bonsai)
+    (* [Patcher.destroy] can raise -- the one place teardown calls application code is a
+       native node's [destroy] -- and the three steps after it are the ones that make a
+       stopped driver actually collectable. Reached through [Exn.protect] so that a native
+       widget misbehaving costs the caller an exception rather than a driver that has half
+       stopped: [root] cleared (so [root_widget] does not go on answering [Some] for a
+       torn-down tree), the last failed pass's closures dropped, and the incremental
+       observers invalidated. The exception still reaches the caller, after all of it.
+       [Patcher.destroy] is itself collect-and-reraise, so the rest of the tree is torn
+       down before it gets here. *)
+    Exn.protect
+      ~f:(fun () -> Option.iter t.root ~f:(Patcher.destroy t.ctx))
+      ~finally:(fun () ->
+        t.root <- None;
+        (* A last frame that raised inside [mount]/[patch] left its deferred work behind,
+           and those closures hold widgets from that pass. *)
+        Patcher.abandon_fixups t.ctx;
+        (* Without this the incremental graph and every observer Bonsai built for it stay
+           reachable from [t.bonsai] for as long as the driver value is, which for an
+           embedder that creates a driver per dialog is a real leak. *)
+        Bonsai_driver.Expert.invalidate_observers t.bonsai))
 ;;

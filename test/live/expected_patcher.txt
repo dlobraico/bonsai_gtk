@@ -73,3 +73,9 @@ window created
 (GtkWindow (title (label)) (css (background)) hidden
  (children (GtkLabel (text text))))
 nested window rejected: root/0/0: a Node.window may only be the root node, not a child of another node
+duplicate stack name rejected: root/0/2: two Node.stacks are named "nav" in one tree
+the window was presented before the rejection: true
+the presented window is still on screen: false
+effects scheduled by that button: 0
+destroy re-raised: (Failure "this native destroy raises")
+effects scheduled after the raising teardown: 0

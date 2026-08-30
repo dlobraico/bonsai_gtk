@@ -53,6 +53,8 @@ the widget the patcher replaced is a GtkButton whose parent is now nothing
 a click on the new content reached the model: "loaded 2", broken false
 a mount that raises: root/3: Label does not emit On_clicked
 the siblings it had already built were torn down: 2 native destroys of 2
+a first frame rejected after the walk: root/3: two Node.stacks are named "nav" in one tree
+the tree the walk had finished was torn down: 2 native destroys of 2
 a mount that registers then raises: root/1: Label does not emit On_clicked
 the same ctx then mounts a tree naming the same stack, and a switcher finds it
 5 embeds stopped and dropped: 5 wrappers finalized

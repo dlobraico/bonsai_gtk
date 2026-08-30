@@ -140,7 +140,9 @@ type live =
     {!Bonsai_gtk_vtree.Attr.page_title} outside a stack), or if a
     {!Bonsai_gtk_vtree.Kind.Window} node appears anywhere but the root — a [GtkWindow] is
     a toplevel and cannot be parented, so nesting one produces a GTK critical and a
-    silently broken tree.
+    silently broken tree — and if two {!Bonsai_gtk_vtree.Node.stack}s in the tree share
+    one [~name], which is decided after the walk (see [stack_claims]) and names the second
+    stack's path.
 
     Placement attributes are checked here rather than by [Attr_apply], which sees a child
     without knowing its parent, or by the constructor, which cannot know either. Nothing
@@ -151,7 +153,10 @@ type live =
     that exists: slots emptied, controllers released, connections disconnected, completed
     children destroyed, kind registrations released. So a failed mount leaves nothing
     behind and the caller may not assume a partial [live] to clean up; there is none, and
-    the exception is re-raised with its original backtrace.
+    the exception is re-raised with its original backtrace. The duplicate-[~name]
+    rejection is inside that guarantee too, though it is decided after the walk rather
+    than during it: the tree the walk completed is destroyed — which for a window root is
+    what takes the presented window back off screen — before the exception goes up.
 
     That matters more than it looks. A partial mount is not merely wasted work: every
     signal it had connected roots a closure holding the runtime, which holds the shadow
@@ -214,5 +219,14 @@ val reassert_only : ctx -> path:string -> live -> unit
     whole subtree — the widgets' own and their controllers' — are emptied before the
     unparenting rather than here, so the guarantee holds in both orders. Windows are
     destroyed outright; any other widget is merely detached from Bonsai and is expected to
-    be unparented by the caller (or by its parent going away). *)
+    be unparented by the caller (or by its parent going away).
+
+    {b Completes, then re-raises.} If a stage raises — in practice only a native node's
+    [destroy], which is application code, or a native payload this module did not build —
+    every remaining stage and every remaining sibling is still torn down, and the
+    {i first} exception is re-raised at the end with its own backtrace. There is no
+    unwinding a teardown, so the guarantee is the other one: a raise part-way cannot
+    strand a subtree still connected and armed on widgets GTK has already unparented,
+    which is the leak {!mount}'s exception-safety exists to prevent, arriving from the
+    other side. *)
 val destroy : ctx -> live -> unit
