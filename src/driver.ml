@@ -1,5 +1,6 @@
 open! Core
 open Bonsai_gtk_vtree
+open Gtk_import
 
 type root_kind =
   [ `Window
@@ -11,6 +12,7 @@ type t =
   ; time_source : Bonsai.Time_source.t
   ; advance_wall_clock : bool
   ; root_kind : root_kind
+  ; mutable on_root_widget_changed : Widget.t -> unit
   ; scheduler : Scheduler.t
   ; ctx : Patcher.ctx
   ; mutable root : Patcher.live option
@@ -85,8 +87,21 @@ let frame_body t =
      | Some live when phys_equal node live.Patcher.node ->
        Patcher.reassert_only t.ctx ~path:"root" live
      | Some live ->
-       t.root <- Some (Patcher.patch t.ctx ~path:"root" ~is_root:true live node)
-     | None -> t.root <- Some (Patcher.mount t.ctx ~path:"root" ~is_root:true node));
+       let patched = Patcher.patch t.ctx ~path:"root" ~is_root:true live node in
+       t.root <- Some patched;
+       (* The root node changed {i kind}, so the patcher mounted a replacement widget and
+          destroyed the old one rather than updating it in place. Under [start] this arm
+          is unreachable -- a windowed root is always a [Window], so [same_kind] always
+          holds at the root -- but an embedded root is an arbitrary node, and a
+          [Node.label "Loading..."] that becomes a [Node.box [...]] on the next frame is
+          an ordinary page. Whoever put the old widget somewhere has to be told, or the
+          container goes on holding a widget nothing renders into again. *)
+       if not (phys_equal patched.Patcher.widget live.Patcher.widget)
+       then t.on_root_widget_changed patched.Patcher.widget
+     | None ->
+       let live = Patcher.mount t.ctx ~path:"root" ~is_root:true node in
+       t.root <- Some live;
+       t.on_root_widget_changed live.Patcher.widget);
     (* Inside the guard, and after the whole tree exists: this is where a [stack_switcher]
        finds the stack it names and a stack selects its page, and both write properties
        GTK notifies about. *)
@@ -137,7 +152,14 @@ let frame t =
       Stdlib.Printexc.raise_with_backtrace exn backtrace)
 ;;
 
-let create ?time_source ?(optimize = true) ?(root_kind = `Window) ~on_window_created app =
+let create
+  ?time_source
+  ?(optimize = true)
+  ?(root_kind = `Window)
+  ?(on_root_widget_changed = fun (_ : Widget.t) -> ())
+  ~on_window_created
+  app
+  =
   let advance_wall_clock = Option.is_none time_source in
   let time_source =
     Option.value_or_thunk time_source ~default:(fun () ->
@@ -181,6 +203,7 @@ let create ?time_source ?(optimize = true) ?(root_kind = `Window) ~on_window_cre
     ; time_source
     ; advance_wall_clock
     ; root_kind
+    ; on_root_widget_changed
     ; scheduler
     ; ctx
     ; root = None
@@ -206,6 +229,15 @@ let stop t =
   then (
     t.stopped <- true;
     Scheduler.stop t.scheduler;
+    (* Dropped, because it is the caller's closure and it captures the caller's widgets --
+       [Expert.embed]'s captures the wrapper it hands the embedder and then tells the
+       embedder it may drop. A stopped driver will never report a root again, and it is
+       not itself collectable (a driver's Bonsai graph is reachable from Incremental's
+       global state for the process's life), so a callback left in this field would keep
+       whatever it closes over alive for just as long -- turning "you may drop the
+       wrapper" into a promise the runtime quietly breaks. Measured: without this, a
+       stopped-and-dropped embed's wrapper is never finalized; with it, it is. *)
+    t.on_root_widget_changed <- (fun (_ : Widget.t) -> ());
     Option.iter t.root ~f:(Patcher.destroy t.ctx);
     t.root <- None;
     (* A last frame that raised inside [mount]/[patch] left its deferred work behind, and

@@ -366,151 +366,31 @@ let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t
   Option.iter (Placement.rejection ~path ~parent:parent_kind node.attrs) ~f:invalid_arg
 ;;
 
-let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
-  check_placement ~path ~is_root ~parent_kind node;
-  let impl = Registry.for_kind node.kind in
-  let widget = impl.create node.kind in
-  (* After [create] has applied the kind's props but before any attribute touches it:
-     these are the widget's own creation-time values, which is what a later [Unset]
-     restores. *)
-  let defaults = Attr_apply.snapshot widget in
-  Attr_apply.apply_all widget node.attrs;
-  (* Before anything is connected: an event attr no spec claims would create no slot, so
-     the handler would never run and nothing would say why (spec §11). *)
-  Signals.require_specs ~node_path:path node.kind node.attrs;
-  let slots, connections =
-    Signals.connect_all ctx.signals ~node_path:path widget impl.signals
-  in
-  (* [require_specs] above asked [Events]; this asks the slots that were actually built.
-     The two can only disagree if the table and this impl's [signals] have drifted, and
-     that drift would otherwise be a handler that silently never fires. *)
-  Signals.require_slots ~node_path:path ~impl_name:impl.name slots node.attrs;
-  Signals.update_slots slots node.attrs;
-  (* The controller attrs are nobody's signal, so neither check above sees them: they are
-     legal on every kind and no impl declares a spec for one. What creates their slots is
-     this, from the attrs themselves. *)
-  let controllers = Controllers.create ctx.signals ~node_path:path widget in
-  Controllers.update controllers node.attrs;
-  let children =
-    mount_children
-      ctx
-      ~path
-      ~impl_name:impl.name
-      ~parent_kind:node.kind
-      widget
-      node.children
-      impl.children
-  in
-  note_interest ctx ~path ~widget ~interest:(interest_of_kind node.kind) ~pass:`Mount;
-  { node; widget; impl; defaults; slots; connections; controllers; children }
+(* The kind-specific half of tearing a node down: the registrations and payloads the
+   patcher holds on a node's behalf, which nothing in [Signals] or [Controllers] knows
+   about.
 
-(* One shape, mounted. The three helpers below are what a top-level shape and a slot of
-   that shape share: a slot is not a special case, it is the same code under a longer
-   path. *)
-and mount_single ctx ~path ~parent_kind parent ~set (c : Node.t option) : live option =
-  let live_c =
-    Option.map c ~f:(fun c ->
-      mount ctx ~path:(child_path path 0) ~is_root:false ~parent_kind:(Some parent_kind) c)
-  in
-  set parent (Option.map live_c ~f:(fun l -> l.widget));
-  live_c
-
-and mount_list
-  ctx
-  ~path
-  ~parent_kind
-  parent
-  ~(ops : Widget_impl.list_ops)
-  (cs : Node.t list)
-  : live list
-  =
-  (* Spec §11 says mount *and* patch time. [Reconcile.diff] checks this on the patch path,
-     but a first frame never reaches it -- so without this a duplicate key is accepted
-     once and rejected on the second frame, which for a [Node.stack] means GTK has already
-     been handed two pages with one name and [get_child_by_name] is already ambiguous. *)
-  child_op ~path (fun () ->
-    Reconcile.check_unique_keys ~key:(fun (n : Node.t) -> n.key) cs);
-  let lives =
-    List.mapi cs ~f:(fun i c ->
-      mount ctx ~path:(child_path path i) ~is_root:false ~parent_kind:(Some parent_kind) c)
-  in
-  List.foldi lives ~init:None ~f:(fun i after l ->
-    child_op ~path:(child_path path i) (fun () ->
-      ops.insert parent ~after ~node:l.node l.widget);
-    Some l.widget)
-  |> (ignore : Widget.t option -> unit);
-  lives
-
-and mount_slots ctx ~path ~impl_name ~parent_kind parent node_slots op_slots =
-  (* Slot lists are written by this repository on both sides, and are short and fixed, so
-     equal length and equal order is a fair requirement -- and a loud one when broken. *)
-  match List.zip node_slots op_slots with
-  | Unequal_lengths ->
-    invalid_argf
-      "%s: %s has %d slots, node has %d"
-      path
-      impl_name
-      (List.length op_slots)
-      (List.length node_slots)
-      ()
-  | Ok pairs ->
-    List.map pairs ~f:(fun ((name, cs), (op_name, op)) ->
-      if not (String.equal name op_name)
-      then invalid_argf "%s: slot %s does not exist on %s" path name impl_name ();
-      let path = sprintf "%s/%s" path name in
-      match cs, (op : Widget_impl.slot_ops) with
-      | Children.Single c, Slot_single { set } ->
-        name, Children.Single (mount_single ctx ~path ~parent_kind parent ~set c)
-      | List cs, Slot_list ops ->
-        name, Children.List (mount_list ctx ~path ~parent_kind parent ~ops cs)
-      | (No_children | Single _ | List _ | Slots _), _ ->
-        invalid_argf "%s: slot %s has the wrong shape for %s" path name impl_name ())
-
-and mount_children
-  ctx
-  ~path
-  ~impl_name
-  ~parent_kind
-  parent
-  (children : Node.t Children.t)
-  (ops : Widget_impl.child_ops)
-  : live Children.t
-  =
-  match children, ops with
-  | No_children, _ -> Children.No_children
-  | Single c, Single { set } -> Single (mount_single ctx ~path ~parent_kind parent ~set c)
-  | List cs, List ops -> List (mount_list ctx ~path ~parent_kind parent ~ops cs)
-  | Slots node_slots, Slots op_slots ->
-    Slots (mount_slots ctx ~path ~impl_name ~parent_kind parent node_slots op_slots)
-  | (Single _ | List _ | Slots _), _ ->
-    invalid_argf "%s: node's children do not match %s's shape" path impl_name ()
-
-and destroy ctx (live : live) =
-  (* Slots are emptied before anything is torn down: GTK emits signals synchronously from
-     [remove]/[set_child], and a handler firing here would run against a node that is
-     already gone. *)
-  Signals.clear_slots live.slots;
-  (* [release] empties its own slots before it removes anything, so by the time
-     [gtk_widget_remove_controller] runs -- which can itself provoke a leave or a cancel
-     -- every slot on this widget, its own and its controllers', is already empty. *)
-  Controllers.release live.controllers;
-  Signals.disconnect live.connections;
-  Children.iter live.children ~f:(destroy ctx);
-  match live.node.kind with
+   Shared by {!destroy}, which runs it on a node that was fully built, and by {!mount}'s
+   unwind path, which runs it on one that raised part-way. Those are the only two callers
+   and they must not drift: a kind that acquires something at mount has to release it on
+   both paths, and a single exhaustive match is what makes adding one a compile error in
+   the one place rather than a silent leak in the other. *)
+let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
+  match kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
-  | Window _ -> W.Window.destroy (cast live.widget)
-  | Stack { name; _ } -> unregister_stack ctx ~name live.widget
-  | Native n -> Native_gtk.destroy_payload n live.widget
+  | Window _ -> W.Window.destroy (cast widget)
+  | Stack { name; _ } -> unregister_stack ctx ~name widget
+  | Native n -> Native_gtk.destroy_payload n widget
   (* The rows never pass through [list_ops.remove] on this path -- the patcher tears a
      subtree down by walking it, not by removing each child from its parent -- so their
      [Child_keys] entries are dropped here instead; see [W_list_box.forget_rows]. *)
-  | List_box _ -> W_list_box.forget_rows live.widget
+  | List_box _ -> W_list_box.forget_rows widget
   (* Same reason, same placement requirement: {i above} the or-pattern chain below, or
      every kind listed in it binds to this arm as well and [forget_children] runs on
      labels and boxes. *)
-  | Flow_box _ -> W_flow_box.forget_children live.widget
+  | Flow_box _ -> W_flow_box.forget_children widget
   (* Same reason, same placement requirement: {i above} the or-pattern chain below. *)
-  | Notebook _ -> W_notebook.forget_pages live.widget
+  | Notebook _ -> W_notebook.forget_pages widget
   | Label _
   | Button _
   | Toggle_button _
@@ -542,6 +422,234 @@ and destroy ctx (live : live) =
   | Stack_switcher _
   | Stack_sidebar _
   | Box _ -> ()
+;;
+
+(* Mounting is exception-safe: if any step after the widget exists raises, everything this
+   call had already built is torn down before the exception goes on up.
+
+   Without that, a mount that raises part-way leaks permanently rather than merely
+   failing. [Driver.stop] can only walk [t.root], and [t.root] is assigned once, after the
+   whole subtree is built -- so nothing the failed pass created is reachable from the
+   driver, while every signal it had already connected roots a GClosure that captures the
+   driver, which holds the shadow tree, which holds GObject references back. GC and
+   refcounting cannot break that cycle between them. Measured (task-12-review.md, probe 6)
+   at ~50k live words -- about 390 KB -- per failed mount that had connected one handler,
+   against ~560 words for one that had not: the whole driver and its Bonsai graph, not
+   just the widgets.
+
+   It is also what makes {!Bonsai_gtk.start}'s and {!Bonsai_gtk.Expert.embed}'s "the
+   failed frame tore down what it built" promises true rather than aspirational, and it
+   closes the M1 backlog item of the same name.
+
+   The unwind mirrors {!destroy} step for step, over whatever exists so far: slots emptied
+   first (so a signal GTK emits while the partial tree comes apart reaches nothing), then
+   the controllers, then the connections, then the children, then the kind's own
+   registrations through the {!release_kind} both paths share. The widget itself is not
+   destroyed or unparented -- it was never parented, nothing references it once this
+   returns, and destroying it is {!destroy}'s rule for windows only.
+
+   The child helpers below each protect what {i they} built, for the same reason: a raise
+   on the third child must not strand the first two, and only the loop that built them
+   knows they exist. *)
+let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
+  check_placement ~path ~is_root ~parent_kind node;
+  let impl = Registry.for_kind node.kind in
+  let widget = impl.create node.kind in
+  (* Filled in as each stage succeeds, and read by [unwind] to undo exactly the stages
+     that did. *)
+  let built_slots = ref None in
+  let built_connections = ref [] in
+  let built_controllers = ref None in
+  let built_children = ref None in
+  let unwind () =
+    Option.iter !built_slots ~f:Signals.clear_slots;
+    Option.iter !built_controllers ~f:Controllers.release;
+    Signals.disconnect !built_connections;
+    Option.iter !built_children ~f:(Children.iter ~f:(destroy ctx));
+    release_kind ctx ~kind:node.kind ~widget
+  in
+  match
+    (* After [create] has applied the kind's props but before any attribute touches it:
+       these are the widget's own creation-time values, which is what a later [Unset]
+       restores. *)
+    let defaults = Attr_apply.snapshot widget in
+    Attr_apply.apply_all widget node.attrs;
+    (* Before anything is connected: an event attr no spec claims would create no slot, so
+       the handler would never run and nothing would say why (spec §11). *)
+    Signals.require_specs ~node_path:path node.kind node.attrs;
+    let slots, connections =
+      Signals.connect_all ctx.signals ~node_path:path widget impl.signals
+    in
+    built_slots := Some slots;
+    built_connections := connections;
+    (* [require_specs] above asked [Events]; this asks the slots that were actually built.
+       The two can only disagree if the table and this impl's [signals] have drifted, and
+       that drift would otherwise be a handler that silently never fires. *)
+    Signals.require_slots ~node_path:path ~impl_name:impl.name slots node.attrs;
+    Signals.update_slots slots node.attrs;
+    (* The controller attrs are nobody's signal, so neither check above sees them: they
+       are legal on every kind and no impl declares a spec for one. What creates their
+       slots is this, from the attrs themselves. *)
+    let controllers = Controllers.create ctx.signals ~node_path:path widget in
+    built_controllers := Some controllers;
+    Controllers.update controllers node.attrs;
+    let children =
+      mount_children
+        ctx
+        ~path
+        ~impl_name:impl.name
+        ~parent_kind:node.kind
+        widget
+        node.children
+        impl.children
+    in
+    built_children := Some children;
+    note_interest ctx ~path ~widget ~interest:(interest_of_kind node.kind) ~pass:`Mount;
+    { node; widget; impl; defaults; slots; connections; controllers; children }
+  with
+  | live -> live
+  | exception exn ->
+    let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+    unwind ();
+    Stdlib.Printexc.raise_with_backtrace exn backtrace
+
+(* One shape, mounted. The three helpers below are what a top-level shape and a slot of
+   that shape share: a slot is not a special case, it is the same code under a longer
+   path. *)
+and mount_single ctx ~path ~parent_kind parent ~set (c : Node.t option) : live option =
+  let live_c =
+    Option.map c ~f:(fun c ->
+      mount ctx ~path:(child_path path 0) ~is_root:false ~parent_kind:(Some parent_kind) c)
+  in
+  (* [set] is the only thing here that can raise after the child exists, and the child is
+     not reachable from anywhere else yet. *)
+  (match set parent (Option.map live_c ~f:(fun l -> l.widget)) with
+   | () -> ()
+   | exception exn ->
+     let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+     Option.iter live_c ~f:(destroy ctx);
+     Stdlib.Printexc.raise_with_backtrace exn backtrace);
+  live_c
+
+and mount_list
+  ctx
+  ~path
+  ~parent_kind
+  parent
+  ~(ops : Widget_impl.list_ops)
+  (cs : Node.t list)
+  : live list
+  =
+  (* Spec §11 says mount *and* patch time. [Reconcile.diff] checks this on the patch path,
+     but a first frame never reaches it -- so without this a duplicate key is accepted
+     once and rejected on the second frame, which for a [Node.stack] means GTK has already
+     been handed two pages with one name and [get_child_by_name] is already ambiguous. *)
+  child_op ~path (fun () ->
+    Reconcile.check_unique_keys ~key:(fun (n : Node.t) -> n.key) cs);
+  (* Newest first, and only ever appended to, so that a raise on the third child can tear
+     down the first two: each recursive [mount] cleans up after itself, but the siblings
+     it never touched are known only here. The [insert] loop is inside the same guard for
+     the same reason -- a container that rejects the child it is handed (a grid cell with
+     no [Attr.grid_cell], a stack page with no key) raises after every child has been
+     built. *)
+  let built = ref [] in
+  match
+    let lives =
+      List.mapi cs ~f:(fun i c ->
+        let l =
+          mount
+            ctx
+            ~path:(child_path path i)
+            ~is_root:false
+            ~parent_kind:(Some parent_kind)
+            c
+        in
+        built := l :: !built;
+        l)
+    in
+    List.foldi lives ~init:None ~f:(fun i after l ->
+      child_op ~path:(child_path path i) (fun () ->
+        ops.insert parent ~after ~node:l.node l.widget);
+      Some l.widget)
+    |> (ignore : Widget.t option -> unit);
+    lives
+  with
+  | lives -> lives
+  | exception exn ->
+    let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+    List.iter !built ~f:(destroy ctx);
+    Stdlib.Printexc.raise_with_backtrace exn backtrace
+
+and mount_slots ctx ~path ~impl_name ~parent_kind parent node_slots op_slots =
+  (* Slot lists are written by this repository on both sides, and are short and fixed, so
+     equal length and equal order is a fair requirement -- and a loud one when broken. *)
+  match List.zip node_slots op_slots with
+  | Unequal_lengths ->
+    invalid_argf
+      "%s: %s has %d slots, node has %d"
+      path
+      impl_name
+      (List.length op_slots)
+      (List.length node_slots)
+      ()
+  | Ok pairs ->
+    (* Same guard as [mount_list]'s, over slots rather than list items: an overlay whose
+       [~overlays] slot raises must not strand the main child it already built. *)
+    let built = ref [] in
+    (match
+       List.map pairs ~f:(fun ((name, cs), (op_name, op)) ->
+         if not (String.equal name op_name)
+         then invalid_argf "%s: slot %s does not exist on %s" path name impl_name ();
+         let path = sprintf "%s/%s" path name in
+         let slot =
+           match cs, (op : Widget_impl.slot_ops) with
+           | Children.Single c, Slot_single { set } ->
+             Children.Single (mount_single ctx ~path ~parent_kind parent ~set c)
+           | List cs, Slot_list ops ->
+             Children.List (mount_list ctx ~path ~parent_kind parent ~ops cs)
+           | (No_children | Single _ | List _ | Slots _), _ ->
+             invalid_argf "%s: slot %s has the wrong shape for %s" path name impl_name ()
+         in
+         built := slot :: !built;
+         name, slot)
+     with
+     | slots -> slots
+     | exception exn ->
+       let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+       List.iter !built ~f:(Children.iter ~f:(destroy ctx));
+       Stdlib.Printexc.raise_with_backtrace exn backtrace)
+
+and mount_children
+  ctx
+  ~path
+  ~impl_name
+  ~parent_kind
+  parent
+  (children : Node.t Children.t)
+  (ops : Widget_impl.child_ops)
+  : live Children.t
+  =
+  match children, ops with
+  | No_children, _ -> Children.No_children
+  | Single c, Single { set } -> Single (mount_single ctx ~path ~parent_kind parent ~set c)
+  | List cs, List ops -> List (mount_list ctx ~path ~parent_kind parent ~ops cs)
+  | Slots node_slots, Slots op_slots ->
+    Slots (mount_slots ctx ~path ~impl_name ~parent_kind parent node_slots op_slots)
+  | (Single _ | List _ | Slots _), _ ->
+    invalid_argf "%s: node's children do not match %s's shape" path impl_name ()
+
+and destroy ctx (live : live) =
+  (* Slots are emptied before anything is torn down: GTK emits signals synchronously from
+     [remove]/[set_child], and a handler firing here would run against a node that is
+     already gone. *)
+  Signals.clear_slots live.slots;
+  (* [release] empties its own slots before it removes anything, so by the time
+     [gtk_widget_remove_controller] runs -- which can itself provoke a leave or a cancel
+     -- every slot on this widget, its own and its controllers', is already empty. *)
+  Controllers.release live.controllers;
+  Signals.disconnect live.connections;
+  Children.iter live.children ~f:(destroy ctx);
+  release_kind ctx ~kind:live.node.kind ~widget:live.widget
 
 (* Empties every slot in a subtree without tearing anything down.
 

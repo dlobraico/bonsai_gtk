@@ -144,7 +144,20 @@ type live =
 
     Placement attributes are checked here rather than by [Attr_apply], which sees a child
     without knowing its parent, or by the constructor, which cannot know either. Nothing
-    applies them to the child, so a misplaced one has no other diagnostic at all. *)
+    applies them to the child, so a misplaced one has no other diagnostic at all.
+
+    {b Exception-safe.} Whichever of those raises, everything this call had already built
+    is torn down first — the same teardown {!destroy} performs, over the part of the tree
+    that exists: slots emptied, controllers released, connections disconnected, completed
+    children destroyed, kind registrations released. So a failed mount leaves nothing
+    behind and the caller may not assume a partial [live] to clean up; there is none, and
+    the exception is re-raised with its original backtrace.
+
+    That matters more than it looks. A partial mount is not merely wasted work: every
+    signal it had connected roots a closure holding the runtime, which holds the shadow
+    tree, which holds GObject references back, and neither the collector nor refcounting
+    can break that cycle. Before this, one connected handler in a failed mount retained
+    the whole driver and its Bonsai graph permanently. *)
 val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
 
 (** Diffs [node] against [live.node] and mutates the live tree to match.

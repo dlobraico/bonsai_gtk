@@ -132,13 +132,13 @@ module Expert : sig
   (** {!Embedded.create}, under the name the call site reads best.
 
       Builds [app], mounts it with one frame, and starts a tick at
-      [target_frames_per_second] (default 60) on the main loop the caller is already
-      running. The root must not be a [Node.window]; nothing is parented for you — take
-      {!Embedded.widget} and put it where your container puts children; and
-      {!Embedded.stop} tears the tree down without unparenting it.
+      [target_frames_per_second] (default 60; non-positive installs no tick) on the main
+      loop the caller is already running. [time_source] and [optimize] are
+      {!Driver.create}'s.
 
-      [time_source] and [optimize] are {!Driver.create}'s. Raises out of here if that
-      first frame does, having torn down what it built. *)
+      {!Embedded} documents the contract — what the root may be, what you parent, what
+      {!Embedded.stop} does and does not do, and the one obligation embedding adds — and
+      is the copy to keep up to date. *)
   val embed
     :  ?time_source:Bonsai.Time_source.t
     -> ?optimize:bool

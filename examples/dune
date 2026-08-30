@@ -1,5 +1,19 @@
+; [counter] and [gallery] deliberately link no ocgtk: an application built with
+; bonsai_gtk never has to name it, and these two are where that is demonstrated.
+; [embed] is the exception and says why -- it is the example for an app that
+; already owns its GTK window and main loop, so it necessarily writes both. Two
+; stanzas in one directory need explicit (modules ...) on each.
+
 (executables
- (names counter gallery embed)
+ (names counter gallery)
+ (modules counter gallery)
+ (libraries core bonsai bonsai_gtk)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))
+
+(executable
+ (name embed)
+ (modules embed)
  (libraries core bonsai bonsai_gtk ocgtk.gtk ocgtk.gio ocgtk.common)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))

@@ -3,13 +3,18 @@ before the caller parents it: stack holds 0, root's parent is nothing
  (children
   (GtkStack (visible (page))
    (children
-    (GtkBox (spacing 0) (css (vertical))
-     (children (GtkLabel (text "count 0"))
-      (GtkButton (label (+)) (css (text-button))
-       (children (GtkLabel (text +))))))))))
-(GtkBox (spacing 0) (css (vertical))
- (children (GtkLabel (text "count 1"))
-  (GtkButton (label (+)) (css (text-button)) (children (GtkLabel (text +))))))
+    (GtkOverlay
+     (children
+      (GtkBox (spacing 0) (css (vertical))
+       (children (GtkLabel (text "count 0"))
+        (GtkButton (label (+)) (css (text-button))
+         (children (GtkLabel (text +))))))))))))
+(GtkOverlay
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text "count 1"))
+    (GtkButton (label (+)) (css (text-button))
+     (children (GtkLabel (text +))))))))
 broken: false
 window root: Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make the root a container.
 nested window: root/1: a Node.window may only be the root node, not a child of another node
@@ -18,10 +23,10 @@ a second embed alongside the first: stack holds 2
 after two clicks on the second: "count 1" and "second 2"
 after the breaker's frame raised: breaker true, first false, second false
 the first embed still renders: "count 2"
-after stop: stack holds 2, the root is still a GtkBox under a GtkStack
-stop then remove: stack holds 1, the root's parent is nothing
+after stop: stack holds 2, the wrapper is still a GtkOverlay under a GtkStack, holding 0
+stop then remove: stack holds 1, the wrapper's parent is nothing
 remove then stop: stack holds 0 before the stop
-remove then stop: the root is a GtkBox under nothing, still usable: "second 2"
+remove then stop: the wrapper is a GtkOverlay under nothing holding 0; the tree it held is a GtkBox still showing "second 2"
 frame after stop: Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph and tears the widget tree down; build a new driver instead)
 the host is presented and the page renders: "orphan 1"
 after gtk_window_destroy: broken false, root's parent GtkStack, realized false
@@ -32,4 +37,24 @@ before the destroy: broken false
 after the root's destroy fired: broken true
 a frame on it was a no-op, still broken: true
 stopped a broken embed
+kind change, before: the stack holds a GtkOverlay holding a GtkButton
+kind change, after: the stack still holds the same GtkOverlay (same object: true), now holding a GtkBox
+the widget the patcher replaced is a GtkButton whose parent is now nothing
+(GtkWindow (title ()) (css (background)) hidden
+ (children
+  (GtkStack (visible (page))
+   (children
+    (GtkOverlay
+     (children
+      (GtkBox (spacing 0) (css (vertical))
+       (children (GtkLabel (text "loaded 1"))
+        (GtkButton (label (+)) (css (text-button))
+         (children (GtkLabel (text +))))))))))))
+a click on the new content reached the model: "loaded 2", broken false
+a mount that raises: root/3: Label does not emit On_clicked
+the siblings it had already built were torn down: 2 native destroys of 2
+a mount that registers then raises: root/1: Label does not emit On_clicked
+the same ctx then mounts a tree naming the same stack, and a switcher finds it
+5 embeds stopped and dropped: 5 wrappers finalized
+5 embeds dropped without stop: 0 wrappers finalized
 bench: 2000 idle frames, embedded/windowed cost ratio under 1.2: true

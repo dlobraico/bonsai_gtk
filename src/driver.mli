@@ -42,11 +42,25 @@ type root_kind =
 
     [on_window_created] is called once per window node as it is mounted. Nothing else
     holds onto windows, so an implementation that drops them will leak them or never show
-    them; {!Bonsai_gtk.start} adds them to the application and presents them. *)
+    them; {!Bonsai_gtk.start} adds them to the application and presents them.
+
+    [on_root_widget_changed] is called with the root widget every time that widget becomes
+    a {i different object}: once at the first {!frame}, which mounts it, and again on any
+    frame where the root node changed kind and the patcher therefore mounted a replacement
+    and destroyed the original. Whoever parented the old widget must re-parent the new one
+    from here, or its container goes on holding a widget nothing renders into again — a
+    page frozen on screen with no exception and no [broken].
+
+    A [`Window] root never reaches the second case ([Kind.same_kind] always holds between
+    two windows), which is why {!Bonsai_gtk.start} does not pass this and why the hazard
+    appeared only with {!Bonsai_gtk.Expert.embed}: an embedded root is an arbitrary node,
+    and a [Node.label "Loading…"] that becomes a [Node.box […]] once the data arrives is
+    an ordinary page rather than a corner case. Defaults to doing nothing. *)
 val create
   :  ?time_source:Bonsai.Time_source.t
   -> ?optimize:bool
   -> ?root_kind:root_kind
+  -> ?on_root_widget_changed:(Widget.t -> unit)
   -> on_window_created:(Widget.t -> unit)
   -> (local_ Bonsai.graph -> Node.t Bonsai.t)
   -> t
@@ -123,7 +137,14 @@ val broken : t -> bool
     backstop for a host that disposes its children outright, not the normal path. *)
 val mark_broken : t -> unit
 
-(** Stops the scheduler, tears the widget tree down, and invalidates the Bonsai
-    computation's incremental observers. The driver is dead afterwards: {!root_widget} is
-    [None] and {!frame} raises. Build a new driver to render again. Idempotent. *)
+(** Stops the scheduler, tears the widget tree down, invalidates the Bonsai computation's
+    incremental observers, and drops [on_root_widget_changed]. The driver is dead
+    afterwards: {!root_widget} is [None] and {!frame} raises. Build a new driver to render
+    again. Idempotent.
+
+    Dropping the callback matters because the driver itself is not collectable — its
+    Bonsai graph stays reachable from Incremental's global state for the life of the
+    process — so anything a callback of the caller's closes over would outlive the tree it
+    belonged to. {!Bonsai_gtk.Expert.embed}'s closes over the wrapper it hands the
+    embedder, and this is what makes "after [stop] you may drop it" true. *)
 val stop : t -> unit

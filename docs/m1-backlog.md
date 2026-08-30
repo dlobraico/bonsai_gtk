@@ -153,12 +153,16 @@ Behaviour:
   `run_fixups`): the `Exn.protect ~finally` clears the queue behind the raise, so a second
   stack's selection silently never runs. Bounded, because the frame is the last one.
   containers M2.
-- **`ctx.stacks` keeps registrations from a subtree whose mount raised** — extends the
-  "mount is not exception-safe" item below, which only mentions the undestroyed widget.
-  containers M3. The mirror image is now reachable too: `drop_stack_names` runs *before*
-  the mount in `patch`'s kind-change arm, so a mount that raises there leaves the old
-  subtree alive with its names already given up. Bounded either way, since the frame is
-  broken. `fix-wave-review.md` Minor 4.
+- **`ctx.stacks` keeps registrations from a subtree whose mount raised** — the first half
+  is **not a defect** and Task 12 pinned it: registrations are deferred to
+  `apply_stack_claims`, which a raising mount never reaches, and `abandon_fixups` (which
+  `Driver.frame` calls on its way out of a frame that raised) empties the claim queue. A
+  live test drives the patcher directly to show the same `ctx` mounts a tree naming the
+  same stack afterwards, and that removing the `abandon_fixups` call makes it raise `two
+  Node.stacks are named "shared"`. The mirror image is still open: `drop_stack_names` runs
+  *before* the mount in `patch`'s kind-change arm, so a mount that raises there leaves the
+  old subtree alive with its names already given up. Bounded, since the frame is broken.
+  `fix-wave-review.md` Minor 4.
 - **An overlay child whose *kind* changes jumps to the top of the z-order**
   (`src/patcher.ml`'s kind-change arm is remove-then-insert, and `add_overlay` appends) —
   distinct from the known "`Overlay` `move` is a no-op", which is about a reorder in the
@@ -338,9 +342,34 @@ Do not "fix" these when an expected file surprises you:
   `~/src/stavekeeper#girgen`.
 - Node paths are frozen at mount, so `on_exn` logs name a stale path after a move.
 - `Signals.slots`' outer `ref` is built by mutation and never re-assigned afterwards.
-- `mount` is not exception-safe (bounded): a node rejected by `require_specs` or
-  `check_placement` leaves its already-created widget undestroyed.
+- ~~`mount` is not exception-safe (bounded): a node rejected by `require_specs` or
+  `check_placement` leaves its already-created widget undestroyed.~~ **Closed by M2 Task
+  12.** It was not bounded: every signal a partial mount had connected rooted a closure
+  holding the runtime, which held the shadow tree, which held GObject references back, so
+  one connected handler in a failed mount retained the whole driver and its Bonsai graph
+  permanently (~50k live words per failure, measured). `Patcher.mount` now tears down what
+  it built and re-raises; `release_kind` is the match both paths share.
+- **A `Driver` is never reclaimed, stopped or not** (M2 Task 12, out of scope there): a
+  `Driver.create` that is stopped without ever being framed still retains ~39k live words,
+  and a failed `Expert.embed` about ~10k, on a heap that has settled through two full
+  majors. It is the Bonsai graph rather than anything GTK — Incremental's state is global
+  and outlives the observer invalidation `stop` performs — so an application that builds a
+  driver per dialog grows without bound. Task 12 measured it while fixing the mount leak
+  and left it alone; the lever is Bonsai's, not this library's. `Driver.stop` does now drop
+  `on_root_widget_changed`, so at least the caller's own widgets are not dragged along.
+- **`Bonsai_gtk.start`'s `on_window_created` has the same shape** and is not dropped by
+  `Driver.stop`: it closes over the `GtkApplication`. Harmless today (the only `start` in a
+  process outlives its driver anyway), and one line to fix the day it is not.
+- **A `destroy` handler on a widget an OCaml finaliser is disposing re-enters OCaml from
+  the collector, and hangs** (M2 Task 12, measured): ocgtk's finaliser unrefs the GObject,
+  GTK disposes it, dispose emits `destroy`, and the marshaller calls back into OCaml.
+  `Embed.stop` avoids it by disconnecting its backstop, which is the only such handler the
+  library connects — but nothing stops an application connecting one, and nothing warns.
 - Redundant `(deps …)` in `test/live/dune`.
+- **`drain`-shaped loops (`while Glib.Main.pending () do …`) can fail to terminate** right
+  after a major collection that finalizes many wrappers (`task-12-review.md`, reproduced
+  twice by the reviewer). `test/live/live_embed.ml`'s `drain` is bounded for that reason;
+  every other live test's is not.
 - The 16 ms tickless cadence is hard-coded (`src/scheduler.ml`), and `request_frame` does
   not cancel a pending `request_frame_soon`.
 - `after_of` is `O(index)` per op and the surrounding `cur` bookkeeping is `O(n)` per op,

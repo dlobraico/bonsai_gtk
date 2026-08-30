@@ -88,10 +88,16 @@ let build_window app =
     match !embedded with
     | Some _ -> ()
     | None ->
-      (* [embed] mounts the tree and hands back the root; parenting it is this code's job,
-         and a [GtkStack] parents by [add_named]. That there is no one call covering
-         [add_named], [append], [insert_page] and [set_child] alike is exactly why [embed]
-         does not try. *)
+      (* [embed] mounts the tree and hands back a container of its own holding it;
+         parenting {i that} is this code's job, and a [GtkStack] parents by [add_named].
+         That there is no one call covering [add_named], [append], [insert_page] and
+         [set_child] alike is exactly why [embed] does not try.
+
+         The widget is [embed]'s wrapper rather than the rendered root, and this example
+         is the reason it has to be: the page's root is a [Node.box] today, but the moment
+         it becomes "a spinner while loading, a box afterwards" the patcher would replace
+         the root widget under a stack still holding the old one. The wrapper is what
+         stays put. *)
       let e = Expert.embed page in
       ignore
         (W.Stack.add_named stack (Expert.Embedded.widget e) (Some "bonsai")
@@ -112,6 +118,9 @@ let build_window app =
          a tick patching a page nobody can see. *)
       W.Stack.set_visible_child_name stack "placeholder";
       Expert.Embedded.stop e;
+      (* The wrapper survives [stop] as an ordinary empty container, which is what makes
+         "tear down, then remove" work in either order. Dropping it -- which this does, by
+         setting [embedded] to [None] -- is what actually releases the tree. *)
       W.Stack.remove stack (Expert.Embedded.widget e);
       embedded := None;
       sync_buttons ()
