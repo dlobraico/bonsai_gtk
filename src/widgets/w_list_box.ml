@@ -105,9 +105,11 @@ let row_of ~what (child : Widget.t) : W.List_box_row.t =
    [get_row_at_index] does [g_object_ref_sink] its result ([ml_list_box_gen.c:258-265]),
    so this walk is balanced. The fork already carries the identical fix for
    [GtkFlowBoxChild] one file over ([ml_flow_box_gen.c:222-233], whose comment describes
-   this exact bug); the [GtkListBox] twin is unfixed in the pinned binding and is on the
-   backlog for Task 14. Until that lands, nothing in this library may call
-   [get_selected_rows]. *)
+   this exact bug); the [GtkListBox] twin is unfixed {i in the pinned binding}. It is
+   fixed on the fork's [m2-bindings] branch (commit [a913c307], which sinks the elements
+   of all 21 transfer-container list returns and pins the ListBox one with a GC regression
+   test), so this prohibition lifts when [ocgtk-pin.json] moves past it -- and not before.
+   Until then, nothing in this library may call [get_selected_rows]. *)
 let rows (b : W.List_box.t) =
   let rec go i acc =
     match W.List_box.get_row_at_index b i with

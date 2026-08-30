@@ -14,6 +14,29 @@ Branch head: `d98d939711d315cfb595d472594407044ff4f147`.
 | 5 | `7d9d2ef7` | Glib_bytes.of_bigstring + GBytes memory accounting | `upstream/glib-bytes` | `79aa24e1` | [pr-5](pr-5-glib-bytes.md) | [#177](https://github.com/chris-armstrong/ocgtk/pull/177) |
 | 6 | `d98d9397` | Style_display.add_provider_for_default_display | `upstream/style-display` | `a80c3dda` | [pr-6](pr-6-style-display.md) | [#178](https://github.com/chris-armstrong/ocgtk/pull/178) |
 
+## Not yet pushed: the M2 branch
+
+`m2-bindings` (five commits, based on `bonsai-gtk` at `d98d9397`) is prepared in
+`.ocgtk-src/` and **has not been pushed**. It is not part of the table above and
+has no topic branch or PR yet; it needs the same cherry-pick-and-scrub treatment
+before any of it is offered upstream.
+
+| # | Commit | Theme | What it closes |
+|---|--------|-------|----------------|
+| 7 | `7619876c` | finaliser re-entry | A `destroy` handler reached while the OCaml collector is disposing a widget segfaults when it allocates. The marshaller now refuses to call back into OCaml while a GObject finaliser is unreffing. |
+| 8 | `e281d8f3` | `(nullable)` override | The override table can correct a missing GIR `nullable="1"`; also fixes the layer-2 class wrapper for a nullable property, which had never been reachable. |
+| 9 | `bcd39f14` | nullable string bindings | `Widget.set_name`, `Stack_page.set_title` and `Password_entry.get/set_placeholder_text` take and report `string option`. |
+| 10 | `a913c307` | transfer-container lists | The elements of all 21 transfer-container list returns are sunk (`gtk_list_box_get_selected_rows` was the one M2 hit). |
+| 11 | `4ea70268` | constructor ownership | 279 constructors over a plain `GObject` no longer `g_object_ref_sink` a reference the constructor already transferred. |
+
+Commits 10 and 11 are **regenerations applied by hand**: `gir_gen` has emitted
+both since commit 3 and the generated tree was never regenerated. See
+`.superpowers/sdd/2026-08-30-bonsai-gtk-m2/task-14-report.md` for what a full
+regeneration would additionally change, and why the rest of it is held back.
+
+Moving the pin past these requires a small change in this repository and in
+Stavekeeper; the report has the exact patch.
+
 ## Topic branches
 
 All six are pushed to the fork (`origin`, https://github.com/dlobraico/ocgtk)
