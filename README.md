@@ -91,8 +91,8 @@ repository can reach (see [Limitations](#limitations)).
 |---|---|
 | **Display** | `label` (wrap, xalign, ellipsize, max-width-chars, markup), `image`, `picture`, `separator`, `progress_bar`, `spinner`, `level_bar` (continuous or discrete, `Level_bar_mode`) |
 | **Controls** | `button` (label / icon / arbitrary child / frameless), `toggle_button`, `check_button`, `switch`, `spin_button`, `scale` |
-| **Lists** | `list_box` (keyed rows, controlled selection, per-row `Attr.row_selectable`/`row_activatable`, `?placeholder`), `flow_box` (keyed children, controlled selection, geometry as props), `notebook` (keyed pages, `Attr.tab_label`, controlled `~current_page`, real reordering — the one container whose children move in place, since it has `gtk_notebook_reorder_child`). Every child needs a `~key`, and every handler speaks in keys |
-| **Text** | `entry`, `password_entry`, `search_entry`, `text_view` (controlled buffer, `Wrap_mode`, caret preserved as a character offset), `editable_label` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret. `on_search_changed` reports only searches the *user* produced: GTK arms its debounce from any text change, so the library filters out the emission carrying back a write it made itself |
+| **Lists** | `list_box` (keyed rows, controlled selection, per-row `Attr.row_selectable`/`row_activatable`, `?placeholder`), `flow_box` (keyed children, controlled selection, geometry as props), `notebook` (keyed pages, `Attr.tab_label`, controlled `~current_page`, real reordering — with `box`, one of the two containers whose children move in place, since it has `gtk_notebook_reorder_child`). Every child needs a `~key`, and every handler speaks in keys |
+| **Text** | `entry`, `password_entry`, `search_entry`, `text_view` (controlled buffer, `Wrap_mode`, caret preserved as a character offset), `editable_label` — controlled: the widget is written only when the model disagrees with what it currently shows, so echoing what the user typed never moves the caret (and text GTK cannot hold — invalid UTF-8, an embedded NUL — is refused rather than written; see Limitations). `on_search_changed` reports only searches the *user* produced: GTK arms its debounce from any text change, so the library filters out the emission carrying back a write it made itself |
 | **Pickers** | `drop_down` (string list, controlled `~selected`), `calendar` (controlled `Core.Date.t`, marked days) |
 | **Layout** | `box`, `grid` (`Attr.grid_cell`), `center_box`, `paned`, `overlay` (`Attr.measure_overlay`), `frame`, `expander`, `revealer`, `scrolled_window` |
 | **Navigation** | `stack` + `stack_switcher` + `stack_sidebar` (pages keyed by `Key.t`, switchers name their stack) |
@@ -261,7 +261,9 @@ for different phases (`Events.key_phase_rejection`) all raise here exactly as th
 mount, with the same message. Every entry point that advances a handle checks — `show`,
 `show_into_string`, `show_diff`, `store_view`, `recompute_view` and
 `recompute_view_until_stable` — which is why `Bonsai_gtk_test.Handle` is a hand-written
-signature rather than an alias for `Bonsai_test.Handle`.
+signature rather than an alias for `Bonsai_test.Handle`. The guarantee is about *this*
+module: the underlying type is `Bonsai_test.Handle.t`, so reaching for a `Bonsai_test.Handle`
+entry point this signature does not re-export gets an unchecked handle.
 
 `do_actions` dispatches every action in one call against a single view snapshot, so a second
 click that depends on the state the first click just set needs a `recompute_view` between
@@ -368,6 +370,14 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   length before the caret, approximate for one that does (an autocompleter inserting six
   characters at the start leaves the caret six characters early). `notify::cursor-position`
   is the hook for an app that wants to own the caret; it is on the backlog.
+- **A `TextView` or `EditableLabel` write that GTK cannot hold is refused, not truncated.**
+  Text that is not valid UTF-8, or that carries an embedded NUL (which GTK would silently
+  truncate at), is rejected *before* the write: the buffer and the library's cache of it are
+  left exactly as they were, and the refusal is reported once per distinct text through the
+  patcher's channel. Unlike the two states above this is not a state a later frame makes
+  valid, so the widget and the model stay diverged until the model offers text GTK can hold
+  — which is the honest failure, but it does mean the controlled guarantee in the Widgets
+  table has this one exception.
 - **`Calendar` has no date range and no "no date selected"** — `~date` is always a real
   `Core.Date.t`. GTK's own year range is 1–9999, so a `Date.t` in year 0 is refused,
   reported once, and written on the first later frame that offers a date GTK will hold.
@@ -384,10 +394,17 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   debounce from *any* text change, including a controlled write, so without the filter a
   model that normalises input would hear its own write back as a search the user never
   performed. The widget records what the library last wrote and declines the next emission
-  if the text still equals it — which means the record is consumed either way and can never
-  suppress more than the one signal the write armed.
-- **No radio groups** (`CheckButton.set_group` is unbound): model the exclusive choice in
-  Bonsai state and render the `active` flags from it.
+  if the text still equals it — which means the record is consumed either way and cannot
+  suppress more than the one signal the write armed, with one exception: a write that
+  *empties* the box makes GTK emit `search-changed` synchronously inside the patch, where
+  the emission is dropped before it can consume the record, so a `""` record survives to
+  meet a later `""`. It is on the backlog.
+- **No radio groups.** `CheckButton.set_group` *is* bound, but GTK's grouping is a mutable
+  pointer from one live widget to another rather than a prop of either, which is not a
+  thing a declarative tree can express: `Node.check_button` therefore exposes no `~group`.
+  Model the exclusive choice in Bonsai state and render the `active` flags from it — which
+  is the better shape anyway, since the model then holds the choice rather than inferring
+  it from three widgets.
 - **Per-widget gaps**, each a `Node.native` case and each named in its constructor's doc
   comment: no `Scale` marks, no `ProgressBar.pulse`, no `Entry` icons, no
   `SearchEntry.set_key_capture_widget`, no `Frame.set_label_widget`, no `TextView` tags or

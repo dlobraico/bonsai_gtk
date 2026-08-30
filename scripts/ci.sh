@@ -31,7 +31,9 @@ dune build @all
 # dune-project edit committed without its regenerated .opam would otherwise
 # leave CI green and the tree dirty.
 echo "== generated opam files are committed"
-git diff --exit-code -- '*.opam'
+# `HEAD` rather than the bare form: without it the check compares the index, so an
+# .opam file that was regenerated and then `git add`ed but not committed reads as clean.
+git diff --exit-code HEAD -- '*.opam'
 
 echo "== pure + headless tests"
 dune build @test/runtest

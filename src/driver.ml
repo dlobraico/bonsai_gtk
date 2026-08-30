@@ -47,7 +47,9 @@ let check_root ~(root_kind : root_kind) (node : Node.t) =
   | `Window, Window _ -> ()
   | `Window, k ->
     invalid_argf
-      "Bonsai_gtk: the root node must be a Node.window, got %s"
+      "Bonsai_gtk: the root node must be a Node.window, got %s. A tree started this way \
+       shows its own root, and a GtkWindow is the only thing GTK can show on its own. \
+       Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own."
       (Kind.name k)
       ()
   | `Not_window, Window _ ->

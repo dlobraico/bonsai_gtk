@@ -602,9 +602,15 @@ always possible.
   cannot keep up with. All of them share one attr name and therefore one slot, so
   `update_slots` and `require_slots` are unchanged.
 - `Payload : ('p, 'r) payload -> spec` is for the signals whose arguments cannot be
-  recovered afterwards. Three exist: `GtkListBox::row-activated` (the row is gone by the
-  time anything could look for it), `GtkGestureClick::pressed` (the coordinates are stored
-  nowhere), and `GtkEventControllerKey::key-pressed`. `'p` is what the `connect` closure
+  recovered afterwards. Six exist, and they are two rules rather than a list of
+  exceptions. **Every signal whose argument is a child widget**, because the child is gone
+  by the time anything could look for it: `GtkListBox::row-activated`,
+  `GtkFlowBox::child-activated` and `GtkNotebook::switch-page`. And **every controller
+  signal**, because a controller remembers nothing about the event it has just delivered:
+  `GtkGestureClick::pressed` (the coordinates are stored nowhere),
+  `GtkEventControllerKey::key-pressed` (the keyval, and a `bool` GTK wants back) and
+  `GtkEventControllerKey::key-released` (the keyval; its answer to GTK is `unit`). A new
+  signal of either shape is a `Payload`, not a `Read_back`. `'p` is what the `connect` closure
   assembles — it may combine the callback's arguments with things read off the object,
   which is how a click's button and modifiers get in — and `'r` is what the callback hands
   **back** to GTK. Both are existential.
@@ -809,8 +815,8 @@ Milestones, each merged only with its tests green:
 - **M2 — lists & text:** *done* (2026-08-30). ListBox (keyed rows, controlled
   selection, per-row `Attr.row_selectable`/`row_activatable`, `?placeholder`),
   FlowBox (keyed children, controlled selection, geometry as props), Notebook
-  (keyed pages, `Attr.tab_label`, controlled `~current_page`, and the one
-  container in the library whose children really move — it has
+  (keyed pages, `Attr.tab_label`, controlled `~current_page`, and, with `box`, one
+  of the two containers in the library whose children really move — it has
   `gtk_notebook_reorder_child`), TextView (controlled buffer), DropDown (string
   list spliced in place, controlled `~selected`), LevelBar, Calendar,
   EditableLabel — **37 `Node.*` constructors in all**, checked against
@@ -818,7 +824,7 @@ Milestones, each merged only with its tests green:
   counted by hand. With them: the five event-controller attrs `Attr.on_click`,
   `on_key_pressed`, `on_key_released`, `on_focus_enter`, `on_focus_leave`
   (§5.2, §6.4); `Bonsai_gtk.Expert.embed` (§4.1); four new enum modules
-  (`Selection_mode`, `Tab_position`, `Wrap_mode`, `Level_bar_mode`) and five
+  (`Selection_mode`, `Tab_position`, `Wrap_mode`, `Level_bar_mode`) and six
   new event-value modules (`Phase`, `Modifiers`, `Click_event`, `Keyval`,
   `Key_event`, `Key_response`); and `Bonsai_gtk_test.Action.t` grown from five
   constructors to **nineteen** (§9).

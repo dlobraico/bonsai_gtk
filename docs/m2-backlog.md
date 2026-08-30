@@ -7,8 +7,9 @@ not close. The ledger with every ruling is
 
 The file is renamed this time. M1 kept `m1-backlog.md` on purpose — "a rename churns links
 for nothing" — but two milestones in, a file called `m1-backlog.md` describing M2's
-leftovers is a trap, so this is `m2-backlog.md` and `git mv` carried the history. The M1
-history is under the old path.
+leftovers is a trap, so this is `m2-backlog.md`. The rewrite was total
+enough that rename detection does not fire (9% similarity), so `git log --follow` will not
+reach back past it: the M1 history is under the old path, `docs/m1-backlog.md`.
 
 ## Closed during M2 (was "do first in M2")
 
@@ -479,8 +480,8 @@ Do not "fix" these when an expected file surprises you:
 
 ## Plumbing / hygiene
 
-- `scripts/ci.sh`'s generated-opam check is `git diff --exit-code -- '*.opam'`; add `HEAD` so
-  *staged* drift is caught too.
+- ~~`scripts/ci.sh`'s generated-opam check is `git diff --exit-code -- '*.opam'`; add `HEAD` so
+  *staged* drift is caught too.~~ **Done** in the M2 clean-tree pass (Task 16).
 - `scripts/setup-switch.sh`: the reinstall stamp keys on `rev`, so a dirty `.ocgtk-src` at the
   pinned rev is not rebuilt — add a `git status --porcelain` check. **And `opam reinstall ocgtk`
   does not update `bonsai-gtk-ocgtk-rev`**, which is worse than no evidence because it looks like
@@ -515,7 +516,7 @@ Do not "fix" these when an expected file surprises you:
 - The `page` helper is duplicated across the Task 5 live tests.
 - Redundant `(deps …)` in `test/live/dune`.
 - **`Bonsai_gtk` re-exports four enum modules the M2 plan never listed** — `Selection_mode`,
-  `Tab_position`, `Wrap_mode`, `Level_bar_mode` — plus the five event-value modules. They are in
+  `Tab_position`, `Wrap_mode`, `Level_bar_mode` — plus the six event-value modules. They are in
   the README and in spec §7 now; spec §5.1's constructor sketch is still M0's and does not show
   `?tab_pos`, `?wrap` or `?mode`. Tasks 8–10 carries, routed to Task 16's spec sweep.
 - **The port's shell-side gap** (stavekeeper, not this repo): `app#quit` bypasses
