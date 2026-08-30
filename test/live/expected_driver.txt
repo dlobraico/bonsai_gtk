@@ -47,6 +47,7 @@ rejected: Bonsai_gtk: the root node must be a Node.window, got Label
     (GtkLabel (text "on: true toggled: 1"))))))
 declined toggle: active false, Bonsai saw 1
 declined page: visible a, Bonsai saw 1
+phys window created
 after mount: switch false, page a
 after the user changed them: switch true, page b
 after the declining frame: switch false, page a

@@ -61,6 +61,7 @@ type entry_props =
   ; max_width_chars : int [@sexp_drop_if Int.equal Defaults.Entry.max_width_chars]
   ; xalign : float [@sexp_drop_if Float.equal Defaults.Entry.xalign]
   ; activates_default : bool [@sexp_drop_if Bool.equal Defaults.Entry.activates_default]
+  ; max_length : int [@sexp_drop_if Int.equal Defaults.Entry.max_length]
   }
 [@@deriving sexp_of, equal]
 

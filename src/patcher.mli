@@ -17,11 +17,24 @@ type ctx = private
       A [stack_switcher] cannot hold a widget — the vtree has no way to name one — so it
       names a stack, and the name is looked up here after the pass that mounted them both.
       Two stacks with one name is [Invalid_argument]. *)
+  ; stack_claims : stack_claim Queue.t
+  (** The stack names this pass is taking, and the ones its stacks are giving up, applied
+      to [stacks] at the end of the {!mount} or {!patch} that collected them — removals
+      first, then additions. Two loops rather than one because a *swap* is legal: two
+      stacks exchanging names in one frame would otherwise collide with each other. Empty
+      between passes. *)
   ; fixups : (unit -> unit) Queue.t
   (** Work deferred to the end of a mount or patch pass, so that a node may refer to
       another node regardless of which of them the walk reaches first, and so that a
       container may act on children that do not exist until the pass is over. Drained by
       {!run_fixups}. *)
+  }
+
+and stack_claim = private
+  { claim_path : string
+  ; give_up : string option
+  ; take : string
+  ; claimant : Widget.t
   }
 
 val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> ctx
@@ -46,7 +59,8 @@ val create_ctx : signals:Signals.ctx -> on_window_created:(Widget.t -> unit) -> 
     hang. *)
 val run_fixups : ctx -> unit
 
-(** Drops everything the pass deferred, running none of it.
+(** Drops everything the pass deferred, running none of it, and the stack names it had not
+    yet claimed.
 
     For the pass that raised out of {!mount} or {!patch} and so never reached
     {!run_fixups}: its queue describes a tree that was only half built, and the closures
@@ -84,10 +98,17 @@ type live =
 
     Raises [Invalid_argument] if a node has children its widget cannot hold, if a
     container rejects a child node — a {!Bonsai_gtk_vtree.Node.grid} child with no
-    {!Bonsai_gtk_vtree.Attr.grid_cell}, a stack page with no key — or if a
+    {!Bonsai_gtk_vtree.Attr.grid_cell}, a stack page with no key — if a child carries a
+    container-placement attribute its parent does not read
+    ({!Bonsai_gtk_vtree.Attr.grid_cell} on a box child,
+    {!Bonsai_gtk_vtree.Attr.page_title} outside a stack), or if a
     {!Bonsai_gtk_vtree.Kind.Window} node appears anywhere but the root — a [GtkWindow] is
     a toplevel and cannot be parented, so nesting one produces a GTK critical and a
-    silently broken tree. *)
+    silently broken tree.
+
+    Placement attributes are checked here rather than by [Attr_apply], which sees a child
+    without knowing its parent, or by the constructor, which cannot know either. Nothing
+    applies them to the child, so a misplaced one has no other diagnostic at all. *)
 val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
 
 (** Diffs [node] against [live.node] and mutates the live tree to match.
@@ -103,9 +124,10 @@ val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
     responsible for re-parenting, since the patcher does not know where [live] was
     attached.
 
-    Raises [Invalid_argument] if a node's children shape changed under an unchanged kind
-    (e.g. a single-child container asked to hold a list), or if a window node appears
-    off-root (see {!mount}). *)
+    Raises [Invalid_argument] on everything {!mount} does — the placement-attribute check
+    runs on every node of every pass, so an attr a frame *adds* is rejected on the frame
+    that adds it — and additionally if a node's children shape changed under an unchanged
+    kind (e.g. a single-child container asked to hold a list). *)
 val patch : ctx -> path:string -> is_root:bool -> live -> Node.t -> live
 
 (** Re-applies every controlled prop in [live]'s subtree and re-enqueues the fixups the

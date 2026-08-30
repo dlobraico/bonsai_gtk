@@ -85,6 +85,11 @@ let impl : Widget_impl.t =
             then W.Editable.set_max_width_chars ed p.max_width_chars;
             if Float.( <> ) p.xalign 0. then W.Editable.set_alignment ed p.xalign;
             if not p.editable then W.Editable.set_editable ed false;
+            (* Before the text, so a [~text] longer than [~max_length] is truncated by the
+               same rule a typed one would be rather than surviving until the next edit.
+               Not controlled: it constrains the widget rather than naming a value the
+               model owns. *)
+            if p.max_length <> 0 then W.Entry.set_max_length e p.max_length;
             (* Text last, here as in [reassert]: a width or alignment change re-lays-out
                the entry, and doing that after the write would re-run the caret placement
                the write just decided. [set_editable] is not a barrier — it gates the
@@ -112,7 +117,9 @@ let impl : Widget_impl.t =
             if old.max_width_chars <> new_.max_width_chars
             then W.Editable.set_max_width_chars ed new_.max_width_chars;
             if Float.( <> ) old.xalign new_.xalign
-            then W.Editable.set_alignment ed new_.xalign)
+            then W.Editable.set_alignment ed new_.xalign;
+            if old.max_length <> new_.max_length
+            then W.Entry.set_max_length e new_.max_length)
           (* [text] is deliberately absent, so [create] and [update] agree on writing it
              last: it is controlled, which makes it [reassert]'s, and the patcher runs
              that immediately after this and on every other patch too. *)

@@ -42,6 +42,11 @@ module Entry = struct
   let max_width_chars = -1
   let xalign = 0.
   let activates_default = false
+
+  (* GTK's own [GtkEntry:max-length] default, and it is [0] rather than the [-1] the
+     size-request properties above use: for a *limit* zero is the sentinel that means "no
+     limit", and a negative value would be an error. *)
+  let max_length = 0
 end
 
 module Password_entry = struct

@@ -125,6 +125,15 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     [activates_default:true] makes Enter activate the window's default widget instead of
     only emitting [Attr.on_activate].
 
+    [max_length] is the number of characters the widget will accept, [0] (GTK's own) for
+    no limit. Unlike [text] it is {i not} controlled: it constrains what the user can put
+    in the widget rather than naming a value the model owns, so it is written when it
+    changes and left alone otherwise. Lowering it below the current text's length
+    truncates that text, which GTK does on the widget and which the model learns about
+    through [Attr.on_changed] like any other edit. It is a [GtkEntry] property, so
+    {!password_entry} and {!search_entry} do not have it -- neither is a [GtkEntry]
+    subclass in GTK4 and [GtkEditable] has no [set_max_length].
+
     Not exposed: [GtkEntry]'s icon API ([set_icon_from_icon_name] and friends), whose
     [icon-press]/[icon-release] signals carry a [GtkEntryIconPosition] and so make a
     per-icon handler story better designed alongside M3's action routing; and
@@ -140,6 +149,7 @@ val entry
   -> ?max_width_chars:int
   -> ?xalign:float
   -> ?activates_default:bool
+  -> ?max_length:int
   -> text:string
   -> unit
   -> t
@@ -385,7 +395,15 @@ val separator : ?key:Key.t -> ?attrs:Attr.t list -> orientation:Orientation.t ->
 
     [edge-reached] and [edge-overshot] -- the signals an infinite list hangs its "load
     more" on -- are left to M2, alongside [ListBox]. The adjustments themselves, and
-    [placement], are not exposed; a scroller that needs them is a {!native} node. *)
+    [placement], are not exposed; a scroller that needs them is a {!native} node.
+
+    @raise Invalid_argument
+      if [min_content_width] is above [max_content_width], or [min_content_height] above
+      [max_content_height]. This is the one constructor in this module that raises: GTK
+      calls the pair a programming error and has no runtime check of its own, so the
+      viewport silently sizes itself to whichever bound the layout reaches first and the
+      mistake surfaces as a layout bug a long way from the call that caused it. [-1] is
+      "no bound" on either side and never conflicts; equal bounds are a fixed size. *)
 val scrolled_window
   :  ?key:Key.t
   -> ?attrs:Attr.t list

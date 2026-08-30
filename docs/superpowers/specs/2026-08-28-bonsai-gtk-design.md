@@ -328,6 +328,18 @@ the order they were first added. `Notebook` (M2) does have `reorder_child`,
 which is where an explicit `Unordered` marker on `list_ops` should be
 reconsidered.
 
+**M2 amendment (2026-08-30).** The marker exists, and no `Move` is emitted
+rather than emitted and ignored. `Widget_impl.list_ops.move` is an
+`option`: `None` means "this container has no reorder primitive", and
+`Patcher.patch_list` passes `Reconcile.diff ~ordered:(Option.is_some ops.move)`.
+`Overlay`, `Stack` and `Grid` take `None`; `Notebook` takes `Some`. A `Move` op
+reaching a container without one is `Invalid_argument` rather than a silent
+drop, because a dropped `Move` desynchronises the patcher's child list from
+GTK's. The consequence for an unordered container is stated in
+`vtree/reconcile.mli`: its ops satisfy `apply ops old = new_` only as a *set*,
+not as a sequence, and an `Update` is therefore indexed by the child's position
+in the *live* list rather than in `new_`.
+
 ### 5.4 Keys
 
 `Key.t = string`. A node without a key is matched by position + kind. A keyed

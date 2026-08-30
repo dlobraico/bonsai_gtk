@@ -20,6 +20,16 @@ let nth_child (live : P.live) i =
   | No_children | Single None | List _ | Slots _ -> assert false
 ;;
 
+(* The runtime rejections in this file are all [Invalid_argument] carrying a node path, so
+   they read the same way: run it, and print either the message or the fact that nothing
+   was raised. A [NO RAISE] line is what a regression looks like -- the golden then
+   differs without the test having to know what the right message is. *)
+let raises name f =
+  match f () with
+  | () -> printf "%s: NO RAISE\n" name
+  | exception Invalid_argument msg -> printf "%s: %s\n" name msg
+;;
+
 (* A 2x2 opaque texture, built in memory. [Gdk.Wrappers.Texture.save_to_png] then gives us
    a real PNG on disk for the filename-backed [Node.picture], so the test carries no
    fixture and the two Picture paths -- filename and paintable -- are exercised from one
@@ -1025,7 +1035,199 @@ let () =
   in
   let renamed = P.mount ctx ~path:"ren" ~is_root:true (pair ~second_name:"second") in
   P.run_fixups ctx;
-  match P.patch ctx ~path:"ren" ~is_root:true renamed (pair ~second_name:"first") with
-  | (_ : P.live) -> print_endline "BUG: a stack renamed onto another's name accepted"
-  | exception Invalid_argument msg -> printf "rejected: %s\n" msg
+  (match P.patch ctx ~path:"ren" ~is_root:true renamed (pair ~second_name:"first") with
+   | (_ : P.live) -> print_endline "BUG: a stack renamed onto another's name accepted"
+   | exception Invalid_argument msg -> printf "rejected: %s\n" msg);
+  P.abandon_fixups ctx;
+  (* Two stacks *exchanging* names in one frame is legal, and a left-to-right walk cannot
+     see it: the first one to be patched takes a name its sibling still holds. The
+     registrations are therefore given up in one pass over the frame's stacks and taken in
+     another, and the proof is that a switcher naming each resolves to the right stack
+     afterwards -- not merely that nothing raised. *)
+  let swap ~swapped =
+    let a_name, b_name = if swapped then "beta", "alpha" else "alpha", "beta" in
+    Node.window
+      ~title:"sw"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.stack_switcher ~key:"to-alpha" ~stack:"alpha" ()
+         ; Node.stack_switcher ~key:"to-beta" ~stack:"beta" ()
+         ; Node.stack
+             ~key:"a"
+             ~name:a_name
+             ~visible_child:"pa"
+             [ Node.label ~key:"pa" ~attrs:[ Attr.page_title "A" ] "pa" ]
+         ; Node.stack
+             ~key:"b"
+             ~name:b_name
+             ~visible_child:"pb"
+             [ Node.label ~key:"pb" ~attrs:[ Attr.page_title "B" ] "pb" ]
+         ])
+  in
+  let swap_live = P.mount ctx ~path:"swap" ~is_root:true (swap ~swapped:false) in
+  P.run_fixups ctx;
+  (* Which page each switcher is driving names the stack it resolved to, since the two
+     stacks hold different pages. *)
+  let switcher_targets (live : P.live) =
+    match live.children with
+    | Single (Some box) ->
+      (match box.children with
+       | List cs ->
+         List.map [ 0; 1 ] ~f:(fun i ->
+           match W.Stack_switcher.get_stack (cast (List.nth_exn cs i).P.widget) with
+           | None -> "<none>"
+           | Some stack ->
+             Option.value (W.Stack.get_visible_child_name stack) ~default:"?")
+       | No_children | Single _ | Slots _ -> assert false)
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  printf
+    "before the swap, switchers drive: %s\n"
+    (String.concat ~sep:", " (switcher_targets swap_live));
+  (match P.patch ctx ~path:"swap" ~is_root:true swap_live (swap ~swapped:true) with
+   | swap_live ->
+     P.run_fixups ctx;
+     printf
+       "after the swap, switchers drive: %s\n"
+       (String.concat ~sep:", " (switcher_targets swap_live));
+     P.destroy ctx swap_live
+   | exception Invalid_argument msg -> printf "swap rejected: %s\n" msg);
+  P.abandon_fixups ctx;
+  (* A container-placement attribute is read by the parent, so a child carrying one its
+     parent does not read is inert with nothing to say about it -- no widget applies
+     these, so there is no other diagnostic anywhere. The container rejects it instead,
+     naming the container that *does* read it, which is the half that says what to do. *)
+  raises "grid_cell on a box child" (fun () ->
+    ignore
+      (P.mount
+         ctx
+         ~path:"root"
+         ~is_root:true
+         (Node.window
+            ~title:"w"
+            (Node.box
+               ~orientation:Vertical
+               [ Node.label ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "misplaced" ]))
+       : P.live));
+  P.abandon_fixups ctx;
+  raises "page_title outside a stack" (fun () ->
+    ignore
+      (P.mount
+         ctx
+         ~path:"root"
+         ~is_root:true
+         (Node.window
+            ~title:"w"
+            (Node.box
+               ~orientation:Vertical
+               [ Node.label ~attrs:[ Attr.page_title "Library" ] "misplaced" ]))
+       : P.live));
+  P.abandon_fixups ctx;
+  (* [Attr.measure_overlay] is the same family and was never named in the backlog: it is
+     read by [Node.overlay]'s [~overlays] slot and by nothing else. *)
+  raises "measure_overlay outside an overlay" (fun () ->
+    ignore
+      (P.mount
+         ctx
+         ~path:"root"
+         ~is_root:true
+         (Node.window
+            ~title:"w"
+            (Node.box
+               ~orientation:Vertical
+               [ Node.label ~attrs:[ Attr.measure_overlay true ] "misplaced" ]))
+       : P.live));
+  P.abandon_fixups ctx;
+  (* The root has no container above it, so every placement attr is misplaced there. *)
+  raises "grid_cell on the root" (fun () ->
+    ignore
+      (P.mount
+         ctx
+         ~path:"root"
+         ~is_root:true
+         (Node.window
+            ~title:"w"
+            ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ]
+            (Node.label "x"))
+       : P.live));
+  P.abandon_fixups ctx;
+  (* And a frame that *adds* one is rejected on that frame rather than on the mount that
+     did not have it: the check runs on every node of every pass. *)
+  let misplaced ~wrong =
+    Node.window
+      ~title:"w"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.label
+             ~key:"row"
+             ~attrs:(if wrong then [ Attr.page_title "Library" ] else [])
+             "row"
+         ])
+  in
+  let misplaced_live = P.mount ctx ~path:"mis" ~is_root:true (misplaced ~wrong:false) in
+  raises "page_title added by a patch" (fun () ->
+    ignore
+      (P.patch ctx ~path:"mis" ~is_root:true misplaced_live (misplaced ~wrong:true)
+       : P.live));
+  P.abandon_fixups ctx;
+  P.destroy ctx misplaced_live;
+  (* The three containers that *do* read one accept it, which is what stops the check
+     above from being a table of names nothing satisfies. *)
+  let placed =
+    Node.window
+      ~title:"w"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.grid [ Node.label ~attrs:[ Attr.grid_cell ~column:0 ~row:0 () ] "cell" ]
+         ; Node.stack
+             ~name:"placed"
+             ~visible_child:"p"
+             [ Node.label ~key:"p" ~attrs:[ Attr.page_title "P" ] "p" ]
+         ; Node.overlay
+             ~overlays:[ Node.label ~attrs:[ Attr.measure_overlay true ] "over" ]
+             (Node.label "under")
+         ])
+  in
+  let placed_live = P.mount ctx ~path:"placed" ~is_root:true placed in
+  P.run_fixups ctx;
+  print_endline "the three containers that read a placement attr accept it";
+  P.destroy ctx placed_live;
+  (* A [~visible_child] naming a page that does not exist used to be inert forever: right
+     for a page arriving on a later frame, wrong for a typo, and indistinguishable from
+     [W_stack.select] itself, which runs while the stack is still being built. The fixup
+     pass runs after the whole tree exists, so at that point every page this frame renders
+     is present -- which is what makes "not yet" and "never" tellable apart there and
+     nowhere earlier. Note where the raise comes from: [run_fixups], not [mount]. *)
+  raises "visible_child names no page" (fun () ->
+    let live =
+      P.mount
+        ctx
+        ~path:"typo"
+        ~is_root:true
+        (Node.window
+           ~title:"w"
+           (Node.stack
+              ~name:"typo-nav"
+              ~visible_child:"lbrary"
+              [ Node.label ~key:"library" "library"
+              ; Node.label ~key:"practice" "practice"
+              ]))
+    in
+    P.run_fixups ctx;
+    P.destroy ctx live);
+  P.abandon_fixups ctx;
+  (* The one absent name that is not a mistake: a stack with no pages at all.
+     [visible_child] is a required argument, so a model rendering an empty page list has
+     no name it could pass that would be right, and the frame that adds the first page
+     selects it. *)
+  let empty_live =
+    P.mount
+      ctx
+      ~path:"empty"
+      ~is_root:true
+      (Node.window ~title:"w" (Node.stack ~name:"empty-nav" ~visible_child:"none" []))
+  in
+  P.run_fixups ctx;
+  print_endline "an empty stack with an unmatched visible_child is left alone";
+  P.destroy ctx empty_live
 ;;

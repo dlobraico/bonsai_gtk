@@ -330,6 +330,44 @@ let () =
     in
     print_s (Live_tree.dump live.widget);
     P.destroy ctx live);
+  (* [max_length] is a [GtkEntry] property and is not controlled: it constrains what the
+     user may put in the widget rather than naming a value the model owns, so it is
+     written when it changes and left alone otherwise. GTK enforces it -- a longer text
+     handed to the widget is truncated, which is the behaviour a test that only printed
+     the property would not see. *)
+  let capped_view ~max_length ~text =
+    Node.window ~title:"c" (Node.entry ~max_length ~text ())
+  in
+  let capped =
+    P.mount ctx ~path:"cap" ~is_root:true (capped_view ~max_length:4 ~text:"abc")
+  in
+  print_s (Live_tree.dump capped.widget);
+  (* Raising the cap is written; the text is untouched. *)
+  let capped =
+    P.patch
+      ctx
+      ~path:"cap"
+      ~is_root:true
+      capped
+      (capped_view ~max_length:8 ~text:"abcdefg")
+  in
+  print_s (Live_tree.dump capped.widget);
+  (* Lowering it below the current text truncates, which is GTK's own doing. *)
+  let capped =
+    P.patch
+      ctx
+      ~path:"cap"
+      ~is_root:true
+      capped
+      (capped_view ~max_length:3 ~text:"abcdefg")
+  in
+  print_s (Live_tree.dump capped.widget);
+  (* Back to GTK's default, which the dump then drops. *)
+  let capped =
+    P.patch ctx ~path:"cap" ~is_root:true capped (capped_view ~max_length:0 ~text:"abc")
+  in
+  print_s (Live_tree.dump capped.widget);
+  P.destroy ctx capped;
   (* The controlled-value rule, the numeric twin of the entry case above: drag the scale
      and spin the spin button behind the model's back, re-render the old value, and the
      model wins. Both classes carry their own [value-changed] -- the scale's through

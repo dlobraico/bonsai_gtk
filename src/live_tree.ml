@@ -190,7 +190,8 @@ let rec dump (w : Widget.t) : Sexp.t =
        @
          (match ty with
          | "GtkEntry" ->
-           if W.Entry.get_visibility (cast w) then [] else [ Sexp.Atom "masked" ]
+           int_prop "max-length" (W.Entry.get_max_length (cast w)) ~default:0
+           @ if W.Entry.get_visibility (cast w) then [] else [ Sexp.Atom "masked" ]
          | "GtkPasswordEntry" ->
            if W.Password_entry.get_show_peek_icon (cast w)
            then []

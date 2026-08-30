@@ -9,15 +9,26 @@ type ctx =
        widget -- the vtree has no way to name one -- so it names a stack and is wired up
        after the pass that mounts them both. *)
     stacks : (string, Widget.t) Hashtbl.t
+  ; (* The names this pass's stack nodes are taking, and the ones they are giving up,
+       applied to [stacks] once the walk is over. See [apply_stack_claims]. *)
+    stack_claims : stack_claim Queue.t
   ; (* Work deferred to the end of a mount/patch pass, so that a node may refer to another
        node regardless of which of them the walk reaches first. *)
     fixups : (unit -> unit) Queue.t
+  }
+
+and stack_claim =
+  { claim_path : string
+  ; give_up : string option
+  ; take : string
+  ; claimant : Widget.t
   }
 
 let create_ctx ~signals ~on_window_created =
   { signals
   ; on_window_created
   ; stacks = Hashtbl.create (module String)
+  ; stack_claims = Queue.create ()
   ; fixups = Queue.create ()
   }
 ;;
@@ -48,6 +59,35 @@ let resolve_stack ctx ~path ~name : Widget.t =
       ()
 ;;
 
+(* The stack registrations of one whole pass, in two loops: every name this pass's stacks
+   are giving up, then every name they are taking.
+
+   One loop cannot do it, because a *swap* is legal and a left-to-right walk cannot see
+   one: a stack renaming ["a" -> "b"] while its sibling renames ["b" -> "a"] reaches
+   [register_stack "b"] while the sibling still holds it, and the one tree is rejected as
+   two. Splitting the pass is the smallest thing that distinguishes "held by a stack that
+   is giving it up" from "held". A genuine collision -- two stacks that both still want
+   the name when the walk is over -- still raises, from the second loop, with the same
+   message and the same path.
+
+   Deferred to the end of the walk rather than to [run_fixups]: it is still [mount] and
+   [patch] that raise, which is what spec §11's "loud and early" and every existing caller
+   expect. Removals are guarded by widget identity ([unregister_stack]), so a stack torn
+   down mid-pass and a claim naming the same name cannot undo each other.
+
+   The queue is emptied even when a claim raises, for the reason [run_fixups]'s is: it
+   describes one pass, and carrying a failed pass's registrations into the next one would
+   raise again from a frame that had nothing to do with it. *)
+let apply_stack_claims ctx =
+  Exn.protect
+    ~f:(fun () ->
+      Queue.iter ctx.stack_claims ~f:(fun c ->
+        Option.iter c.give_up ~f:(fun name -> unregister_stack ctx ~name c.claimant));
+      Queue.iter ctx.stack_claims ~f:(fun c ->
+        register_stack ctx ~path:c.claim_path ~name:c.take c.claimant))
+    ~finally:(fun () -> Queue.clear ctx.stack_claims)
+;;
+
 (* Runs everything the pass just finished deferred, then empties the queue. Called by
    [Driver.frame] inside the patch guard; a test driving the patcher by hand calls it
    itself. Fixups may not enqueue further fixups -- nothing needs to, and a queue that
@@ -65,8 +105,16 @@ let run_fixups ctx =
 (* The same emptying, for a pass that never reached [run_fixups] because [mount] or
    [patch] raised part-way through it. Without this the queue keeps that pass's closures
    -- which pin the widgets they captured, and which would run against the *next* pass's
-   tree if one ever happened. *)
-let abandon_fixups ctx = Queue.clear ctx.fixups
+   tree if one ever happened.
+
+   The stack claims go with them, and for the same reason: a walk that died part-way
+   collected claims for a tree that was only half built, and applying them would register
+   names for widgets nothing will ever patch. (A pass that *finished* has already applied
+   and emptied its own claims.) *)
+let abandon_fixups ctx =
+  Queue.clear ctx.fixups;
+  Queue.clear ctx.stack_claims
+;;
 
 type live =
   { mutable node : Node.t
@@ -146,8 +194,13 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
   | Nothing | Window -> ()
   | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
-       patched after this on a patch, and a page GTK does not have yet cannot be selected. *)
-    Queue.enqueue ctx.fixups (fun () -> W_stack.select widget ~visible_child)
+       patched after this on a patch, and a page GTK does not have yet cannot be selected.
+       It is also the only place that can tell a page which is not there {i yet} from one
+       that is never coming, which is why [W_stack.select] rejects an unknown name and why
+       the path is prefixed here -- [select] knows no more about where it is than any
+       other container op does (spec §11). *)
+    Queue.enqueue ctx.fixups (fun () ->
+      child_op ~path (fun () -> W_stack.select widget ~visible_child))
   | Stack_ref (which, name) ->
     (* Re-enqueued on every pass rather than only when the name changed: it is one
        hashtable lookup and one setter per switcher per frame, and it is the only thing
@@ -177,42 +230,151 @@ let note_interest
       | `Mount -> ctx.on_window_created widget
       | `Patch _ -> ())
    | Stack { name; _ } ->
-     (match pass with
-      | `Mount -> register_stack ctx ~path ~name widget
-      | `Patch (Kind.Stack { name = old_name; _ }) when String.equal old_name name ->
-        (* The name did not move, so the entry already points here. [set] rather than
-           nothing so a registration lost to some earlier teardown heals itself. *)
-        Hashtbl.set ctx.stacks ~key:name ~data:widget
-      | `Patch (Kind.Stack { name = old_name; _ }) ->
-        (* A renamed stack drops its old entry, so a switcher still naming it fails loudly
-           rather than driving a stack the tree no longer calls that -- and claims the new
-           name through [register_stack], so renaming *onto* a name another stack already
-           holds raises exactly as declaring the collision outright would. *)
-        Hashtbl.remove ctx.stacks old_name;
-        register_stack ctx ~path ~name widget
-      | `Patch _ ->
-        (* Unreachable: [patch] only gets here when the kinds match. Registering rather
-           than assuming is what keeps it harmless if that ever changes. *)
-        register_stack ctx ~path ~name widget)
+     (* Recorded rather than applied, and applied by [apply_stack_claims] once the walk is
+        over. A patched stack gives up the name it held whether or not that is the name it
+        is taking again: the give-up-then-take pair is what lets two stacks exchange names
+        in one frame, and re-taking a name this same widget just released is also what
+        heals a registration some earlier teardown lost.
+
+        A renamed stack giving its old name up is what makes a switcher still naming it
+        fail loudly rather than drive a stack the tree no longer calls that. *)
+     let give_up =
+       match pass with
+       | `Mount -> None
+       | `Patch (Kind.Stack { name = old_name; _ }) -> Some old_name
+       | `Patch _ ->
+         (* Unreachable: [patch] only gets here when the kinds match. Claiming without
+            giving anything up is what keeps it harmless if that ever changes. *)
+         None
+     in
+     Queue.enqueue
+       ctx.stack_claims
+       { claim_path = path; give_up; take = name; claimant = widget }
    | Stack_ref _ -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
-(* Spec §11: structural misuse is rejected loudly and early. A [GtkWindow] is a toplevel,
-   so parenting one would make GTK log a critical and leave a silently broken tree — and
-   under [Loop] the runtime would additionally present it as if it were a real window. *)
-let check_placement ~path ~is_root (node : Node.t) =
-  match node.kind with
-  | Window _ when not is_root ->
-    invalid_argf
-      "%s: a Node.window may only be the root node, not a child of another node"
-      path
-      ()
-  | _ -> ()
+(* Which parent-held attrs each container reads off its children. A child carrying one the
+   container does not read is a typo -- [Attr.grid_cell] on a box child, [Attr.page_title]
+   on a stack's *switcher* rather than on a page -- and there is no other diagnostic for
+   it: nothing applies these to the child, so a wrong one is simply never read.
+
+   The empty list is the common case and the wildcard is deliberate: a container that
+   reads none of them rejects all of them, which is what makes this a diagnostic rather
+   than a list of exceptions.
+
+   The granularity is the parent's kind, not the parent's slot: [Attr.measure_overlay] on
+   an overlay's {i main} child is accepted here and is still inert, because only the
+   [~overlays] slot reads it. Tightening that means threading the slot name in beside the
+   kind, which is worth doing when a slot container reads two different placement attrs on
+   two different slots and not before. Tasks that add a container reading a parent-held
+   attr add an arm here ([List_box -> [ Row_selectable; Row_activatable ]],
+   [Notebook -> [ Tab_label ]]). *)
+let placement_attrs_read_by : Kind.t -> Attr.Name.t list = function
+  | Grid _ -> [ Grid_cell ]
+  | Stack _ -> [ Page_title ]
+  | Overlay _ -> [ Measure_overlay ]
+  | _ -> []
 ;;
 
-let rec mount ctx ~path ~is_root (node : Node.t) : live =
-  check_placement ~path ~is_root node;
+(* Which container reads each parent-held attr -- the other half of the table above, and
+   the useful half of the message: a misplaced placement attr is nearly always a child
+   that ended up in the wrong parent, so naming the container that *does* read it says
+   what to do about it.
+
+   Exhaustive with no wildcard, so an attribute added to [Attr.Name] cannot skip the
+   decision "is this held by the parent?". [None] is every ordinary widget property and
+   every event. *)
+let placement_attr_reader : Attr.Name.t -> string option = function
+  | Grid_cell -> Some "Grid"
+  | Page_title -> Some "Stack"
+  | Measure_overlay -> Some "Overlay"
+  | Margin_start
+  | Margin_end
+  | Margin_top
+  | Margin_bottom
+  | Halign
+  | Valign
+  | Hexpand
+  | Vexpand
+  | Sensitive
+  | Visible
+  | Tooltip
+  | Width_request
+  | Height_request
+  | Opacity
+  | Focusable
+  | Can_focus
+  | Widget_name
+  | Cursor_name
+  | Test_id
+  | On_clicked
+  | On_toggled
+  | On_changed
+  | On_activate
+  | On_search_changed
+  | On_value_changed
+  | On_expanded_changed
+  | On_revealed
+  | On_position_changed
+  | On_visible_child_changed -> None
+;;
+
+let placement_attr_names =
+  List.filter Attr.Name.all ~f:(fun name -> Option.is_some (placement_attr_reader name))
+;;
+
+(* The smart constructor's spelling, which is what the caller wrote: [Attr.Name] prints
+   [Grid_cell] and the mistake is in a line that says [Attr.grid_cell]. *)
+let attr_spelling name = String.lowercase (Attr.Name.to_string name)
+
+(* Spec §11: structural misuse is rejected loudly and early. A [GtkWindow] is a toplevel,
+   so parenting one would make GTK log a critical and leave a silently broken tree — and
+   under [Loop] the runtime would additionally present it as if it were a real window.
+
+   [parent_kind] is [None] for the root only. A placement attr there is rejected on the
+   same rule as anywhere else: there is no container above it to read one. *)
+let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t) =
+  (match node.kind with
+   | Window _ when not is_root ->
+     invalid_argf
+       "%s: a Node.window may only be the root node, not a child of another node"
+       path
+       ()
+   | _ -> ());
+  let read =
+    match parent_kind with
+    | Some kind -> placement_attrs_read_by kind
+    | None -> []
+  in
+  List.iter placement_attr_names ~f:(fun name ->
+    if Option.is_some (Attrs.find node.attrs name)
+       && not (List.mem read name ~equal:Attr.Name.equal)
+    then (
+      let reader = Option.value_exn (placement_attr_reader name) in
+      match parent_kind with
+      | Some parent ->
+        invalid_argf
+          "%s: Attr.%s is not read by %s (a placement attribute is read by the \
+           container, and this one holds children for %s)"
+          path
+          (attr_spelling name)
+          (Kind.name parent)
+          reader
+          ()
+      | None ->
+        invalid_argf
+          "%s: Attr.%s is on the root node, which has no container to read it (a \
+           placement attribute is read by the container, and this one holds children for \
+           %s)"
+          path
+          (attr_spelling name)
+          reader
+          ()))
+;;
+
+let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
+  check_placement ~path ~is_root ~parent_kind node;
   let impl = Registry.for_kind node.kind in
   let widget = impl.create node.kind in
   (* After [create] has applied the kind's props but before any attribute touches it:
@@ -232,7 +394,14 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
   Signals.require_slots ~node_path:path ~impl_name:impl.name slots node.attrs;
   Signals.update_slots slots node.attrs;
   let children =
-    mount_children ctx ~path ~impl_name:impl.name widget node.children impl.children
+    mount_children
+      ctx
+      ~path
+      ~impl_name:impl.name
+      ~parent_kind:node.kind
+      widget
+      node.children
+      impl.children
   in
   note_interest ctx ~path ~widget ~interest:(interest_of_kind node.kind) ~pass:`Mount;
   { node; widget; impl; defaults; slots; connections; children }
@@ -240,14 +409,21 @@ let rec mount ctx ~path ~is_root (node : Node.t) : live =
 (* One shape, mounted. The three helpers below are what a top-level shape and a slot of
    that shape share: a slot is not a special case, it is the same code under a longer
    path. *)
-and mount_single ctx ~path parent ~set (c : Node.t option) : live option =
+and mount_single ctx ~path ~parent_kind parent ~set (c : Node.t option) : live option =
   let live_c =
-    Option.map c ~f:(fun c -> mount ctx ~path:(child_path path 0) ~is_root:false c)
+    Option.map c ~f:(fun c ->
+      mount ctx ~path:(child_path path 0) ~is_root:false ~parent_kind:(Some parent_kind) c)
   in
   set parent (Option.map live_c ~f:(fun l -> l.widget));
   live_c
 
-and mount_list ctx ~path parent ~(ops : Widget_impl.list_ops) (cs : Node.t list)
+and mount_list
+  ctx
+  ~path
+  ~parent_kind
+  parent
+  ~(ops : Widget_impl.list_ops)
+  (cs : Node.t list)
   : live list
   =
   (* Spec §11 says mount *and* patch time. [Reconcile.diff] checks this on the patch path,
@@ -257,7 +433,8 @@ and mount_list ctx ~path parent ~(ops : Widget_impl.list_ops) (cs : Node.t list)
   child_op ~path (fun () ->
     Reconcile.check_unique_keys ~key:(fun (n : Node.t) -> n.key) cs);
   let lives =
-    List.mapi cs ~f:(fun i c -> mount ctx ~path:(child_path path i) ~is_root:false c)
+    List.mapi cs ~f:(fun i c ->
+      mount ctx ~path:(child_path path i) ~is_root:false ~parent_kind:(Some parent_kind) c)
   in
   List.foldi lives ~init:None ~f:(fun i after l ->
     child_op ~path:(child_path path i) (fun () ->
@@ -266,7 +443,7 @@ and mount_list ctx ~path parent ~(ops : Widget_impl.list_ops) (cs : Node.t list)
   |> (ignore : Widget.t option -> unit);
   lives
 
-and mount_slots ctx ~path ~impl_name parent node_slots op_slots =
+and mount_slots ctx ~path ~impl_name ~parent_kind parent node_slots op_slots =
   (* Slot lists are written by this repository on both sides, and are short and fixed, so
      equal length and equal order is a fair requirement -- and a loud one when broken. *)
   match List.zip node_slots op_slots with
@@ -285,9 +462,9 @@ and mount_slots ctx ~path ~impl_name parent node_slots op_slots =
       let path = sprintf "%s/%s" path name in
       match cs, (op : Widget_impl.slot_ops) with
       | Children.Single c, Slot_single { set } ->
-        name, Children.Single (mount_single ctx ~path parent ~set c)
+        name, Children.Single (mount_single ctx ~path ~parent_kind parent ~set c)
       | List cs, Slot_list ops ->
-        name, Children.List (mount_list ctx ~path parent ~ops cs)
+        name, Children.List (mount_list ctx ~path ~parent_kind parent ~ops cs)
       | (No_children | Single _ | List _ | Slots _), _ ->
         invalid_argf "%s: slot %s has the wrong shape for %s" path name impl_name ())
 
@@ -295,6 +472,7 @@ and mount_children
   ctx
   ~path
   ~impl_name
+  ~parent_kind
   parent
   (children : Node.t Children.t)
   (ops : Widget_impl.child_ops)
@@ -302,10 +480,10 @@ and mount_children
   =
   match children, ops with
   | No_children, _ -> Children.No_children
-  | Single c, Single { set } -> Single (mount_single ctx ~path parent ~set c)
-  | List cs, List ops -> List (mount_list ctx ~path parent ~ops cs)
+  | Single c, Single { set } -> Single (mount_single ctx ~path ~parent_kind parent ~set c)
+  | List cs, List ops -> List (mount_list ctx ~path ~parent_kind parent ~ops cs)
   | Slots node_slots, Slots op_slots ->
-    Slots (mount_slots ctx ~path ~impl_name parent node_slots op_slots)
+    Slots (mount_slots ctx ~path ~impl_name ~parent_kind parent node_slots op_slots)
   | (Single _ | List _ | Slots _), _ ->
     invalid_argf "%s: node's children do not match %s's shape" path impl_name ()
 
@@ -371,15 +549,21 @@ and disarm (live : live) =
 
    Dropping the registrations first is enough, and it does not weaken the check: a genuine
    collision is two stacks that are *both* still in the tree, and the other one is by
-   definition not in the subtree being thrown away. *)
+   definition not in the subtree being thrown away.
+
+   Since registrations became claims applied at the end of the walk, [destroy]'s own
+   [unregister_stack] would also run before any of them, so this is belt-and-braces rather
+   than the repair it was. It is kept because it states the ordering requirement at the
+   place that depends on it: the kind-change arm mounts before it destroys, and that is
+   what makes the requirement exist at all. *)
 and drop_stack_names ctx (live : live) =
   (match interest_of_kind live.node.kind with
    | Stack { name; _ } -> unregister_stack ctx ~name live.widget
    | Nothing | Window | Stack_ref _ -> ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 
-and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
-  check_placement ~path ~is_root node;
+and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
+  check_placement ~path ~is_root ~parent_kind node;
   if not (Kind.same_kind live.node.kind node.kind)
   then (
     (* Mount before destroying: the caller re-parents the fresh widget, and mounting first
@@ -387,7 +571,7 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
        names the old subtree holds are given up first, so that a stack the replacement
        re-declares does not collide with the copy of itself that is on its way out. *)
     drop_stack_names ctx live;
-    let fresh = mount ctx ~path ~is_root node in
+    let fresh = mount ctx ~path ~is_root ~parent_kind node in
     destroy ctx live;
     fresh)
   else (
@@ -425,7 +609,14 @@ and patch ctx ~path ~is_root (live : live) (node : Node.t) : live =
     live.node <- node;
     live)
 
-and patch_single ctx ~path parent ~set (old_c : live option) (new_c : Node.t option)
+and patch_single
+  ctx
+  ~path
+  ~parent_kind
+  parent
+  ~set
+  (old_c : live option)
+  (new_c : Node.t option)
   : live option
   =
   match old_c, new_c with
@@ -436,11 +627,21 @@ and patch_single ctx ~path parent ~set (old_c : live option) (new_c : Node.t opt
     destroy ctx o;
     None
   | None, Some n ->
-    let l = mount ctx ~path:(child_path path 0) ~is_root:false n in
+    let l =
+      mount ctx ~path:(child_path path 0) ~is_root:false ~parent_kind:(Some parent_kind) n
+    in
     set parent (Some l.widget);
     Some l
   | Some o, Some n ->
-    let l = patch ctx ~path:(child_path path 0) ~is_root:false o n in
+    let l =
+      patch
+        ctx
+        ~path:(child_path path 0)
+        ~is_root:false
+        ~parent_kind:(Some parent_kind)
+        o
+        n
+    in
     (* [patch] returns a different record only when the kind changed, in which case the
        old widget is still the container's child; [set] replaces (and unparents) it. *)
     if not (phys_equal l o) then set parent (Some l.widget);
@@ -449,6 +650,7 @@ and patch_single ctx ~path parent ~set (old_c : live option) (new_c : Node.t opt
 and patch_list
   ctx
   ~path
+  ~parent_kind
   parent
   ~(ops : Widget_impl.list_ops)
   (olds : live list)
@@ -491,7 +693,14 @@ and patch_list
       destroy ctx l;
       cur := List.filteri !cur ~f:(fun i _ -> i <> index)
     | Insert { index; item } ->
-      let l = mount ctx ~path:(child_path path index) ~is_root:false item in
+      let l =
+        mount
+          ctx
+          ~path:(child_path path index)
+          ~is_root:false
+          ~parent_kind:(Some parent_kind)
+          item
+      in
       child_op ~path:(child_path path index) (fun () ->
         ops.insert parent ~after:(after_of !cur index) ~node:item l.widget);
       cur := List.take !cur index @ (l :: List.drop !cur index)
@@ -523,7 +732,15 @@ and patch_list
          afterwards would hand the hook two identical nodes, and every parent-held setting
          would silently stop updating. *)
       let old_node = l.node in
-      let l' = patch ctx ~path:(child_path path index) ~is_root:false l item in
+      let l' =
+        patch
+          ctx
+          ~path:(child_path path index)
+          ~is_root:false
+          ~parent_kind:(Some parent_kind)
+          l
+          item
+      in
       if phys_equal l l'
       then
         child_op ~path:(child_path path index) (fun () ->
@@ -544,7 +761,7 @@ and patch_list
       cur := List.mapi !cur ~f:(fun i x -> if i = index then l' else x));
   !cur
 
-and patch_slots ctx ~path ~impl_name parent old_slots new_slots op_slots =
+and patch_slots ctx ~path ~impl_name ~parent_kind parent old_slots new_slots op_slots =
   (* Every slot list here comes from the same fixed constructor and the same impl, so a
      length or name mismatch is a bug in one of them rather than anything a caller did. *)
   match List.zip old_slots new_slots with
@@ -576,28 +793,55 @@ and patch_slots ctx ~path ~impl_name parent old_slots new_slots op_slots =
          let path = sprintf "%s/%s" path name in
          match old_c, new_c, (op : Widget_impl.slot_ops) with
          | Children.Single o, Children.Single n, Slot_single { set } ->
-           name, Children.Single (patch_single ctx ~path parent ~set o n)
+           name, Children.Single (patch_single ctx ~path ~parent_kind parent ~set o n)
          | List o, List n, Slot_list ops ->
-           name, Children.List (patch_list ctx ~path parent ~ops o n)
+           name, Children.List (patch_list ctx ~path ~parent_kind parent ~ops o n)
          | (No_children | Single _ | List _ | Slots _), _, _ ->
            invalid_argf "%s: slot %s has the wrong shape for %s" path name impl_name ()))
 
 and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
   let impl_name = live.impl.name in
+  let parent_kind = node.kind in
   match live.children, node.children, live.impl.children with
   | No_children, No_children, _ -> No_children
   | Single old_c, Single new_c, Single { set } ->
-    Single (patch_single ctx ~path live.widget ~set old_c new_c)
+    Single (patch_single ctx ~path ~parent_kind live.widget ~set old_c new_c)
   | List olds, List news, List ops ->
-    List (patch_list ctx ~path live.widget ~ops olds news)
+    List (patch_list ctx ~path ~parent_kind live.widget ~ops olds news)
   | Slots old_slots, Slots new_slots, Slots op_slots ->
-    Slots (patch_slots ctx ~path ~impl_name live.widget old_slots new_slots op_slots)
+    Slots
+      (patch_slots
+         ctx
+         ~path
+         ~impl_name
+         ~parent_kind
+         live.widget
+         old_slots
+         new_slots
+         op_slots)
   | (No_children | Single _ | List _ | Slots _), _, _ ->
     invalid_argf
       "%s: %s's children changed shape under an unchanged kind"
       path
       impl_name
       ()
+;;
+
+(* The two entry points, each wrapping the walk in the pass-level bookkeeping the walk
+   itself cannot do: the root has no parent to read a placement attr off it, and the stack
+   names the walk collected are applied once it is over (see [apply_stack_claims]). A walk
+   that raised leaves its claims for [abandon_fixups], which the runtime calls on its way
+   out of a frame that died. *)
+let mount ctx ~path ~is_root node =
+  let live = mount ctx ~path ~is_root ~parent_kind:None node in
+  apply_stack_claims ctx;
+  live
+;;
+
+let patch ctx ~path ~is_root live node =
+  let live = patch ctx ~path ~is_root ~parent_kind:None live node in
+  apply_stack_claims ctx;
+  live
 ;;
 
 (* Re-applies every controlled prop in the tree and re-runs the pass's fixups, without

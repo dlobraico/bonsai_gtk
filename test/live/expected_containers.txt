@@ -457,3 +457,13 @@ rejected: halfbuilt/0/1: a Node.window may only be the root node, not a child of
 fixups left behind by the failed pass: 1
 fixups after abandon_fixups: 0
 rejected: ren/0/1: two Node.stacks are named "first" in one tree
+before the swap, switchers drive: pa, pb
+after the swap, switchers drive: pb, pa
+grid_cell on a box child: root/0/0: Attr.grid_cell is not read by Box (a placement attribute is read by the container, and this one holds children for Grid)
+page_title outside a stack: root/0/0: Attr.page_title is not read by Box (a placement attribute is read by the container, and this one holds children for Stack)
+measure_overlay outside an overlay: root/0/0: Attr.measure_overlay is not read by Box (a placement attribute is read by the container, and this one holds children for Overlay)
+grid_cell on the root: root: Attr.grid_cell is on the root node, which has no container to read it (a placement attribute is read by the container, and this one holds children for Grid)
+page_title added by a patch: mis/0/0: Attr.page_title is not read by Box (a placement attribute is read by the container, and this one holds children for Stack)
+the three containers that read a placement attr accept it
+visible_child names no page: typo/0: Node.stack ~visible_child:"lbrary" names no page (a page's name is its ~key; this stack has library, practice)
+an empty stack with an unmatched visible_child is left alone

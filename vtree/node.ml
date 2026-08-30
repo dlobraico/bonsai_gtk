@@ -12,7 +12,15 @@ let make ?key ?(attrs = []) kind children =
   { kind; key; attrs = Attrs.of_list attrs; children }
 ;;
 
-(* Every default here is GTK's own, so [Node.label "x"] describes exactly the widget a
+(* The constructors below are total, with one exception: [scrolled_window] rejects a
+   minimum content bound above its maximum. It is the exception because that mistake has
+   no later diagnostic -- GTK calls it a programming error and checks nothing -- and
+   because the two numbers are right there in the call, so the constructor is the only
+   place that can name them. Every other kind of misuse a node can express is structural
+   (a window below the root, a grid child with no cell, an event attr nothing emits) and
+   is rejected by the patcher, which knows where in the tree the node is.
+
+   Every default here is GTK's own, so [Node.label "x"] describes exactly the widget a
    bare [GtkLabel] already is. They are named in [Defaults] rather than written as
    literals: the matching [Kind] field's [@sexp_drop_if] has to agree with each one, and a
    literal in both places is a drift waiting to happen. *)
@@ -97,6 +105,7 @@ let entry
   ?(max_width_chars = Defaults.Entry.max_width_chars)
   ?(xalign = Defaults.Entry.xalign)
   ?(activates_default = Defaults.Entry.activates_default)
+  ?(max_length = Defaults.Entry.max_length)
   ~text
   ()
   =
@@ -112,6 +121,7 @@ let entry
        ; max_width_chars
        ; xalign
        ; activates_default
+       ; max_length
        })
     No_children
 ;;
@@ -255,6 +265,24 @@ let scrolled_window
   ?(overlay_scrolling = Defaults.Scrolled_window.overlay_scrolling)
   child
   =
+  (* The one constructor in this file that rejects its arguments (see the note at the
+     top). GTK calls a min above a max a programming error and checks nothing at runtime:
+     the scrolled window then sizes itself to whichever bound the layout reaches first,
+     which reads as a layout bug a long way from its cause. [-1] is "no bound" on either
+     side and never conflicts; equal bounds are a fixed size rather than a conflict. *)
+  let check_bounds what ~min ~max =
+    if min <> -1 && max <> -1 && min > max
+    then
+      invalid_argf
+        "Node.scrolled_window: min_content_%s (%d) is above max_content_%s (%d)"
+        what
+        min
+        what
+        max
+        ()
+  in
+  check_bounds "width" ~min:min_content_width ~max:max_content_width;
+  check_bounds "height" ~min:min_content_height ~max:max_content_height;
   make
     ?key
     ?attrs

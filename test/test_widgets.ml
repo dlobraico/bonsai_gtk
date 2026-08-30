@@ -351,3 +351,91 @@ let%expect_test "grid children carry their cells; stack pages carry their keys" 
              (attrs ((Page_title Practice))) (children No_children))))))))))
     |}]
 ;;
+
+let%expect_test "a scrolled window rejects a min content bound above its max" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.scrolled_window ~min_content_width:400 ~max_content_width:200 (Node.label "x"));
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.scrolled_window: min_content_width (400) is above max_content_width (200)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.scrolled_window ~min_content_height:400 ~max_content_height:200 (Node.label "x"));
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.scrolled_window: min_content_height (400) is above max_content_height (200)")
+    |}];
+  (* [-1] is "no bound" on either side and never conflicts, however large the other is --
+     which is what stops the check firing on the defaults. *)
+  print_s [%sexp (Node.scrolled_window ~min_content_width:400 (Node.label "x") : Node.t)];
+  [%expect
+    {|
+    ((kind (Scrolled_window ((min_content_width 400)))) (attrs ())
+     (children
+      (Single (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}];
+  print_s [%sexp (Node.scrolled_window ~max_content_width:200 (Node.label "x") : Node.t)];
+  [%expect
+    {|
+    ((kind (Scrolled_window ((max_content_width 200)))) (attrs ())
+     (children
+      (Single (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}];
+  (* Equal bounds are a fixed size, not a conflict. *)
+  print_s
+    [%sexp
+      (Node.scrolled_window ~min_content_width:200 ~max_content_width:200 (Node.label "x")
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Scrolled_window ((min_content_width 200) (max_content_width 200))))
+     (attrs ())
+     (children
+      (Single (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}];
+  (* The two axes are independent: a conflict on one is not read off the other. *)
+  print_s
+    [%sexp
+      (Node.scrolled_window
+         ~min_content_width:100
+         ~max_content_width:400
+         ~min_content_height:100
+         ~max_content_height:400
+         (Node.label "x")
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Scrolled_window
+       ((min_content_width 100) (min_content_height 100) (max_content_width 400)
+        (max_content_height 400))))
+     (attrs ())
+     (children
+      (Single (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}]
+;;
+
+let%expect_test "entry max_length reaches the kind and defaults away" =
+  print_s [%sexp (Node.entry ~text:"a" () : Node.t)];
+  [%expect {| ((kind (Entry ((text a)))) (attrs ()) (children No_children)) |}];
+  print_s [%sexp (Node.entry ~text:"a" ~max_length:8 () : Node.t)];
+  [%expect
+    {| ((kind (Entry ((text a) (max_length 8)))) (attrs ()) (children No_children)) |}];
+  (* GTK's own default is [0] -- "no limit" -- rather than the [-1] the size requests
+     beside it use, so a caller asking for [0] explicitly is asking for GTK's default and
+     the sexp drops it. *)
+  print_s [%sexp (Node.entry ~text:"a" ~max_length:0 () : Node.t)];
+  [%expect {| ((kind (Entry ((text a)))) (attrs ()) (children No_children)) |}];
+  print_s
+    [%sexp
+      (( Kind.equal_props
+           (Node.entry ~text:"a" ()).kind
+           (Node.entry ~text:"a" ~max_length:8 ()).kind
+       , Kind.equal_props
+           (Node.entry ~text:"a" ~max_length:8 ()).kind
+           (Node.entry ~text:"a" ~max_length:8 ()).kind )
+       : bool * bool)];
+  [%expect {| (false true) |}]
+;;

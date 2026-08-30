@@ -300,8 +300,18 @@ let () =
     !declined_pages;
   Expert.Driver.stop declining;
   let time_source = Bonsai.Time_source.create ~start:Time_ns.epoch in
+  (* This one prints, unlike the drivers above, because the reassert-and-fixup-only walk
+     is written to do *less* than a patch and nothing else pins that: routing [Window] to
+     [on_window_created] from the walk -- which would re-present and refocus a real window
+     on every idle tick -- left every golden in this suite byte-identical. One line per
+     window, and a second one means the walk started presenting. (The stack half of the
+     same hazard is already pinned: a [register_stack] from the walk raises
+     [two Node.stacks are named "phys-nav"].) *)
   let phys =
-    Expert.Driver.create ~time_source ~on_window_created:(fun _ -> ()) phys_app
+    Expert.Driver.create
+      ~time_source
+      ~on_window_created:(fun _ -> print_endline "phys window created")
+      phys_app
   in
   let phys_child i =
     let root = Option.value_exn (Expert.Driver.root_widget phys) in

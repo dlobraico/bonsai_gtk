@@ -236,6 +236,12 @@ Tests:
   default to compare against (the pristine-widget read-back in `live_patcher.ml`). Task 2.
 - Task 10's headless sweep covers every M1 widget; there is still no single live
   `Live_tree.dump` golden over the whole catalogue.
+- Nothing distinguishes `Driver.frame`'s phys-equal fast path from the slow one: replacing
+  `phys_equal node live.Patcher.node` (`src/driver.ml`) with `false` leaves the whole suite
+  green, because the two paths are behaviourally identical by design. Tolerable — the
+  change's contract *is* "no observable difference" — but it leaves the optimisation
+  unpinned, so a refactor that made the guard unreachable would be invisible. M2 task-2
+  review, Minor 1.
 - Untested-but-implemented update branches: `Frame.label_align`, `Expander.use_markup`,
   `Revealer.transition`/`transition_duration` (none is printed by `Live_tree.dump`), and
   `W_image.update` writing `pixel_size` back to `-1`. Tasks 6 and 7.

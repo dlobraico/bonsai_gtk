@@ -158,6 +158,17 @@ search_entry: changed events reaching Bonsai from patches: 0
    (children (GtkImage (icon system-search-symbolic))
     (GtkText hexpand (cursor text))
     (GtkImage (icon edit-clear-symbolic) (tooltip "Clear Entry"))))))
+(GtkWindow (title (c)) (css (background)) hidden
+ (children
+  (GtkEntry (text abc) (max-length 4) (children (GtkText (cursor text))))))
+(GtkWindow (title (c)) (css (background)) hidden
+ (children
+  (GtkEntry (text abcdefg) (max-length 8) (children (GtkText (cursor text))))))
+(GtkWindow (title (c)) (css (background)) hidden
+ (children
+  (GtkEntry (text abc) (max-length 3) (children (GtkText (cursor text))))))
+(GtkWindow (title (c)) (css (background)) hidden
+ (children (GtkEntry (text abc) (children (GtkText (cursor text))))))
 (GtkWindow (title (n)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))
