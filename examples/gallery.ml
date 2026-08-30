@@ -613,6 +613,132 @@ let dates (graph @ local) =
     ]
 ;;
 
+(* Page 8: the event controllers -- and the only place in this repository where a real
+   click or a real keystroke is shown reaching a handler at all.
+
+   {b This page is load-bearing rather than decorative.} The pinned ocgtk binding can
+   construct no [GdkEvent] and can emit no signal carrying arguments, so no automated test
+   in this repository delivers a real click or a real key press. What
+   [test/live/live_controllers.ml] proves is that the controller is attached, named, given
+   the phase the attr asked for, and removed again; what [Bonsai_gtk_test.Action.Click_at]
+   and [Key_press] prove is that the handler does the right thing when something calls it.
+   The step in between -- GTK routing a real button press or a real keystroke into that
+   handler -- is demonstrated here and nowhere else, by a person clicking and typing on a
+   real display. [docs/m2-backlog.md] carries the gap with the condition that would close
+   it.
+
+   So the check, and it is worth doing by hand before the milestone closes: click the card
+   with each mouse button and with modifiers held, then double-click it. Type in the entry
+   and watch the key readout follow every keystroke {i while the text still arrives} --
+   that is [Propagate_and], observing without consuming. Press Escape and watch the
+   counter move and the entry not receive it -- that is [Handled_and], on a controller in
+   the CAPTURE phase, which is what a window-wide shortcut needs and what stavekeeper's
+   [dialog.ml] learned the hard way. Tab between the two entries and watch the focus
+   readout name which one has it. If any of those readouts does not move, the controller
+   machinery is broken however green the suite is. *)
+let input (graph @ local) =
+  let key, set_key = Bonsai.state "(nothing yet)" graph in
+  let escapes, set_escapes = Bonsai.state 0 graph in
+  let click, set_click = Bonsai.state "(nothing yet)" graph in
+  let focus, set_focus = Bonsai.state "(neither)" graph in
+  let text, set_text = Bonsai.state "" graph in
+  let%arr key
+  and set_key
+  and escapes
+  and set_escapes
+  and click
+  and set_click
+  and focus
+  and set_focus
+  and text
+  and set_text in
+  let modifiers (m : Modifiers.t) =
+    match
+      List.filter_map
+        [ "ctrl", m.control; "shift", m.shift; "alt", m.alt; "super", m.super ]
+        ~f:(fun (name, held) -> if held then Some name else None)
+    with
+    | [] -> "no modifiers"
+    | held -> String.concat ~sep:"+" held
+  in
+  Node.box
+    ~orientation:Vertical
+    ~spacing:8
+    ~attrs:
+      [ Attr.margin 12
+        (* CAPTURE, so this box sees a key before the entry inside it does. The two key
+           attrs share one [GtkEventControllerKey] and therefore one phase; a node that
+           asks for two different ones is refused before anything is mounted. *)
+      ; Attr.on_key_pressed ~phase:Capture (fun (event : Key_event.t) ->
+          if event.keyval = Keyval.escape
+          then
+            (* Consume the key {i and} do something: the entry never sees this one. *)
+            Key_response.Handled_and
+              (Ui_effect.Many
+                 [ set_escapes (escapes + 1); set_key "Escape -- consumed here" ])
+          else
+            (* Observe without consuming, so every other key still reaches the entry. *)
+            Key_response.Propagate_and
+              (set_key
+                 (sprintf "keyval 0x%x, %s" event.keyval (modifiers event.modifiers))))
+      ; Attr.on_key_released ~phase:Capture (fun _ -> Ui_effect.Ignore)
+      ]
+    [ Node.label
+        ~xalign:0.
+        "Click the card, type in the entries, press Escape, and Tab between them."
+    ; Node.frame
+        ~label:"A click gesture, any button"
+        (* [~button] defaults to 0, which is "any of them", so the readout can show which
+           button actually fired -- the middle and secondary buttons included, which a
+           [GtkButton] would never report. *)
+        (Node.label
+           ~attrs:
+             [ Attr.margin 24
+             ; Attr.cursor_name "pointer"
+             ; Attr.on_click (fun (event : Click_event.t) ->
+                 set_click
+                   (sprintf
+                      "button %d, press %d, at (%.0f, %.0f), %s"
+                      event.button
+                      event.n_press
+                      event.x
+                      event.y
+                      (modifiers event.modifiers)))
+             ]
+           "click me")
+    ; Node.box
+        ~orientation:Horizontal
+        ~spacing:8
+        [ Node.entry
+            ~attrs:
+              [ Attr.hexpand true
+              ; Attr.on_changed set_text
+              ; Attr.on_focus_enter (fun () -> set_focus "first entry")
+              ; Attr.on_focus_leave (fun () -> set_focus "(neither)")
+              ]
+            ~placeholder:"type here; Escape never arrives"
+            ~text
+            ()
+        ; Node.entry
+            ~attrs:
+              [ Attr.hexpand true
+              ; Attr.on_focus_enter (fun () -> set_focus "second entry")
+              ; Attr.on_focus_leave (fun () -> set_focus "(neither)")
+              ]
+            ~placeholder:"Tab to me"
+            ~text:""
+            ()
+        ]
+    ; Node.separator ~orientation:Horizontal ()
+    ; Node.label ~xalign:0. (sprintf "last key:   %s" key)
+    ; Node.label
+        ~xalign:0.
+        (sprintf "escapes:    %d (consumed in the capture phase)" escapes)
+    ; Node.label ~xalign:0. (sprintf "last click: %s" click)
+    ; Node.label ~xalign:0. (sprintf "focus:      %s" focus)
+    ]
+;;
+
 let app (graph @ local) =
   let page, set_page = Bonsai.state "controls" graph in
   let controls = controls graph in
@@ -622,6 +748,7 @@ let app (graph @ local) =
   let tabs = tabs graph in
   let layout = layout graph in
   let dates = dates graph in
+  let input = input graph in
   let%arr page
   and set_page
   and controls
@@ -630,7 +757,8 @@ let app (graph @ local) =
   and grid
   and tabs
   and layout
-  and dates in
+  and dates
+  and input in
   Node.window
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
@@ -689,6 +817,11 @@ let app (graph @ local) =
                    ~attrs:[ Attr.page_title "Dates" ]
                    ~orientation:Vertical
                    [ dates ]
+               ; Node.box
+                   ~key:"input"
+                   ~attrs:[ Attr.page_title "Input" ]
+                   ~orientation:Vertical
+                   [ input ]
                ]
            ]
        ])

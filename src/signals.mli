@@ -15,6 +15,36 @@ type ctx =
       trampoline swallows it. *)
   }
 
+(** {1 The rule about dispose-time signals}
+
+    {b Never connect a handler to a signal a GObject's dispose can emit} -- [destroy],
+    [unrealize], a [notify::] on a property a widget clears on the way down -- and if one
+    is unavoidable, {b disconnect it before that object can become collectable}, in the
+    same call that makes it collectable.
+
+    The reason is not tidiness. ocgtk's wrapper finaliser unrefs the widget, GTK's dispose
+    emits [destroy], and the generic marshaller calls back into OCaml
+    {i from inside the collector}. Measured with plain ocgtk and no bonsai_gtk involved: a
+    callback that allocates segfaults (three runs of three), and one that does not may
+    survive -- a threshold no author can reason about and none should try to. Until the
+    fork's marshaller refuses to call back during finalisation (the binding fix, and the
+    plan's Global Constraints addendum), the rule is the whole of the protection.
+
+    This library obeys it. [src/embed.ml] holds the only [destroy] connection in [src/],
+    [vtree/] and [test_lib/], and [Embed.stop] disconnects it in the same call that drops
+    the driver's [on_root_widget_changed] -- which is precisely what makes the wrapper
+    finalisable, because while the backstop is connected the closure cycle (wrapper -> the
+    handler's GClosure -> the driver -> [on_root_widget_changed] -> wrapper) holds it
+    alive. Everything else this module connects -- the [notify::] read-backs, the
+    connections that name a [GtkTextBuffer], a [GtkStringList] or an event controller --
+    is disconnected by [Patcher.destroy] before its widget can be collected, and could not
+    be reached from the collector anyway: a connected closure roots the driver, which
+    roots the widget.
+
+    A new signal added to a widget impl's [Widget_impl.signals] is safe by construction --
+    [Patcher.destroy] disconnects the whole list. A connection made anywhere {i else} is
+    the one to check against this paragraph. *)
+
 (** One connected GTK handler: the id, and the object it is connected {i to}.
 
     Both halves are needed, and the second is the one that is easy to lose.

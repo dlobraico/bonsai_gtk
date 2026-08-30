@@ -461,6 +461,12 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
   let built_connections = ref [] in
   let built_controllers = ref None in
   let built_children = ref None in
+  (* Keep in step with {!destroy}: the four stages below are that function's, in its
+     order, over whatever exists so far. Only the tail is genuinely shared
+     ({!release_kind} is the kind-specific half, factored out so it cannot drift); the
+     four stages are written out twice because [destroy] has a [live] and this has only
+     pieces of one, and a change to what [Signals] or [Controllers] needs at teardown has
+     to land in both. *)
   let unwind () =
     Option.iter !built_slots ~f:Signals.clear_slots;
     Option.iter !built_controllers ~f:Controllers.release;
@@ -639,6 +645,8 @@ and mount_children
     invalid_argf "%s: node's children do not match %s's shape" path impl_name ()
 
 and destroy ctx (live : live) =
+  (* Keep in step with [mount]'s [unwind], which does these same four stages in this same
+     order over a subtree that only half exists. *)
   (* Slots are emptied before anything is torn down: GTK emits signals synchronously from
      [remove]/[set_child], and a handler firing here would run against a node that is
      already gone. *)

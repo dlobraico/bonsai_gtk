@@ -210,8 +210,26 @@ Tests:
   `~content_fit:Contain`, `~can_shrink:true`, `~vpolicy:Automatic`, `~step:1.` are all
   defaults, erased by `[@sexp_drop_if]`), so they look like coverage and are not.
   tests M2.
-- **`test/handle/test_gallery.ml`'s "exactly once" comment is inaccurate** — `Node.button`
-  appears three times. The substance ("at least once", all 29) holds. tests M3.
+- ~~**`test/handle/test_gallery.ml`'s "exactly once" comment is inaccurate**~~ — fixed in
+  Task 13: the header now says "at least once" and the claim is checked against
+  `Kind.Variants.descriptions` and `Attr.Name.all` rather than asserted in prose.
+- **`Bonsai_gtk_test` has no validating `recompute_view`.** The `Placement`/`Events`/key-phase
+  checks live in the `Result_spec`'s `view`, which only `Handle.show`, `show_into_string`,
+  `show_diff` and `store_view` call — so a headless test that drives a component with
+  `do_actions` and `recompute_view` and shows it only at the end has checked exactly one of
+  its trees. Found in Task 13, which corrected the mli (it claimed the opposite) and pinned
+  the behaviour in `test/handle/test_gallery.ml`. The fix, if it is wanted, is for
+  `Bonsai_gtk_test` to stop re-exporting `Bonsai_test.Handle` wholesale and shadow
+  `recompute_view` with one that builds the view and discards it. tests M3.
+- **A synthetic click or key press may be reachable through XTEST rather than through the
+  binding.** The plan closed that question against ocgtk (no `GdkEvent` constructor, no
+  argument-carrying emission, no `gtk_test_*`) and did not consider driving the X server
+  the live tests already run on: `xdotool`/`xte` under the same `xvfb` would deliver a real
+  button press and a real keystroke to a real window, which is exactly the step no suite in
+  this repository takes. It needs a package in the dev shell and a live test that maps
+  widget coordinates to screen coordinates, and it would close the "not covered" bullet
+  above outright rather than compensating for it. Not attempted in Task 13 — out of its
+  file list and a dev-shell change. tests M3.
 
 ## Documentation M2 owes M3 (Task 15)
 - **What a constructor's `Invalid_argument` costs, in one place.** Several `Node` constructors
@@ -294,6 +312,12 @@ Tests:
   click *and* key press above, so it should exercise a widget carrying `Attr.on_click` and
   one carrying `Attr.on_key_pressed` — the latter in `Capture` phase with a focusable
   child below it, since a wrong phase is the failure mode a plumbing test cannot see.
+  **Task 13 built that page** (the gallery's *Input* tab): a click card reporting button,
+  press count, widget-local coordinates and modifiers; a `Capture`-phase key controller
+  that consumes Escape (`Handled_and`, with a counter) and observes every other key
+  without consuming it (`Propagate_and`, with an entry below it that must still receive
+  the text); and two entries whose focus enter/leave name which one has it. The remaining
+  work is a person running it on a real display and confirming all four readouts move.
 - `Live_tree.dump` collapses a placeholder `""`: a widget whose only text is empty prints
   the same as one with no text at all. Task 4.
 - `focusable`/`can_focus` are absent from `Live_tree.dump`; showing them needs a per-class

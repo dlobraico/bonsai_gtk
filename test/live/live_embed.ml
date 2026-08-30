@@ -128,11 +128,20 @@ let counted = Native.impl (module Counted)
    The siblings in front of it are natives, because [Native.S.destroy] is the one piece of
    the patcher's teardown an application can observe directly, and it runs from
    [release_kind], the same exhaustive match [Patcher.destroy] uses -- so a kind that ever
-   stopped being released on the unwind path would have to stop being released on both. *)
+   stopped being released on the unwind path would have to stop being released on both.
+
+   The [Attr.on_click] on the {i box} is what loads [mount]'s unwind [Controllers.release]
+   arm (task-12-review.md re-review N3). Without it that arm always released an empty
+   [Controllers.t]: the raise is [require_specs]', which runs {i before} the raising
+   node's own controllers are created, so the only way to reach the unwind with
+   controllers built is for the raise to come from a child -- which means the attr has to
+   be on the parent. The box mounts, its click gesture is attached, and then its child
+   list raises. *)
 let raises_after_two_natives (_graph @ local) =
   Bonsai.return
     (Node.box
        ~orientation:Vertical
+       ~attrs:[ Attr.on_click (fun _ -> Ui_effect.Ignore) ]
        [ Node.button ~attrs:[ Attr.on_clicked Ui_effect.Ignore ] ~label:"one" ()
        ; Native.node counted "two"
        ; Native.node counted "three"

@@ -34,8 +34,18 @@ let stop t =
      emits [destroy] -- which would re-enter OCaml, from inside the collector's
      finalisation pass, to run a callback holding this driver. Measured: with the handler
      left connected, the second [embed] created after a stopped embed had been dropped
-     never returns. Removing the only path on which [destroy] can reach OCaml at all
-     removes it. *)
+     never returns; the same re-entry with a callback that allocates segfaults, which is
+     the ocgtk defect the fork has to fix (see [Signals]' rule about dispose-time
+     signals). Removing the only path on which [destroy] can reach OCaml at all removes
+     it.
+
+     And the two states are mutually exclusive by construction rather than merely
+     sequenced: the wrapper {i cannot} be finalised while this handler is connected -- the
+     callback's GClosure holds the driver, and the driver's [on_root_widget_changed] holds
+     the wrapper -- so disconnecting here is what {i creates} the finalisable state, and
+     it must happen in the same call that creates it. Measured (task-12-review.md, probe
+     B): a [t] dropped without [stop], including one over a signal-free tree, finalises 0
+     wrappers of 1. *)
   Option.iter t.backstop ~f:(Gobject.Signal.disconnect (cast t.wrapper : Widget.t));
   t.backstop <- None
 ;;

@@ -243,8 +243,15 @@ module Handle = Bonsai_test.Handle
       They share one [GtkEventControllerKey] and therefore one phase, so there is nothing
       the runtime could mount; both sides call the same function for the string.
 
-    All three are checked on the first [Handle.show]/[Handle.recompute_view], and on every
-    later one.
+    All three are checked by the entry points that build the view -- [Handle.show],
+    [Handle.show_into_string], [Handle.show_diff], [Handle.store_view] -- on the first
+    call and on every later one. {b [Handle.recompute_view] does not check}: the checks
+    live in this [Result_spec]'s [view] function, and [recompute_view] runs the
+    computation without building a view. So a test that drives a component with
+    [do_actions] and [recompute_view] and shows it only at the end has checked exactly one
+    of its trees, and a tree that only exists between two shows is not checked at all.
+    Show it, or [show_into_string] it and drop the string, wherever that matters.
+    ([test/handle/test_gallery.ml] pins this; the sentence used to claim the opposite.)
 
     What is still only checked at mount is the structural half that needs the widget
     implementations or the live tree: a [Node.grid] child with no [Attr.grid_cell], a

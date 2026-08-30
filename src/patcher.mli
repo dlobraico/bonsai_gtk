@@ -157,7 +157,14 @@ type live =
     signal it had connected roots a closure holding the runtime, which holds the shadow
     tree, which holds GObject references back, and neither the collector nor refcounting
     can break that cycle. Before this, one connected handler in a failed mount retained
-    the whole driver and its Bonsai graph permanently. *)
+    the whole driver and its Bonsai graph permanently.
+
+    "Nothing behind" is about the {i live tree}, not about [ctx]. The fixups a completed
+    child had already enqueued and the stack names it had already claimed survive the
+    raise -- they are the pass's, not this subtree's, and this call is in no position to
+    know whether the pass continues. {!abandon_fixups} is what clears them, and
+    [Driver.frame] always calls it on the way out of a frame that raised; a caller driving
+    this module directly must do the same. *)
 val mount : ctx -> path:string -> is_root:bool -> Node.t -> live
 
 (** Diffs [node] against [live.node] and mutates the live tree to match.
