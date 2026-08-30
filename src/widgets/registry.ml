@@ -15,6 +15,7 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Scale _ -> W_scale.impl
   | Progress_bar _ -> W_progress_bar.impl
   | Spinner _ -> W_spinner.impl
+  | Level_bar _ -> W_level_bar.impl
   | Image _ -> W_image.impl
   | Picture _ -> W_picture.impl
   | Separator _ -> W_separator.impl
@@ -30,6 +31,7 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | List_box _ -> W_list_box.impl
   | Flow_box _ -> W_flow_box.impl
   | Notebook _ -> W_notebook.impl
+  | Drop_down _ -> W_drop_down.impl
   | Center_box _ -> W_center_box.impl
   | Paned _ -> W_paned.impl
   | Overlay _ -> W_overlay.impl

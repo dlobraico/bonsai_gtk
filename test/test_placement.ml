@@ -22,7 +22,7 @@ let%expect_test "which attrs are container-placement attrs, and who reads each" 
     [%sexp
       (List.count Attr.Name.all ~f:(fun name -> Option.is_none (Placement.reader name))
        : int)];
-  [%expect {| 39 |}]
+  [%expect {| 40 |}]
 ;;
 
 (* The two tables are inverses, and nothing else checks that: [read_by] is what the

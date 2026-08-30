@@ -147,10 +147,39 @@ let controls (graph @ local) =
     ]
 ;;
 
-(* Page 2: numbers and feedback, where one value drives four widgets. *)
+(* Page 2: numbers and feedback, where one value drives six widgets -- and where the two
+   ways of showing a number sit next to each other. A [progress_bar] shows how far along
+   an operation is, in fractions of itself; a [level_bar] shows a level in the
+   application's own units, and can draw it as discrete segments, which is the thing a
+   progress bar cannot do at all.
+
+   The drop-down is here rather than on the Lists page for the same reason it is not a
+   container: its items are props. The "add a preset" button is what that costs and what
+   it buys -- it changes the {i item list}, which is the one thing that rebuilds GTK's
+   model, and the selection survives it because the library re-applies it in the same
+   frame. Choosing a scale with the drop-down changes no items at all, so the model is
+   left alone. *)
+let scales = [ "percent (0-100)"; "rating (0-5)"; "eighths (0-8)" ]
+
 let numbers (graph @ local) =
   let value, set_value = Bonsai.state 40. graph in
-  let%arr value and set_value in
+  let scale_names, set_scale_names = Bonsai.state scales graph in
+  let scale, set_scale = Bonsai.state 0 graph in
+  let%arr value
+  and set_value
+  and scale_names
+  and set_scale_names
+  and set_scale
+  and scale in
+  (* The chosen scale, as a range and a mode. [scale] is an index into [scale_names],
+     which is exactly what [Attr.on_selected_changed] hands back -- there is no lookup
+     table beside the widget and no key to translate. *)
+  let top, mode =
+    match List.nth scale_names scale with
+    | Some "rating (0-5)" -> 5., Bonsai_gtk.Level_bar_mode.Discrete
+    | Some "eighths (0-8)" -> 8., Bonsai_gtk.Level_bar_mode.Discrete
+    | Some _ | None -> 100., Bonsai_gtk.Level_bar_mode.Continuous
+  in
   Node.box
     ~orientation:Vertical
     ~spacing:8
@@ -169,6 +198,40 @@ let numbers (graph @ local) =
         ~value
         ()
     ; Node.progress_bar ~fraction:(value /. 100.) ~show_text:true ()
+    ; Node.separator ~orientation:Horizontal ()
+    ; Node.box
+        ~orientation:Horizontal
+        ~spacing:8
+        [ Node.drop_down
+            ~attrs:[ Attr.on_selected_changed set_scale ]
+            ~items:scale_names
+            ~selected:(if List.is_empty scale_names then -1 else scale)
+            ()
+        ; Node.button
+            ~attrs:
+              [ Attr.on_clicked
+                  (set_scale_names
+                     (scale_names @ [ sprintf "preset %d" (List.length scale_names - 2) ]))
+              ]
+            ~label:"Add a preset (rebuilds the model, keeps the selection)"
+            ()
+        ]
+    ; Node.level_bar
+        ~attrs:[ Attr.hexpand true ]
+        ~min:0.
+        ~max:top
+        ~mode
+        ~value:(value /. 100. *. top)
+        ()
+    ; Node.label
+        ~xalign:0.
+        (sprintf
+           "level bar: %.2f of %.0f, %s"
+           (value /. 100. *. top)
+           top
+           (match mode with
+            | Discrete -> "discrete"
+            | Continuous -> "continuous"))
     ; Node.separator ~orientation:Horizontal ()
     ; Node.box
         ~orientation:Horizontal

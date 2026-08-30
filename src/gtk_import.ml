@@ -12,9 +12,19 @@ module Gtk_enums = Ocgtk_gtk.Gtk_enums
    but the enums and the constants are *top-level* in [Ocgtk_gdk] -- there is no
    [Ocgtk_gdk.Gdk.Gdk_enums]. Aliased here so the rest of the library never has to
    remember which. *)
+(* [Gtk_constants] is GTK's own top-level constants -- the only one this library reads is
+   [invalid_list_position], the "nothing is selected" sentinel a [GtkDropDown] answers
+   with -- and it sits beside [Gtk] rather than inside it, exactly as GDK's does. *)
+module Gtk_constants = Ocgtk_gtk.Gtk_constants
 module Gdk_enums = Ocgtk_gdk.Gdk_enums
 module Gdk_constants = Ocgtk_gdk.Gdk_constants
 module W = Gtk.Wrappers
+
+(* GIO's list-model interface, which a [GtkDropDown]'s model is handed and read back
+   through. It is in [ocgtk.gio] rather than [ocgtk.gtk], and it is aliased here for the
+   reason everything else in this file is: so that no widget impl has to remember which
+   library a GTK-facing type lives in. *)
+module List_model = Ocgtk_gio.Gio.Wrappers.List_model
 module Widget = W.Widget
 module Gobject = Gobject
 module Glib = Glib

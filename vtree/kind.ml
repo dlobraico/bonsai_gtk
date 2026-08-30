@@ -140,6 +140,24 @@ type progress_bar_props =
 
 type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
 
+(* The other bar, and the props say how it differs from [progress_bar_props] above: a
+   [GtkLevelBar] has a *range* rather than a fraction, so [value] is in the application's
+   own units and [min]/[max] say what they mean.
+
+   Unlike the two range widgets further up this file, [min] and [max] are optional and
+   default to GTK's 0-1: a level bar is an output rather than a control, nothing reads a
+   value back off it, and 0-1 is a fraction -- which is what a caller who does not mention
+   a range wants and is exactly what a progress bar gives. [value] carries no
+   [@sexp_drop_if] because it is the required labelled argument. *)
+type level_bar_props =
+  { value : float
+  ; min : float [@sexp_drop_if Float.equal Defaults.Level_bar.min]
+  ; max : float [@sexp_drop_if Float.equal Defaults.Level_bar.max]
+  ; mode : Level_bar_mode.t [@sexp_drop_if Level_bar_mode.equal Defaults.Level_bar.mode]
+  ; inverted : bool [@sexp_drop_if Bool.equal Defaults.Level_bar.inverted]
+  }
+[@@deriving sexp_of, equal]
+
 (* [Image] and [Picture] carry their source as a closed variant rather than as separate
    optional props: the sources are mutually exclusive and GTK's setters do not compose, so
    a variant makes the exclusivity a type error and gives [equal_props] one line. *)
@@ -333,6 +351,27 @@ type notebook_props =
   }
 [@@deriving sexp_of, equal]
 
+(* [items] is the drop-down's whole content and [selected] the position of the one
+   showing, [-1] for none; neither carries a [@sexp_drop_if], because both are required
+   labelled arguments. The other two are GTK's own.
+
+   The items are *props* rather than children, which is what makes this widget's selection
+   different from the three keyed containers': a [GtkDropDown]'s items are strings in a
+   list model GTK owns, not widgets, so there is no [Key.t] to name one and no child to be
+   missing when the selection is applied. [Node.drop_down] documents what follows from
+   that.
+
+   [items] is compared by [equal_list_string] like any other field, and that comparison is
+   what decides whether the model is rebuilt -- see [w_drop_down.ml], which pays for a
+   whole-model replacement only when this field really moved. *)
+type drop_down_props =
+  { items : string list
+  ; selected : int
+  ; enable_search : bool [@sexp_drop_if Bool.equal Defaults.Drop_down.enable_search]
+  ; show_arrow : bool [@sexp_drop_if Bool.equal Defaults.Drop_down.show_arrow]
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -357,6 +396,7 @@ type t =
   | Scale of scale_props
   | Progress_bar of progress_bar_props
   | Spinner of spinner_props
+  | Level_bar of level_bar_props
   | Image of image_props
   | Picture of picture_props
   | Separator of separator_props
@@ -372,6 +412,7 @@ type t =
   | List_box of list_box_props
   | Flow_box of flow_box_props
   | Notebook of notebook_props
+  | Drop_down of drop_down_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
@@ -393,6 +434,7 @@ let name = function
   | Scale _ -> "Scale"
   | Progress_bar _ -> "ProgressBar"
   | Spinner _ -> "Spinner"
+  | Level_bar _ -> "LevelBar"
   | Image _ -> "Image"
   | Picture _ -> "Picture"
   | Separator _ -> "Separator"
@@ -408,6 +450,7 @@ let name = function
   | List_box _ -> "ListBox"
   | Flow_box _ -> "FlowBox"
   | Notebook _ -> "Notebook"
+  | Drop_down _ -> "DropDown"
   | Center_box _ -> "CenterBox"
   | Paned _ -> "Paned"
   | Overlay _ -> "Overlay"
@@ -415,43 +458,26 @@ let name = function
   | Native n -> "Native:" ^ n.name
 ;;
 
-let same_kind a b =
-  match a, b with
-  | Label _, Label _
-  | Button _, Button _
-  | Toggle_button _, Toggle_button _
-  | Check_button _, Check_button _
-  | Switch _, Switch _
-  | Entry _, Entry _
-  | Password_entry _, Password_entry _
-  | Search_entry _, Search_entry _
-  | Text_view _, Text_view _
-  | Spin_button _, Spin_button _
-  | Scale _, Scale _
-  | Progress_bar _, Progress_bar _
-  | Spinner _, Spinner _
-  | Image _, Image _
-  | Picture _, Picture _
-  | Separator _, Separator _
-  | Scrolled_window _, Scrolled_window _
-  | Frame _, Frame _
-  | Expander _, Expander _
-  | Revealer _, Revealer _
-  | Box _, Box _
-  | Grid _, Grid _
-  | Stack _, Stack _
-  | Stack_switcher _, Stack_switcher _
-  | Stack_sidebar _, Stack_sidebar _
-  | List_box _, List_box _
-  | Flow_box _, Flow_box _
-  | Notebook _, Notebook _
-  | Center_box _, Center_box _
-  | Paned _, Paned _
-  | Overlay _, Overlay _
-  | Window _, Window _ -> true
-  | Native a, Native b -> String.equal a.name b.name
-  | _ -> false
-;;
+(* A [name] comparison rather than the 32-arm matrix this used to be.
+
+   The matrix ended in [| _ -> false], and that wildcard is the worst place in this file
+   to forget an arm: the patcher reads [same_kind] as "is this the same widget", so a kind
+   whose arm is missing answers [false] against itself and is destroyed and remounted on
+   {i every} frame that touches it -- losing the caret, the selection, the focus and every
+   signal connection, silently and at sixty frames a second. Nothing else notices;
+   [equal_props] is not even consulted.
+
+   [name] is exhaustive with no wildcard, so a kind added without a decision there is a
+   compile error, and this function inherits that. It also handles [Native] by
+   construction: [name] renders it as ["Native:" ^ n.name], which is exactly the
+   comparison the matrix's one special arm made by hand.
+
+   The cost is a string comparison per node per patch in place of a tag comparison. The
+   strings are short literals and [String.equal] compares lengths first, so two different
+   kinds nearly always answer on the length; two of the same kind compare a handful of
+   bytes. That is the price of the wildcard going away, and it is worth paying.
+   (task-9-report.md's carry 1.) *)
+let same_kind a b = String.equal (name a) (name b)
 
 let equal_props a b =
   match a, b with
@@ -468,6 +494,7 @@ let equal_props a b =
   | Scale a, Scale b -> equal_scale_props a b
   | Progress_bar a, Progress_bar b -> equal_progress_bar_props a b
   | Spinner a, Spinner b -> equal_spinner_props a b
+  | Level_bar a, Level_bar b -> equal_level_bar_props a b
   | Image a, Image b -> equal_image_props a b
   | Picture a, Picture b -> equal_picture_props a b
   | Separator a, Separator b -> equal_separator_props a b
@@ -483,10 +510,28 @@ let equal_props a b =
   | List_box a, List_box b -> equal_list_box_props a b
   | Flow_box a, Flow_box b -> equal_flow_box_props a b
   | Notebook a, Notebook b -> equal_notebook_props a b
+  | Drop_down a, Drop_down b -> equal_drop_down_props a b
   | Center_box a, Center_box b -> equal_center_box_props a b
   | Paned a, Paned b -> equal_paned_props a b
   | Overlay a, Overlay b -> equal_overlay_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload
-  | _ -> false
+  (* The one wildcard left in this file, and it is guarded rather than silent.
+
+     It cannot be written out: avoiding it means 34 squared arms. What it {i can} do is
+     tell the two cases apart. Two different kinds are genuinely not equal, and the
+     patcher never asks -- it checks [same_kind] first -- but [Bonsai_gtk_test] and the
+     odd test do. Two of the {i same} kind reaching here means an arm above is missing,
+     which without this line would make every patch of that kind look like a prop change
+     and re-run [update] forever (or, worse, be read as "props are equal, skip the update"
+     by a caller that inverted it). Loud is better. *)
+  | _ ->
+    if same_kind a b
+    then
+      failwithf
+        "Kind.equal_props: no arm for %s -- the variant gained a constructor and this \
+         match did not"
+        (name a)
+        ()
+    else false
 ;;

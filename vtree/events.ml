@@ -11,6 +11,12 @@ let for_kind : Kind.t -> Attr.Name.t list = function
   | Separator _
   | Spinner _
   | Progress_bar _
+  (* A [GtkLevelBar] emits nothing this library exposes. It has no interaction at all --
+     no drag, no scroll, no keyboard -- so its value only ever changes because the model
+     wrote it. GTK does have [offset-changed], for the named markers that colour a bar's
+     zones; this library exposes no offsets, so binding a handler for them would be
+     binding one nothing can provoke. *)
+  | Level_bar _
   | Stack_switcher _
   | Stack_sidebar _
   (* Spec §6.6: a native node declares no specs of its own -- a native widget that needs
@@ -41,6 +47,12 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      from a stack ([On_visible_child_changed]) is rejected here rather than accepted and
      never firing. *)
   | Notebook _ -> [ On_page_changed ]
+  (* [GtkDropDown]'s only signal is [activate], which fires when the user re-picks the
+     item already showing and carries nothing; a selection change is a [notify::selected]
+     and nothing else. Its own name rather than [On_visible_child_changed] or
+     [On_selected_rows_changed], on this table's usual rule: a line copied from a stack or
+     a list box is rejected here instead of being accepted and never firing. *)
+  | Drop_down _ -> [ On_selected_changed ]
   | Window _ | Box _ | Grid _ | Center_box _ | Overlay _ | Frame _ | Scrolled_window _ ->
     []
 ;;
@@ -115,6 +127,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_child_activated
   | On_selected_children_changed
   | On_page_changed
+  | On_selected_changed
   | Row_selectable
   | Row_activatable
   | Tab_label -> None

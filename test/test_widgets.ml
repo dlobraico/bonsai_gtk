@@ -931,3 +931,227 @@ let%expect_test "text view props take part in equal_props" =
   print_s [%sexp (Kind.same_kind (props ()) (props ~wrap:Word ()) : bool)];
   [%expect {| true |}]
 ;;
+
+(* [~items] and [~selected] are labelled {i non-optional} arguments: a drop-down with no
+   items is a button that opens an empty popup, and one whose selection nothing feeds back
+   into the model is uncontrolled -- it would snap back the next time anything
+   re-rendered. What this pins is the other half: both optional props are GTK's own and
+   drop out. *)
+let%expect_test "drop down constructor and defaults" =
+  print_s [%sexp (Node.drop_down ~items:[ "a"; "b" ] ~selected:0 () : Node.t)];
+  [%expect
+    {|
+    ((kind (Drop_down ((items (a b)) (selected 0)))) (attrs ())
+     (children No_children))
+    |}];
+  print_s
+    [%sexp
+      (Node.drop_down
+         ~enable_search:true
+         ~show_arrow:false
+         ~items:[ "alpha"; "beta"; "gamma" ]
+         ~selected:2
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Drop_down
+       ((items (alpha beta gamma)) (selected 2) (enable_search true)
+        (show_arrow false))))
+     (attrs ()) (children No_children))
+    |}];
+  (* Both defaults written out are GTK's own -- [show_arrow] is [true], which is the one a
+     reader guesses wrong -- so the sexp drops them both. *)
+  print_s
+    [%sexp
+      (Node.drop_down ~enable_search:false ~show_arrow:true ~items:[ "a" ] ~selected:0 ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Drop_down ((items (a)) (selected 0)))) (attrs ())
+     (children No_children))
+    |}];
+  (* An empty drop-down with nothing selected: the one shape in which [-1] is a state GTK
+     itself will hold. *)
+  print_s [%sexp (Node.drop_down ~items:[] ~selected:(-1) () : Node.t)];
+  [%expect
+    {|
+    ((kind (Drop_down ((items ()) (selected -1)))) (attrs ())
+     (children No_children))
+    |}]
+;;
+
+(* The one selection in this library that is checkable at the constructor, because a
+   drop-down's items are props rather than children: both the list and the index are in
+   the call, so "names no item" is decidable here rather than against a live tree. A
+   stack's [~visible_child] and a list box's [~selected] cannot be, which is why they are
+   inert-or-deferred instead. *)
+let%expect_test "drop down rejects an out-of-range selection at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.drop_down ~items:[ "a"; "b" ] ~selected:2 ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.drop_down: ~selected:2 names no item (there are 2), and -1 is the only out-of-range value with a meaning")
+    |}];
+  (* Below the range as well as above it, and [-2] is not a second spelling of "none". *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.drop_down ~items:[ "a"; "b" ] ~selected:(-2) ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.drop_down: ~selected:-2 names no item (there are 2), and -1 is the only out-of-range value with a meaning")
+    |}];
+  (* An index into an empty list is the same mistake, and the message counts correctly. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.drop_down ~items:[] ~selected:0 ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.drop_down: ~selected:0 names no item (there are 0), and -1 is the only out-of-range value with a meaning")
+    |}];
+  (* [-1] is the one out-of-range value that means something, and it is accepted over a
+     non-empty list too -- GTK is what declines that, at mount, with a message naming the
+     node's path (see [Node.drop_down] and [test/live/live_text.ml]). Rejecting it here
+     would refuse a model that is asking a reasonable question. *)
+  print_s [%sexp (Node.drop_down ~items:[ "a"; "b" ] ~selected:(-1) () : Node.t)];
+  [%expect
+    {|
+    ((kind (Drop_down ((items (a b)) (selected -1)))) (attrs ())
+     (children No_children))
+    |}]
+;;
+
+let%expect_test "drop down props take part in equal_props" =
+  let props ?(items = [ "a"; "b" ]) ?(selected = 0) ?enable_search () =
+    (Node.drop_down ~items ~selected ?enable_search ()).kind
+  in
+  print_s
+    [%sexp
+      (( Kind.equal_props (props ()) (props ())
+       , Kind.equal_props (props ()) (props ~items:[ "a"; "c" ] ())
+       , Kind.equal_props (props ()) (props ~selected:1 ())
+       , Kind.equal_props (props ()) (props ~enable_search:true ()) )
+       : bool * bool * bool * bool)];
+  [%expect {| (true false false false) |}];
+  (* The items compare structurally, not physically: a view that rebuilds an equal list
+     every frame must not look like a change, or [w_drop_down] would rebuild GTK's model
+     sixty times a second. *)
+  let a = [ "a"; "b" ] in
+  let b = [ "a"; "b" ] in
+  print_s
+    [%sexp
+      ((phys_equal a b, Kind.equal_props (props ~items:a ()) (props ~items:b ()))
+       : bool * bool)];
+  [%expect {| (true true) |}];
+  print_s [%sexp (Kind.same_kind (props ()) (props ~selected:1 ()) : bool)];
+  [%expect {| true |}]
+;;
+
+let%expect_test "level bar constructor and defaults" =
+  print_s [%sexp (Node.level_bar ~value:0.4 () : Node.t)];
+  [%expect {| ((kind (Level_bar ((value 0.4)))) (attrs ()) (children No_children)) |}];
+  print_s
+    [%sexp
+      (Node.level_bar ~min:0. ~max:5. ~mode:Discrete ~inverted:true ~value:3. () : Node.t)];
+  [%expect
+    {|
+    ((kind (Level_bar ((value 3) (max 5) (mode Discrete) (inverted true))))
+     (attrs ()) (children No_children))
+    |}];
+  (* Every default written out is GTK's own -- a bar runs 0 to 1, draws one continuous
+     block, and fills from the start edge -- so the sexp drops all four. *)
+  print_s
+    [%sexp
+      (Node.level_bar ~min:0. ~max:1. ~mode:Continuous ~inverted:false ~value:0.4 ()
+       : Node.t)];
+  [%expect {| ((kind (Level_bar ((value 0.4)))) (attrs ()) (children No_children)) |}];
+  (* A value outside the range is {i not} rejected: GTK clamps it, which is what a ratio
+     that occasionally exceeds 1 wants, and the clamp is visible in the widget. *)
+  print_s [%sexp (Node.level_bar ~value:1.5 () : Node.t)];
+  [%expect {| ((kind (Level_bar ((value 1.5)))) (attrs ()) (children No_children)) |}]
+;;
+
+(* The second constructor in the library that rejects a range, on
+   {!Node.scrolled_window}'s rule: GTK checks nothing and says nothing, and both numbers
+   are in the call. *)
+let%expect_test "level bar rejects a minimum above its maximum" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.level_bar ~min:5. ~max:1. ~value:2. ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.level_bar: ~min:5 is above ~max:1 (GTK keeps both and clamps the value to the minimum, so the bar would draw full and never move)")
+    |}];
+  (* And a negative bound, which fails the other way round: GTK refuses one outright, with
+     a [Gtk-CRITICAL] and no write, so a bar given one would go on showing its previous
+     range with only a line on stderr to say why. Measured, both setters. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.level_bar ~min:(-5.) ~max:1. ~value:0. ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.level_bar: ~min:-5 and ~max:1 must both be at least 0 (GTK refuses a negative bound with a critical and keeps the range it had)")
+    |}];
+  (* A negative {i value} is legal, and is not the same mistake: GTK stores it and draws
+     the bar empty. *)
+  print_s [%sexp (Node.level_bar ~value:(-1.) () : Node.t)];
+  [%expect {| ((kind (Level_bar ((value -1)))) (attrs ()) (children No_children)) |}];
+  (* Equal bounds are legal: a bar with nothing to show is a degenerate range, not a
+     mistake, and GTK renders it empty. *)
+  print_s [%sexp (Node.level_bar ~min:3. ~max:3. ~value:3. () : Node.t)];
+  [%expect
+    {|
+    ((kind (Level_bar ((value 3) (min 3) (max 3)))) (attrs ())
+     (children No_children))
+    |}]
+;;
+
+let%expect_test "level bar props take part in equal_props" =
+  let props ?min ?max ?mode ?inverted ?(value = 0.4) () =
+    (Node.level_bar ?min ?max ?mode ?inverted ~value ()).kind
+  in
+  print_s
+    [%sexp
+      (( Kind.equal_props (props ()) (props ())
+       , Kind.equal_props (props ()) (props ~value:0.5 ())
+       , Kind.equal_props (props ()) (props ~max:5. ())
+       , Kind.equal_props (props ()) (props ~mode:Discrete ())
+       , Kind.equal_props (props ()) (props ~inverted:true ()) )
+       : bool * bool * bool * bool * bool)];
+  [%expect {| (true false false false false) |}]
+;;
+
+(* [Kind.same_kind] is answered by comparing [Kind.name], which is exhaustive with no
+   wildcard -- so a kind added without a decision there is a compile error and cannot
+   silently answer [false] against itself. That failure is the expensive one: the patcher
+   reads [same_kind] as "is this the same widget", so a kind it got wrong would be
+   destroyed and remounted on every frame that touched it, losing the caret, the
+   selection, the focus and every signal connection.
+
+   [Native] is the case the old hand-written matrix needed a special arm for and this one
+   gets right by construction: [Kind.name] renders it as ["Native:" ^ name]. *)
+let%expect_test "same_kind distinguishes every pair it is given" =
+  let drop_down = (Node.drop_down ~items:[ "a" ] ~selected:0 ()).kind in
+  let level_bar = (Node.level_bar ~value:0.5 ()).kind in
+  let progress = (Node.progress_bar ~fraction:0.5 ()).kind in
+  let thing name = (Node.native { Native.name; payload = Native.Unit }).kind in
+  print_s
+    [%sexp
+      (( Kind.same_kind drop_down drop_down
+       , Kind.same_kind drop_down level_bar
+       , Kind.same_kind level_bar progress
+       , Kind.same_kind (thing "a") (thing "a")
+       , Kind.same_kind (thing "a") (thing "b") )
+       : bool * bool * bool * bool * bool)];
+  [%expect {| (true false false true false) |}];
+  (* And [equal_props] answers [false] across kinds rather than raising: the guard on its
+     wildcard fires only when two nodes of the {i same} kind reach it, which means an arm
+     is missing. *)
+  print_s
+    [%sexp
+      ((Kind.equal_props drop_down level_bar, Kind.equal_props level_bar progress)
+       : bool * bool)];
+  [%expect {| (false false) |}]
+;;

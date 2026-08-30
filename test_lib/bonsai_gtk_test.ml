@@ -19,6 +19,7 @@ module Action = struct
     | Activate_child of string * Key.t
     | Set_selection of string * Key.t list
     | Set_page of string * Key.t
+    | Set_selected of string * int
   [@@deriving sexp_of]
 end
 
@@ -258,6 +259,30 @@ module Result_spec = struct
       (match (Attrs.find n.attrs On_page_changed :> Attr.Private.t option) with
        | Some (On_page_changed h) -> h key
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_page_changed handler" id ())
+    (* The drop-down's own, and the only one of these actions that carries an index rather
+       than a key -- because a drop-down's items are props rather than children, so a
+       position is the only name an item has. Like every other action the node's own
+       [~selected] is not consulted: "the user is now showing this item" is what the real
+       widget reports whatever the model was rendering, and a test that wants to show a
+       model {i declining} the choice needs exactly that.
+
+       The index is {i not} checked against the node's [~items] either, and that is the
+       one place this action is deliberately weaker than the live widget. A real
+       [notify::selected] can only carry a position GTK holds, so it is always in range or
+       [-1]; headless there is no model to ask, and inventing a range check here would
+       duplicate [Node.drop_down]'s -- which has already run on the node the handle is
+       looking at, so the props the test can see are in range by construction. What a test
+       {i can} do with an out-of-range index is discover what its own handler does with
+       one, which is its business. *)
+    | Set_selected (id, index) ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"DropDown" ~is_expected:(function
+        | Kind.Drop_down _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_selected_changed :> Attr.Private.t option) with
+       | Some (On_selected_changed h) -> h index
+       | _ ->
+         failwithf "Bonsai_gtk_test: node %s has no on_selected_changed handler" id ())
   ;;
 end
 

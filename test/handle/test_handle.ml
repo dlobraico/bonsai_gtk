@@ -2045,3 +2045,218 @@ let%expect_test "a text view rejects the entry attrs it does not have" =
     (Invalid_argument "root/0: TextView does not emit On_toggled")
     |}]
 ;;
+
+(* The drop-down, headless. [Set_selected] is the user picking an item, and it carries an
+   index rather than a key because a drop-down's items are props rather than children --
+   the model already holds the list the index points into, and takes the string out of it
+   itself, which is what the [tempo] state below is doing. *)
+let tempos = [ "60"; "90"; "120"; "144" ]
+
+let picker (graph @ local) =
+  let selected, set_selected = Bonsai.state 2 graph in
+  let%arr selected and set_selected in
+  Node.window
+    ~title:"Tempo"
+    (Node.box
+       ~orientation:Vertical
+       [ Node.drop_down
+           ~attrs:[ Attr.test_id "tempo"; Attr.on_selected_changed set_selected ]
+           ~items:tempos
+           ~selected
+           ()
+       ; Node.label (List.nth_exn tempos selected ^ " bpm")
+       ])
+;;
+
+let%expect_test "choosing a drop-down item hands the model the index" =
+  let handle = Bonsai_gtk_test.create picker in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Tempo))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Drop_down ((items (60 90 120 144)) (selected 2))))
+             (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+             (children No_children))
+            ((kind (Label ((text "120 bpm")))) (attrs ()) (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("tempo", 0) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Tempo))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (Drop_down ((items (60 90 120 144)) (selected 2))))
+    +|       (((kind (Drop_down ((items (60 90 120 144)) (selected 0))))
+               (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text "120 bpm")))) (attrs ()) (children No_children))))))))))
+    +|        ((kind (Label ((text "60 bpm")))) (attrs ()) (children No_children))))))))))
+    |}]
+;;
+
+(* A model that {i declines} the choice renders the index it was already rendering, so the
+   node does not move -- which headless is the whole of the claim. Live, that same frame
+   is the one where nothing is diffed at all and [Widget_impl.reassert] is the only thing
+   left to put the widget back; [test/live/live_text.ml] makes that half. *)
+let%expect_test "a declined drop-down choice leaves the node where it was" =
+  let declining (graph @ local) =
+    let selected, _set = Bonsai.state 1 graph in
+    let%arr selected in
+    Node.window
+      ~title:"Tempo"
+      (Node.drop_down
+         ~attrs:
+           [ Attr.test_id "tempo"; Attr.on_selected_changed (fun _ -> Ui_effect.Ignore) ]
+         ~items:tempos
+         ~selected
+         ())
+  in
+  let handle = Bonsai_gtk_test.create declining in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Tempo))))) (attrs ())
+     (children
+      (Single
+       (((kind (Drop_down ((items (60 90 120 144)) (selected 1))))
+         (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+         (children No_children))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("tempo", 3) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| |}]
+;;
+
+(* A model may render [-1] over a non-empty list and the constructor accepts it: it is a
+   reasonable thing to ask (nothing chosen yet), and it is {i GTK} that declines it, at
+   mount, with the node's path -- see [test/live/live_text.ml]. Headless there is no GTK,
+   so what a suite can see here is that the node is legal and that the handler still
+   reaches the model. That asymmetry is worth pinning: it is the one place in M2 where a
+   headless suite going green does not mean the runtime will hold the state, and the
+   runtime says so out loud rather than silently. *)
+let%expect_test "nothing selected is a legal node, whatever GTK does with it" =
+  let unset (graph @ local) =
+    let selected, set_selected = Bonsai.state (-1) graph in
+    let%arr selected and set_selected in
+    Node.window
+      ~title:"Tempo"
+      (Node.drop_down
+         ~attrs:[ Attr.test_id "tempo"; Attr.on_selected_changed set_selected ]
+         ~items:tempos
+         ~selected
+         ())
+  in
+  let handle = Bonsai_gtk_test.create unset in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Tempo))))) (attrs ())
+     (children
+      (Single
+       (((kind (Drop_down ((items (60 90 120 144)) (selected -1))))
+         (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+         (children No_children))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("tempo", 3) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Tempo))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Drop_down ((items (60 90 120 144)) (selected -1))))
+    +|   (((kind (Drop_down ((items (60 90 120 144)) (selected 3))))
+           (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+           (children No_children))))))
+    |}]
+;;
+
+(* [Set_selected] names a kind, like [Set_page] and the two activate actions: a
+   drop-down's selection is an index into its own props, so there is nothing to share with
+   the containers' key-based selections and a line copied from one should fail loudly. *)
+let%expect_test "a drop-down action on the wrong kind, and on a node with no handler" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"kinds"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.list_box
+                ~attrs:
+                  [ Attr.test_id "rail"
+                  ; Attr.on_row_activated (fun _ -> Ui_effect.Ignore)
+                  ]
+                ~selected:[]
+                [ Node.label ~key:"a" "A" ]
+            ; Node.drop_down ~attrs:[ Attr.test_id "plain" ] ~items:[ "a" ] ~selected:0 ()
+            ]))
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("rail", 0) ]);
+  [%expect {| (Failure "Bonsai_gtk_test: node rail is a ListBox, not a DropDown") |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("plain", 0) ]);
+  [%expect
+    {| (Failure "Bonsai_gtk_test: node plain has no on_selected_changed handler") |}]
+;;
+
+(* The [Events] negatives, both directions. [notify::selected] is the drop-down's alone,
+   so the attr is rejected everywhere else -- including on a {!Node.stack} and a
+   {!Node.list_box}, the two near misses, since all three are "one of these is showing"
+   controls whose handlers are spelled differently. And a drop-down emits none of theirs. *)
+let%expect_test "the drop-down's event attr, and other kinds'" =
+  let bad node (_graph @ local) = Bonsai.return (Node.window ~title:"bad" node) in
+  let refuse node =
+    Expect_test_helpers_core.require_does_raise (fun () ->
+      let handle = Bonsai_gtk_test.create (bad node) in
+      Bonsai_gtk_test.Handle.show handle)
+  in
+  let picked = Attr.on_selected_changed (fun _ -> Ui_effect.Ignore) in
+  refuse (Node.label ~attrs:[ picked ] "x");
+  refuse (Node.stack ~attrs:[ picked ] ~name:"s" ~visible_child:"a" []);
+  refuse (Node.list_box ~attrs:[ picked ] ~selected:[] []);
+  [%expect
+    {|
+    (Invalid_argument "root/0: Label does not emit On_selected_changed")
+    (Invalid_argument "root/0: Stack does not emit On_selected_changed")
+    (Invalid_argument "root/0: ListBox does not emit On_selected_changed")
+    |}];
+  List.iter
+    [ Attr.on_visible_child_changed (fun _ -> Ui_effect.Ignore)
+    ; Attr.on_selected_rows_changed (fun _ -> Ui_effect.Ignore)
+    ; Attr.on_page_changed (fun _ -> Ui_effect.Ignore)
+    ; Attr.on_activate Ui_effect.Ignore
+    ]
+    ~f:(fun attr -> refuse (Node.drop_down ~attrs:[ attr ] ~items:[ "a" ] ~selected:0 ()));
+  [%expect
+    {|
+    (Invalid_argument "root/0: DropDown does not emit On_visible_child_changed")
+    (Invalid_argument "root/0: DropDown does not emit On_selected_rows_changed")
+    (Invalid_argument "root/0: DropDown does not emit On_page_changed")
+    (Invalid_argument "root/0: DropDown does not emit On_activate")
+    |}];
+  (* And the level bar, which emits nothing at all: it has no interaction, so every event
+     attr on one is a mistake. *)
+  refuse
+    (Node.level_bar
+       ~attrs:[ Attr.on_value_changed (fun _ -> Ui_effect.Ignore) ]
+       ~value:0.5
+       ());
+  refuse (Node.level_bar ~attrs:[ picked ] ~value:0.5 ());
+  [%expect
+    {|
+    (Invalid_argument "root/0: LevelBar does not emit On_value_changed")
+    (Invalid_argument "root/0: LevelBar does not emit On_selected_changed")
+    |}]
+;;

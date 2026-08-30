@@ -268,6 +268,51 @@ let progress_bar
 
 let spinner ?key ?attrs ~spinning () = make ?key ?attrs (Spinner { spinning }) No_children
 
+(* The second constructor in this file that rejects a range, and for {!scrolled_window}'s
+   reason: GTK checks nothing and says nothing. A [GtkLevelBar] whose minimum is above its
+   maximum keeps both numbers exactly as written (measured: [set_min_value 2.] on a bar
+   whose maximum is still [1.] leaves [min=2 max=1]) and clamps the value {i up} to the
+   minimum, so the bar draws full and never moves again. No critical, no warning, nothing
+   to find. Both numbers are in this call, so this is the only place that can name them.
+
+   [value] outside the range is {i not} rejected: GTK clamps it into [min, max], which is
+   what a caller rendering a ratio that occasionally exceeds 1 wants, and clamping is
+   visible in the widget rather than silent. *)
+let level_bar
+  ?key
+  ?attrs
+  ?(min = Defaults.Level_bar.min)
+  ?(max = Defaults.Level_bar.max)
+  ?(mode = Defaults.Level_bar.mode)
+  ?(inverted = Defaults.Level_bar.inverted)
+  ~value
+  ()
+  =
+  (* Negative bounds are refused by GTK itself, with a critical and no write at all
+     ([gtk_level_bar_set_min_value] and its twin both assert [value >= 0.0]), so a node
+     carrying one would silently keep the bar's previous range and log where nobody is
+     looking. Same rule as {!flow_box}'s negative geometry, and checkable in the same
+     place. The {i value} may be negative -- GTK stores it and draws the bar empty -- so
+     it is not checked here. *)
+  if Float.( < ) min 0. || Float.( < ) max 0.
+  then
+    invalid_argf
+      "Node.level_bar: ~min:%g and ~max:%g must both be at least 0 (GTK refuses a \
+       negative bound with a critical and keeps the range it had)"
+      min
+      max
+      ();
+  if Float.( > ) min max
+  then
+    invalid_argf
+      "Node.level_bar: ~min:%g is above ~max:%g (GTK keeps both and clamps the value to \
+       the minimum, so the bar would draw full and never move)"
+      min
+      max
+      ();
+  make ?key ?attrs (Level_bar { value; min; max; mode; inverted }) No_children
+;;
+
 (* [source] comes last and unlabelled on both of these: it is the one thing an image or a
    picture cannot do without, and putting it in final position is what lets the optional
    arguments before it be erased. *)
@@ -573,6 +618,39 @@ let notebook
        to name apart. Its tab labels are widgets GTK builds from [Attr.tab_label], not
        nodes, which is the whole reason there is one child list here rather than two. *)
     (List children)
+;;
+
+(* The one selection in this library that is checkable at construction, because a
+   drop-down's items are props rather than children: the list and the index are both in
+   this call, so an index naming nothing is a mistake that can be caught at the line that
+   made it -- unlike a stack's [~visible_child] or a list box's [~selected], where "not
+   there yet" and "never" are the same thing until the tree exists.
+
+   [-1] is the one out-of-range value with a meaning, and it means nothing is selected.
+   GTK's own sentinel is [GTK_INVALID_LIST_POSITION] -- [G_MAXUINT], which OCaml sees as
+   4294967295 -- and it is translated at the boundary in [w_drop_down.ml] and nowhere
+   else. See [node.mli] for what GTK does with a [-1] over a non-empty list, which is not
+   what it looks like. *)
+let drop_down
+  ?key
+  ?attrs
+  ?(enable_search = Defaults.Drop_down.enable_search)
+  ?(show_arrow = Defaults.Drop_down.show_arrow)
+  ~items
+  ~selected
+  ()
+  =
+  let n = List.length items in
+  if selected <> -1 && (selected < 0 || selected >= n)
+  then
+    invalid_argf
+      "Node.drop_down: ~selected:%d names no item (there %s %d), and -1 is the only \
+       out-of-range value with a meaning"
+      selected
+      (if n = 1 then "is" else "are")
+      n
+      ();
+  make ?key ?attrs (Drop_down { items; selected; enable_search; show_arrow }) No_children
 ;;
 
 let stack_switcher ?key ?attrs ~stack () =

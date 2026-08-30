@@ -403,6 +403,53 @@ val progress_bar
     layout. *)
 val spinner : ?key:Key.t -> ?attrs:Attr.t list -> spinning:bool -> unit -> t
 
+(** A [GtkLevelBar]: a filled bar showing where [~value] sits between [~min] and [~max].
+
+    The other bar, beside {!progress_bar}, and the difference is what it is {i for}. A
+    progress bar shows how far along one operation is, in fractions of itself, and can
+    pulse when it does not know. A level bar shows a level in the application's own units
+    — a disk 43 GB into 512, a battery, a signal strength, four takes recorded out of five
+    — and it can draw that level as discrete segments, which is the thing a progress bar
+    cannot do at all.
+
+    [~min] and [~max] default to GTK's [0.]–[1.], so a level bar given only a [~value]
+    behaves as a fraction and reads exactly like a progress bar's. A [~min] above [~max]
+    is [Invalid_argument] from this constructor: GTK keeps both numbers as written and
+    clamps the value up to the minimum, so the bar draws full and never moves, with no
+    warning anywhere (measured). So is a {i negative} bound, for the opposite reason — GTK
+    refuses one with a critical and leaves the range it had, so the bar would go on
+    showing the previous scale with only a line on stderr to say why.
+
+    A [~value] outside the range is {i not} rejected, and neither is a negative one. GTK
+    clamps a value the {i bounds} move over, which is what a ratio that occasionally
+    exceeds 1 wants, and stores a value written directly whatever it is (a bar below its
+    minimum draws empty).
+
+    In [~mode:Discrete] the bar is drawn as [max -. min] equal segments and fills whole
+    segments only, so the two bounds choose the number of blocks: [~min:0. ~max:5.] is a
+    rating out of five, and leaving the default [0.]–[1.] draws a single block that is
+    either empty or full. There is no separate segment count.
+
+    [~inverted] fills from the other end (right to left, or top to bottom).
+
+    {b Nothing here is controlled}, because nothing here is an input: a level bar has no
+    interaction at all — no drag, no scroll, no keyboard — so GTK never changes [value]
+    behind the model's back and there is no signal to carry a change. It is the one widget
+    in the library with a value prop and no handler to pair it with, and the asymmetry is
+    GTK's rather than an omission. (GTK does emit [offset-changed], for the named offset
+    markers that colour a bar's zones; this library exposes no offsets, so it binds no
+    handler for them — spec §11.) *)
+val level_bar
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?min:float
+  -> ?max:float
+  -> ?mode:Level_bar_mode.t
+  -> ?inverted:bool
+  -> value:float
+  -> unit
+  -> t
+
 (** A [GtkImage]: an icon, at icon sizes. Its [source] is a closed variant rather than a
     set of optional arguments because GTK's setters do not compose -- [set_from_file]
     after [set_from_icon_name] silently wins, and there is no "which one is set" to diff
@@ -934,6 +981,61 @@ val notebook
   -> ?tab_pos:Tab_position.t
   -> current_page:Key.t
   -> t list
+  -> t
+
+(** A [GtkDropDown]: a button that opens a list of strings and shows the chosen one.
+
+    [~items] is the whole list and [~selected] is a position into it, with [-1] for
+    nothing selected. Pair it with {!Attr.on_selected_changed}, or the control is inert.
+
+    {b The items are props, not children}, and every difference between this widget and
+    the three keyed containers follows from that. There is no [~key] on an item and no
+    node for one: GTK holds them as strings in a list model of its own, so the only name
+    an item has is its position. That is also why {!Attr.on_selected_changed} carries an
+    index — the handler already holds the list it indexes into.
+
+    It is why [~selected] is checked {i here}. A stack's [~visible_child] and a list box's
+    [~selected] name children that may not exist yet, so "not there" and "never" are the
+    same thing until the whole tree is mounted, and those are applied from the fixup pass
+    and treat an unknown name as inert. A drop-down's items are in this call, so an index
+    naming no item is a mistake with an answer at the line that made it: any [~selected]
+    other than [-1] outside [0, length items) is [Invalid_argument] from this constructor.
+
+    And it is why [~selected] is controlled in the ordinary way — compared against the
+    {i widget} on every frame, not against the previous node, so a choice the model
+    declines is put back — rather than deferred like the other three selections. By the
+    time the comparison happens the items already exist, because they are props of the
+    same node.
+
+    {b [-1] over a non-empty list is a state GTK will not hold.} A [GtkDropDown] selects
+    with an internal [GtkSingleSelection] whose [autoselect] is on and is not reachable
+    through any drop-down API, so [gtk_drop_down_set_selected] with the "nothing" sentinel
+    over a non-empty model is a {i no-op}: the previous item stays selected and GTK emits
+    nothing at all (measured). The library writes it once, sees the widget decline, and
+    reports the divergence through the patcher's usual channel with the node's path — the
+    same treatment {!text_view} gives text GTK refuses to store. It does not fight the
+    widget: the refusal is remembered, so the frames after it cost nothing, and the model
+    is left free to ask for something else. [~selected:(-1)] over [~items:[]] is honoured,
+    which is the shape "nothing selected yet" usually has anyway.
+
+    Changing [~items] {i rebuilds} GTK's model, which is a real cost — it closes an open
+    popup and re-lays-out the button — so it happens only when the list actually differs
+    from the previous node's, never on an idle frame. Rebuilding also resets the widget's
+    selection (to item 0, GTK's autoselect again, not to "nothing"), so the library
+    re-applies [~selected] in the same frame and the drop-down is never left showing the
+    wrong item for a frame.
+
+    [~enable_search] adds a search entry to the popup and defaults to GTK's [false]; it is
+    worth having over a few dozen items and pointless over four. [~show_arrow] defaults to
+    GTK's [true]. *)
+val drop_down
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?enable_search:bool
+  -> ?show_arrow:bool
+  -> items:string list
+  -> selected:int
+  -> unit
   -> t
 
 (** A [GtkStackSwitcher]: a row of buttons, one per page of the {!stack} named by

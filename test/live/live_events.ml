@@ -39,6 +39,7 @@ let all_kinds : Kind.t list =
   ; (Node.scale ~orientation:Horizontal ~min:0. ~max:1. ~value:0. ()).kind
   ; (Node.progress_bar ~fraction:0. ()).kind
   ; (Node.spinner ~spinning:false ()).kind
+  ; (Node.level_bar ~value:0. ()).kind
   ; (Node.image (Icon_name "x")).kind
   ; (Node.picture (Filename "x")).kind
   ; (Node.separator ~orientation:Horizontal ()).kind
@@ -54,6 +55,7 @@ let all_kinds : Kind.t list =
   ; (Node.list_box ~selected:[] []).kind
   ; (Node.flow_box ~selected:[] []).kind
   ; (Node.notebook ~current_page:"a" []).kind
+  ; (Node.drop_down ~items:[] ~selected:(-1) ()).kind
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind

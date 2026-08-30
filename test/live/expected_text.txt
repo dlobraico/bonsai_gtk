@@ -70,3 +70,72 @@ a valid text after two refusals: "caf\195\169 latte" (reports ())
 latin-1 again: buffer "caf\195\169 latte" (reports ((bad/0"text is not valid UTF-8, which GTK refuses to insert *after* emptying the buffer; the write was refused and the buffer was left as it was")))
 latin-1 again, five idle frames later: buffer "caf\195\169 latte" (reports ())
 mounted with unstorable text: "" (reports ((born/0"text is not valid UTF-8, which GTK refuses to insert *after* emptying the buffer; the write was refused and the buffer was left as it was")))
+(GtkWindow (title (picker)) (css (background)) hidden
+ (children (GtkDropDown (items (60 90 120)) (selected 1))))
+selection alone: items=(60 90 120) selected=2 (same model: true, GTK emitted: 1, reached Bonsai: 0)
+nothing at all: items=(60 90 120) selected=2 (same model: true, GTK emitted: 0, reached Bonsai: 0)
+five idle frames: same model: true, selected=2, reached Bonsai: 0
+items changed: items=(60 90 120 144) selected=3 (same model: false, GTK emitted: 2, reached Bonsai: 0)
+items changed, selection unchanged: items=(50 70) selected=1 (same model: false, GTK emitted: 2, reached Bonsai: 0)
+after a drain: GTK emitted 5 in all, Bonsai heard 0
+user picked: selected=0 (reached Bonsai: 1)
+model declines: items=(50 70) selected=1 (same model: true, GTK emitted: 1, reached Bonsai: 0)
+mounted asking for none: selected=0 (reports ((none/0"~selected:-1 asks for nothing to be selected, but a GtkDropDown over a non-empty list keeps a selection (its GtkSingleSelection has autoselect set, and no GtkDropDown method turns that off); item 0 is still selected. Render ~items:[] for a drop-down with nothing in it, or select an item.")))
+mounted asking for none, five idle frames later: selected=0 (reports ())
+then item 1: selected=1 (reports ())
+then item 1, five idle frames later: selected=1 (reports ())
+asking for none again: selected=1 (reports ((none/0"~selected:-1 asks for nothing to be selected, but a GtkDropDown over a non-empty list keeps a selection (its GtkSingleSelection has autoselect set, and no GtkDropDown method turns that off); item 1 is still selected. Render ~items:[] for a drop-down with nothing in it, or select an item.")))
+asking for none again, five idle frames later: selected=1 (reports ())
+no items at all: selected=-1 (reports ())
+no items at all, five idle frames later: selected=-1 (reports ())
+items again: selected=0 (reports ((none/0"~selected:-1 asks for nothing to be selected, but a GtkDropDown over a non-empty list keeps a selection (its GtkSingleSelection has autoselect set, and no GtkDropDown method turns that off); item 0 is still selected. Render ~items:[] for a drop-down with nothing in it, or select an item.")))
+items again, five idle frames later: selected=0 (reports ())
+a fresh GtkStringList holds 2 references (1 is correct; 2 is the stub's extra ref_sink)
+after 500 get_model wrappers and a full major: items=(a b c) selected=0
+after a rebuild and a full major: items=(d e) selected=1
+(GtkWindow (title (levels)) (css (background)) hidden
+ (children
+  (GtkLevelBar (value 0.4) (css (horizontal continuous))
+   (children
+    (GtkGizmo
+     (children (GtkGizmo (css (high filled))) (GtkGizmo (css (empty)))))))))
+(GtkWindow (title (levels)) (css (background)) hidden
+ (children
+  (GtkLevelBar (value 3) (min 2) (max 10) (css (horizontal continuous))
+   (children
+    (GtkGizmo (children (GtkGizmo (css (filled))) (GtkGizmo (css (empty)))))))))
+(GtkWindow (title (levels)) (css (background)) hidden
+ (children
+  (GtkLevelBar (value 0.5) (css (horizontal continuous))
+   (children
+    (GtkGizmo
+     (children (GtkGizmo (css (high filled))) (GtkGizmo (css (empty)))))))))
+(GtkWindow (title (levels)) (css (background)) hidden
+ (children
+  (GtkLevelBar (value 0.5) (min 0.8) (css (horizontal continuous))
+   (children
+    (GtkGizmo
+     (children (GtkGizmo (css (high filled))) (GtkGizmo (css (empty)))))))))
+(GtkWindow (title (levels)) (css (background)) hidden
+ (children
+  (GtkLevelBar (value 3) (max 5) (mode discrete) inverted
+   (css (horizontal discrete))
+   (children
+    (GtkGizmo
+     (children (GtkGizmo (css (empty))) (GtkGizmo (css (empty)))
+      (GtkGizmo (css (filled))) (GtkGizmo (css (filled)))
+      (GtkGizmo (css (filled)))))))))
+raw widget, minimum written first: min=2 max=1 value=2
+raw widget, maximum written second: min=2 max=10 value=2 (the value the caller asked for is gone)
+driver, after mount: 0 (handler saw 0)
+driver, user picked 2, before the frame: 2
+driver, after the frame the choice armed: 2
+driver, user picked 3, before the frame: 3
+driver, after the frame the refusal armed: 2 (handler saw (2 3))
+driver, one more frame: 2 (handler saw 0 more)
+bench: settled, 4 items, showing 3 (refusals so far 0)
+bench: settled, 1000 items, showing 999 (refusals so far 0)
+bench: parked on a refused ~selected:(-1), 1000 items, showing 0 (refusals so far 1)
+bench: refusals reported across every frame above: 1
+bench: 20000 idle frames over 4 and over 1000 items, cost ratio under 5: true
+bench: an idle frame parked on a refused selection, against a settled one, under 5: true

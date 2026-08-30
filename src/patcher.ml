@@ -163,6 +163,10 @@ type interest =
   (* Carries nothing: what the patcher does for a text view is not to write anything but
      to say where a refused write happened, and only the widget is needed to ask. *)
   | Text_view
+  (* Carries nothing, for the same reason and about a different refusal: a drop-down whose
+     [~selected] is [-1] over a non-empty list is asking for a selection GTK will not
+     hold, and this is where that gets said. *)
+  | Drop_down
 
 let interest_of_kind (kind : Kind.t) =
   match kind with
@@ -174,6 +178,7 @@ let interest_of_kind (kind : Kind.t) =
   | Flow_box p -> Flow_box p
   | Notebook p -> Notebook p
   | Text_view _ -> Text_view
+  | Drop_down _ -> Drop_down
   | Label _
   | Button _
   | Toggle_button _
@@ -186,6 +191,7 @@ let interest_of_kind (kind : Kind.t) =
   | Scale _
   | Progress_bar _
   | Spinner _
+  | Level_bar _
   | Image _
   | Picture _
   | Separator _
@@ -224,6 +230,13 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
      on an idle frame, which are the three places a write can be refused. *)
   | Text_view ->
     Option.iter (W_text_view.take_report widget) ~f:(ctx.report ~node_path:path)
+  (* The second caller of [ctx.report], and the same shape as the first: not a fixup,
+     nothing deferred and nothing written -- [W_drop_down.reassert] has already decided
+     the write cannot land, and this is the one place holding both the widget and the path
+     of the node it came from. One ephemeron lookup per drop-down per frame, allocating
+     nothing unless there is something to say. *)
+  | Drop_down ->
+    Option.iter (W_drop_down.take_report widget) ~f:(ctx.report ~node_path:path)
   | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected.
@@ -303,7 +316,7 @@ let note_interest
      Queue.enqueue
        ctx.stack_claims
        { claim_path = path; give_up; take = name; claimant = widget }
-   | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ | Text_view -> ());
+   | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ | Text_view | Drop_down -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
@@ -483,6 +496,8 @@ and destroy ctx (live : live) =
   | Password_entry _
   | Search_entry _
   | Text_view _
+  | Drop_down _
+  | Level_bar _
   | Spin_button _
   | Scale _
   | Progress_bar _
@@ -540,8 +555,14 @@ and disarm (live : live) =
 and drop_stack_names ctx (live : live) =
   (match interest_of_kind live.node.kind with
    | Stack { name; _ } -> unregister_stack ctx ~name live.widget
-   | Nothing | Window | Stack_ref _ | List_box _ | Flow_box _ | Notebook _ | Text_view ->
-     ());
+   | Nothing
+   | Window
+   | Stack_ref _
+   | List_box _
+   | Flow_box _
+   | Notebook _
+   | Text_view
+   | Drop_down -> ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 
 and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =

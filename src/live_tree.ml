@@ -123,6 +123,37 @@ let selected_child_count (b : W.Flow_box.t) =
   go 0 0
 ;;
 
+(* The strings a [GtkDropDown] is showing, read back out of its model.
+
+   Worth the trouble rather than printing the button and leaving the contents invisible:
+   without this a golden could not tell a drop-down whose model was rebuilt from one whose
+   model was not, which is the claim [test/live/live_text.ml] is making.
+
+   Three calls, each checked against its stub. [get_model] is transfer-none and its stub
+   [g_object_ref_sink]s before wrapping, which is the correct pairing for the wrapper's
+   unconditional unref (a [GListModel] is not floating, so the sink is a plain ref). Each
+   item comes from [g_list_model_get_object], which is transfer-{i full} and whose stub
+   correctly does {i not} ref. [GtkStringObject.get_string] is transfer-none and copies
+   into OCaml. Nothing here is the [get_selected_rows] shape that cost Task 6 a segfault
+   -- and note which call is missing: [gtk_drop_down_get_selected_item] would be the
+   obvious way to read the current item, and its stub both fails to ref a transfer-none
+   return {i and} returns a bare custom block where the [.mli] promises an [option]. It is
+   unusable; the position plus this list says the same thing safely. *)
+let drop_down_items (d : W.Drop_down.t) =
+  match W.Drop_down.get_model d with
+  | None -> []
+  | Some model ->
+    List.init (List_model.get_n_items model) ~f:(fun i ->
+      match List_model.get_object model i with
+      | None -> "<none>"
+      | Some o -> W.String_object.get_string (cast o))
+;;
+
+let level_bar_mode_name : Gtk_enums.levelbarmode -> string = function
+  | `CONTINUOUS -> "continuous"
+  | `DISCRETE -> "discrete"
+;;
+
 let selection_mode_name : Gtk_enums.selectionmode -> string = function
   | `NONE -> "none"
   | `SINGLE -> "single"
@@ -604,6 +635,33 @@ let rec dump (w : Widget.t) : Sexp.t =
                     | `RIGHT -> "right")
                ]
            ])
+     (* [items] and [selected] are printed unconditionally, like a notebook's [pages] and
+        [current-page]: they are what the node asked for rather than GTK defaults, and a
+        dump that omitted them could not show a model rebuild landing (or a controlled
+        write failing to). [selected] prints as [()] for "nothing", which is the same
+        nothing a stack prints as [(visible ())] -- a dump is the wrong place to make a
+        reader know that 4294967295 is not an index. *)
+     | "GtkDropDown" ->
+       let d : W.Drop_down.t = cast w in
+       [ [%sexp `items (drop_down_items d : string list)]
+         (* Through [W_drop_down.of_gtk], not a comparison written again here: the
+            [-1]/[GTK_INVALID_LIST_POSITION] translation lives in exactly two functions
+            and this is a reader of one of them. *)
+       ; (match W_drop_down.of_gtk (W.Drop_down.get_selected d) with
+          | -1 -> Sexp.List [ Atom "selected"; List [] ]
+          | i -> Sexp.List [ Atom "selected"; Atom (Int.to_string i) ])
+       ]
+       @ flag_prop "enable-search" (W.Drop_down.get_enable_search d)
+       @ if W.Drop_down.get_show_arrow d then [] else [ Sexp.Atom "no-arrow" ]
+     | "GtkLevelBar" ->
+       let b : W.Level_bar.t = cast w in
+       [ Sexp.List [ Atom "value"; Atom (sprintf "%g" (W.Level_bar.get_value b)) ] ]
+       @ float_prop "min" (W.Level_bar.get_min_value b) ~default:0.
+       @ float_prop "max" (W.Level_bar.get_max_value b) ~default:1.
+       @ (match W.Level_bar.get_mode b with
+          | `CONTINUOUS -> []
+          | m -> [ Sexp.List [ Atom "mode"; Atom (level_bar_mode_name m) ] ])
+       @ flag_prop "inverted" (W.Level_bar.get_inverted b)
      | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])
@@ -615,9 +673,19 @@ let rec dump (w : Widget.t) : Sexp.t =
     @ if Widget.get_sensitive w then [] else [ Sexp.Atom "insensitive" ]
   in
   let kids =
-    match widget_children w with
-    | [] -> []
-    | kids -> [ Sexp.List (Sexp.Atom "children" :: List.map kids ~f:dump) ]
+    (* One kind's children are not printed, and it is the only one: a [GtkDropDown]'s
+       twenty-odd internal widgets are a toggle button, a popover, a search entry and a
+       [GtkListView] whose [GtkListItemWidget] children come and go with the item count
+       and with what has been realized. None of that is the application's tree, and a
+       golden holding it would churn on an item being added. What the drop-down actually
+       contains is printed above, from its model, which is the honest read anyway.
+
+       Every other widget's internals stay in -- an entry's [GtkText], a progress bar's
+       gizmos, a scrolled window's scrollbars -- because they are few, stable, and
+       occasionally the thing under test. *)
+    match String.equal ty "GtkDropDown", widget_children w with
+    | true, _ | _, [] -> []
+    | false, kids -> [ Sexp.List (Sexp.Atom "children" :: List.map kids ~f:dump) ]
   in
   Sexp.List (Sexp.Atom ty :: (props @ kids))
 ;;

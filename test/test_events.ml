@@ -25,6 +25,7 @@ let all_kinds : Kind.t list =
   ; (Node.scale ~orientation:Horizontal ~min:0. ~max:1. ~value:0. ()).kind
   ; (Node.progress_bar ~fraction:0. ()).kind
   ; (Node.spinner ~spinning:false ()).kind
+  ; (Node.level_bar ~value:0. ()).kind
   ; (Node.image (Icon_name "x")).kind
   ; (Node.picture (Filename "x")).kind
   ; (Node.separator ~orientation:Horizontal ()).kind
@@ -40,6 +41,7 @@ let all_kinds : Kind.t list =
   ; (Node.list_box ~selected:[] []).kind
   ; (Node.flow_box ~selected:[] []).kind
   ; (Node.notebook ~current_page:"a" []).kind
+  ; (Node.drop_down ~items:[] ~selected:(-1) ()).kind
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind
@@ -72,6 +74,7 @@ let%expect_test "every kind's event attrs" =
     (Scale (On_value_changed))
     (ProgressBar ())
     (Spinner ())
+    (LevelBar ())
     (Image ())
     (Picture ())
     (Separator ())
@@ -87,6 +90,7 @@ let%expect_test "every kind's event attrs" =
     (ListBox (On_row_activated On_selected_rows_changed))
     (FlowBox (On_child_activated On_selected_children_changed))
     (Notebook (On_page_changed))
+    (DropDown (On_selected_changed))
     (CenterBox ())
     (Paned (On_position_changed))
     (Overlay ())
@@ -162,8 +166,9 @@ let%expect_test "is_event over every name" =
      (On_clicked On_toggled On_changed On_activate On_search_changed
       On_value_changed On_expanded_changed On_revealed On_position_changed
       On_visible_child_changed On_row_activated On_selected_rows_changed
-      On_child_activated On_selected_children_changed On_page_changed On_click
-      On_focus_enter On_focus_leave On_key_pressed On_key_released))
+      On_child_activated On_selected_children_changed On_page_changed
+      On_selected_changed On_click On_focus_enter On_focus_leave On_key_pressed
+      On_key_released))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect

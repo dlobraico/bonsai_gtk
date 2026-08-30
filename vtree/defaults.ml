@@ -200,3 +200,23 @@ module Paned = struct
   let shrink_start = false
   let shrink_end = false
 end
+
+(* GTK's own, read off a fresh [GtkDropDown] rather than out of the docs. [show_arrow] is
+   the one worth stating: it is [true], so a drop-down that never mentions it draws the
+   arrow, and [~show_arrow:false] is for the case a drop-down is styled as a plain button.
+   [enable_search] is [false], which is what a list of three modes wants. *)
+module Drop_down = struct
+  let enable_search = false
+  let show_arrow = true
+end
+
+(* GTK's own, read off a fresh [GtkLevelBar]. All four are unsurprising -- a bar runs from
+   0 to 1, draws one continuous block, and fills from the start edge -- which is worth
+   saying because the two kinds either side of this one in [Kind.t] both have a default
+   that is not what a reader guesses. *)
+module Level_bar = struct
+  let min = 0.
+  let max = 1.
+  let mode = Level_bar_mode.Continuous
+  let inverted = false
+end

@@ -43,6 +43,7 @@ module Name = struct
       | On_child_activated
       | On_selected_children_changed
       | On_page_changed
+      | On_selected_changed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
          output reorders. *)
       | On_click
@@ -71,6 +72,7 @@ module Name = struct
       | On_child_activated
       | On_selected_children_changed
       | On_page_changed
+      | On_selected_changed
       (* The controller attrs are events too -- they carry a handler and a widget that
          cannot deliver one is a mistake worth a diagnostic. What they are not is any
          impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
@@ -192,6 +194,18 @@ module Private = struct
        [switch-page] hands GTK's callback the page's {i content widget} and an index that
        moves, and the key is the only name the application has for either. *)
     | On_page_changed of Key.t Handler.t
+    (* The position of the item a [GtkDropDown] now shows, and [-1] for none -- the
+       vtree's spelling of GTK's [GTK_INVALID_LIST_POSITION], translated at the boundary
+       and nowhere else (see [src/widgets/w_drop_down.ml]).
+
+       An index rather than a name, which makes it the one container-ish handler in this
+       list that does not carry a {!Key.t}. A drop-down's items are a {i prop} of the
+       node, not children, so the handler already holds the list the index points into and
+       can take the string out of it; a list box's rows are children, and their keys are
+       the only name the application has for them. Carrying the string as well would also
+       make the attr claim more than GTK says: [notify::selected] reports a position and
+       nothing else. *)
+    | On_selected_changed of int Handler.t
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
@@ -277,6 +291,7 @@ let name = function
   | On_child_activated _ -> Some On_child_activated
   | On_selected_children_changed _ -> Some On_selected_children_changed
   | On_page_changed _ -> Some On_page_changed
+  | On_selected_changed _ -> Some On_selected_changed
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
@@ -326,6 +341,7 @@ let rec equal a b =
   | On_child_activated a, On_child_activated b -> Handler.equal a b
   | On_selected_children_changed a, On_selected_children_changed b -> Handler.equal a b
   | On_page_changed a, On_page_changed b -> Handler.equal a b
+  | On_selected_changed a, On_selected_changed b -> Handler.equal a b
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
@@ -409,6 +425,7 @@ let on_selected_rows_changed f = On_selected_rows_changed f
 let on_child_activated f = On_child_activated f
 let on_selected_children_changed f = On_selected_children_changed f
 let on_page_changed f = On_page_changed f
+let on_selected_changed f = On_selected_changed f
 
 let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }

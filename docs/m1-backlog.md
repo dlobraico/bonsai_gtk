@@ -418,6 +418,51 @@ Do not "fix" these when an expected file surprises you:
   That is the number to weigh when deciding how urgent the generator patch is; it is worse
   than the idle-frame figure suggests, not better. `Live_tree.dump`'s `GtkTextView` arm
   reads the buffer too, and is a test-only path.
+- **`g_object_ref_sink` on a constructor's return leaks the object, once per call** — the
+  mirror image of the `get_selected_rows` defect above, and Task 10 walked into it.
+  `ml_gtk_string_list_new` (`ml_string_list_gen.c`) ends
+  `GtkStringList *obj = gtk_string_list_new (c_arg1); if (obj) g_object_ref_sink (obj);`,
+  which is right for every *widget* constructor beside it and wrong here: `GtkStringList`
+  descends from `GObject`, not `GInitiallyUnowned`, so it is never floating and
+  `g_object_ref_sink` degenerates to `g_object_ref`. The constructor already transferred
+  ownership, so the wrapper holds two references and its finaliser drops one. Measured:
+  `Gobject.get_ref_count` on a fresh `String_list.new_` is **2**, and
+  `test/live/live_text.ml` prints it, so the fix shows up in that golden when it lands.
+
+  `w_drop_down.ml` rebuilds its model with `String_list.new_`, so an application leaks one
+  `GtkStringList` (and the strings it owns) per *items change* — never per frame, which is
+  what keeps this a leak rather than a crisis. The create path avoids it by going through
+  `Drop_down.new_from_strings`, which builds the model inside GTK.
+
+  **Generator fix, not a hand patch**: the rule is `ref_sink` iff the type is
+  `GInitiallyUnowned` *or* the transfer is none/floating, and the generator currently
+  applies it to every constructor. `GtkStringObject`, `GtkStringFilter`, `GtkStringSorter`,
+  every `GListStore`-shaped class and every non-widget `*_new` in the tree is the same
+  shape. Worth doing beside the `Val_GList_with` sweep, which is the same audit from the
+  other end.
+- **`gtk_drop_down_get_selected_item`'s stub is broken twice over** and is unusable.
+  `ml_drop_down_gen.c` ends `CAMLreturn (ml_gobject_val_of_ext (result));` while the `.mli`
+  declares `t -> [ \`object_ ] Gobject.obj option`. So (a) the transfer-none return is
+  never sunk — the `get_selected_rows` bug again, one unbalanced unref per call — and
+  (b) the value returned is a bare custom block where OCaml expects an `option`, which
+  reads as `Some` with the raw pointer word as its payload; a NULL return calls
+  `caml_failwith` rather than answering `None`. The `_option` variant
+  (`ml_gobject_val_of_ext_option`) exists two functions away in `wrappers.c` and is what
+  the site wants, after a sink.
+
+  Nothing in this library calls it: `w_drop_down.ml` and `Live_tree` read the position with
+  `get_selected` and the strings with `List_model.get_object` (transfer-full, correctly not
+  sunk) plus `String_object.get_string` (transfer-none, correctly copied). Worth fixing
+  because it is the *obvious* call for "what is selected", so the next person to want it
+  will reach for it.
+- **`gtk_drop_down_get_expression` answers `None` on a drop-down that has one**, and its
+  stub `g_object_ref_sink`s a `GtkExpression`, which is not a `GObject` at all (it has its
+  own `gtk_expression_ref`/`unref`). Measured: `Drop_down.new_from_strings` is documented
+  to install a property expression, and `get_expression` on its result is `None` on GTK
+  4.22 through this binding. Nothing here calls it, but it means the library cannot assert
+  that `~enable_search:true` will actually filter — the expression is what the popup's
+  filter reads, and this is the only way to see whether one is installed. Same audit as the
+  two above.
 - **Handler ids come from one global counter, not a per-instance one** (measured on this
   GLib: two handlers on two different `GtkTextBuffer`s and one on a `GtkTextView` got
   118/119/120). So `signals.mli`'s worse case for disconnecting a handler id from the

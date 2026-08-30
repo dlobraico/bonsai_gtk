@@ -134,6 +134,19 @@ type progress_bar_props =
 
 type spinner_props = { spinning : bool } [@@deriving sexp_of, equal]
 
+(* The other bar. A [GtkLevelBar] has a range rather than a fraction, so [value] is in the
+   application's own units; [min] and [max] are optional and default to GTK's 0-1, unlike
+   the two range widgets above, because a level bar is an output that nothing reads back
+   and 0-1 is the fraction a caller who names no range wants. *)
+type level_bar_props =
+  { value : float
+  ; min : float [@sexp_drop_if Float.equal Defaults.Level_bar.min]
+  ; max : float [@sexp_drop_if Float.equal Defaults.Level_bar.max]
+  ; mode : Level_bar_mode.t [@sexp_drop_if Level_bar_mode.equal Defaults.Level_bar.mode]
+  ; inverted : bool [@sexp_drop_if Bool.equal Defaults.Level_bar.inverted]
+  }
+[@@deriving sexp_of, equal]
+
 (* [Image] and [Picture] carry their source as a closed variant rather than as separate
    optional props: the sources are mutually exclusive and GTK's setters do not compose, so
    a variant makes the exclusivity a type error and gives [equal_props] one line. *)
@@ -327,6 +340,24 @@ type notebook_props =
   }
 [@@deriving sexp_of, equal]
 
+(* The drop-down's whole content is [items] and its selection is [selected], a position
+   into that list with [-1] for none. Both are required labelled arguments and so carry no
+   [@sexp_drop_if]; the other two are GTK's own.
+
+   Items are props rather than children -- they are strings in a list model GTK owns, not
+   widgets -- which is what makes this the one controlled selection in the library that
+   lives in [Widget_impl.reassert] rather than in the fixup queue. See [Node.drop_down].
+   The [items] comparison the derived [equal] performs is also what decides whether the
+   GTK model is rebuilt at all; [w_drop_down.ml] pays for a whole-model replacement only
+   when it really moved. *)
+type drop_down_props =
+  { items : string list
+  ; selected : int
+  ; enable_search : bool [@sexp_drop_if Bool.equal Defaults.Drop_down.enable_search]
+  ; show_arrow : bool [@sexp_drop_if Bool.equal Defaults.Drop_down.show_arrow]
+  }
+[@@deriving sexp_of, equal]
+
 (* Shared by [Stack_switcher] and [Stack_sidebar], which differ only in which GTK widget
    they are: each names the [Stack] it drives and holds nothing else. *)
 type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
@@ -351,6 +382,7 @@ type t =
   | Scale of scale_props
   | Progress_bar of progress_bar_props
   | Spinner of spinner_props
+  | Level_bar of level_bar_props
   | Image of image_props
   | Picture of picture_props
   | Separator of separator_props
@@ -366,6 +398,7 @@ type t =
   | List_box of list_box_props
   | Flow_box of flow_box_props
   | Notebook of notebook_props
+  | Drop_down of drop_down_props
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
@@ -377,10 +410,21 @@ type t =
    [test/test_events.ml] and [test/live/live_events.ml]. *)
 [@@deriving sexp_of, variants]
 
-(** Same constructor (and, for [Native], same [name]). Props ignored. *)
+(** Same constructor (and, for [Native], same [name]). Props ignored.
+
+    Answered by comparing {!name}, which is exhaustive with no wildcard — so a kind added
+    without a decision there is a compile error and this function cannot silently answer
+    [false] against itself. That failure is the expensive one: the patcher reads this as
+    "is this the same widget", so a kind it got wrong is destroyed and remounted on every
+    frame that touches it. *)
 val same_kind : t -> t -> bool
 
 val name : t -> string
 
-(** Structural on props; [Native] payloads compare physically. *)
+(** Structural on props; [Native] payloads compare physically.
+
+    Two different kinds are never equal. Two of the {i same} kind with no arm in the
+    implementation raise instead of answering [false]: it is the one wildcard the variant
+    is too wide to write out, and a missing arm there would otherwise make every patch of
+    that kind look like a prop change forever. *)
 val equal_props : t -> t -> bool

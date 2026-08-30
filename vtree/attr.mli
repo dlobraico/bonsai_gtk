@@ -52,6 +52,7 @@ module Name : sig
     | On_child_activated
     | On_selected_children_changed
     | On_page_changed
+    | On_selected_changed
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -148,6 +149,7 @@ module Private : sig
     | On_child_activated of Key.t Handler.t
     | On_selected_children_changed of Key.t list Handler.t
     | On_page_changed of Key.t Handler.t
+    | On_selected_changed of int Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -509,6 +511,31 @@ val on_selected_children_changed : (Key.t list -> unit Ui_effect.t) -> t
     page on the next frame. Attaching it to a widget that emits no such signal raises
     [Invalid_argument] when the node is mounted or patched. *)
 val on_page_changed : (Key.t -> unit Ui_effect.t) -> t
+
+(** Fires when a {!Node.drop_down}'s selection changes, carrying the {i index} of the item
+    now showing — or [-1] when nothing is selected, which is the same number
+    [Node.drop_down]'s [~selected] takes and the vtree's only spelling of GTK's
+    [GTK_INVALID_LIST_POSITION].
+
+    An index rather than a key or a string, and it is the one handler in the container
+    family that carries no name. A drop-down's items are a {i prop} of the node rather
+    than children, so the handler already holds the list the index points into and takes
+    the string out of it — [List.nth items i] — where a list box's rows are children whose
+    keys are the only name the application has for them. It is also all GTK says:
+    [GtkDropDown] has no [selected] signal at all, only [notify::selected], whose payload
+    is the position.
+
+    That is worth knowing for a second reason: [notify::] fires for {i every} change of
+    the property, the library's own writes included. The reentrancy guard drops the ones a
+    patch provokes — which is every write this library makes, including the one that
+    re-applies the selection after the model's items changed and GTK reset it — so a
+    handler sees the user's choices and nothing else.
+
+    [~selected] is {i controlled} (spec §6.5), so a drop-down that carries no
+    [on_selected_changed] — or whose model declines the change — snaps back to the model's
+    index on the next frame. Attaching it to a widget that emits no such signal raises
+    [Invalid_argument] when the node is mounted or patched. *)
+val on_selected_changed : (int -> unit Ui_effect.t) -> t
 
 (** A [GtkGestureClick] on this widget.
 

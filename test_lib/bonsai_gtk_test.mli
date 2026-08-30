@@ -154,6 +154,23 @@ module Action : sig
         a model that mishandles a key it did not expect. What a live test adds is the
         other half: [test/live/live_lists.ml] drives the current page through the real
         widget and reads the key back through the same table this handler is fed from. *)
+    | Set_selected of string * int
+    (** test_id of a [drop_down] carrying [Attr.on_selected_changed], and the {i index} of
+        the item the user chose — or [-1] for none, the same number [Node.drop_down]'s
+        [~selected] takes. Fires that handler with exactly that index.
+
+        The one action carrying an index rather than a key, because a drop-down's items
+        are props rather than children and a position is the only name an item has. Like
+        the two activate actions it checks the node's {i kind} and fails naming it.
+
+        Nothing else about the node is consulted, as ever — neither [~items] nor
+        [~selected]. Declining is the interesting case and it needs exactly that: a model
+        that answers a [Set_selected 2] by re-rendering [~selected:0] is the headless
+        statement of what [test/live/live_text.ml] proves against the real widget, where
+        [Widget_impl.reassert] puts the drop-down back. The index is not range-checked
+        either: [Node.drop_down] has already checked the props this handle is looking at,
+        so what a test can reach here is its own handler's behaviour, which is its
+        business. *)
   [@@deriving sexp_of]
 end
 
