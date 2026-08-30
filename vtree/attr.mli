@@ -371,16 +371,17 @@ val on_visible_child_changed : (string -> unit Ui_effect.t) -> t
     README's Limitations. *)
 val on_click : ?button:int -> ?phase:Phase.t -> Click_event.t Handler.t -> t
 
+(** Fires when focus moves {i into} this widget or any of its children -- which is the
+    useful sense for a composite widget like a [GtkSearchEntry], whose own [has_focus] is
+    always false because its inner [GtkText] holds the focus.
+
+    A [GtkEventControllerFocus], which this attr shares with {!on_focus_leave}: a widget
+    carrying either pays for one controller, and it lives exactly as long as the last of
+    the two attrs does. Like {!on_click}, legal on any node. *)
 val on_focus_enter : unit Handler.t -> t
 
-(** A [GtkEventControllerFocus] on this widget. [on_focus_enter] fires when focus moves
-    into the widget {i or any of its children} -- which is the useful sense for a
-    composite widget like a [GtkSearchEntry], whose own [has_focus] is always false
-    because its inner [GtkText] holds the focus.
-
-    Both are attached to one controller, so a widget carrying either pays for one. Like
-    {!on_click} they are legal on any node, and the controller lives exactly as long as
-    the last of the two attrs does. *)
+(** Fires when focus leaves this widget and all of its children. The other half of
+    {!on_focus_enter}, on the same controller and the same terms. *)
 val on_focus_leave : unit Handler.t -> t
 
 val many : t list -> t

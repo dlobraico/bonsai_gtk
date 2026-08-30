@@ -14,7 +14,6 @@ module Gtk_enums = Ocgtk_gtk.Gtk_enums
    remember which. *)
 module Gdk_enums = Ocgtk_gdk.Gdk_enums
 module Gdk_constants = Ocgtk_gdk.Gdk_constants
-module Gio = Ocgtk_gio.Gio
 module W = Gtk.Wrappers
 module Widget = W.Widget
 module Gobject = Gobject

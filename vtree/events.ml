@@ -30,17 +30,37 @@ let for_kind : Kind.t -> Attr.Name.t list = function
     []
 ;;
 
-(* The controller attrs are legal on every kind: they are not any impl's signal, they are
-   a [GtkEventController] the runtime attaches to whatever widget carries the attr. So
-   [is_supported] short-circuits on them rather than consulting [for_kind], and no impl
-   may declare one in its [Widget_impl.signals] -- [test/live/live_events.ml] asserts
-   that, because an impl that did would connect a second handler nobody removes.
+(* The controller families, and which attr names belong to each.
 
-   Exhaustive on purpose, like [Attr.Name.is_event]: Task 5's key attrs are controller
-   attrs too, and a name added to the wrong branch here would be rejected on every kind
-   (or accepted on all of them) with nothing to say why. *)
-let is_controller_attr : Attr.Name.t -> bool = function
-  | On_click | On_focus_enter | On_focus_leave -> true
+   One table, exhaustive over [Attr.Name.t] with no wildcard, and it is the single point
+   of truth for three separate things that would otherwise drift:
+
+   - [is_controller_attr] is derived from it, so [Events.is_supported] admits exactly the
+     names that have a family;
+   - [Signals.require_slots] skips exactly the same names, because their slots belong to
+     [Controllers] rather than to the widget;
+   - [Controllers.update] dispatches on {!Family.t} with an exhaustive match, so a family
+     added here without a controller to attach it is a compile error rather than an attr
+     that is accepted on every node and wired to nothing.
+
+   That last one is the reason this is a table rather than a predicate. Without it, a task
+   adding a key controller could add the names to a predicate (which it must, or nothing
+   compiles), have [require_specs] accept them, [require_slots] skip them,
+   [live_events.ml] pass (no impl declares them) -- and the handler would never run, on
+   any widget, with no diagnostic anywhere. That is exactly the silent inertness
+   [require_specs] exists to prevent, reintroduced through the door the controller
+   carve-out opens. Task 5 adds [Key] to {!Family.t} and its names here, and the compiler
+   asks for the rest. *)
+module Family = struct
+  type t =
+    | Click
+    | Focus
+  [@@deriving sexp_of, equal, compare, enumerate]
+end
+
+let controller_family : Attr.Name.t -> Family.t option = function
+  | On_click -> Some Click
+  | On_focus_enter | On_focus_leave -> Some Focus
   | Margin_start
   | Margin_end
   | Margin_top
@@ -72,7 +92,23 @@ let is_controller_attr : Attr.Name.t -> bool = function
   | On_expanded_changed
   | On_revealed
   | On_position_changed
-  | On_visible_child_changed -> false
+  | On_visible_child_changed -> None
+;;
+
+(* The controller attrs are legal on every kind: they are not any impl's signal, they are
+   a [GtkEventController] the runtime attaches to whatever widget carries the attr. So
+   [is_supported] short-circuits on them rather than consulting [for_kind], and no impl
+   may declare one in its [Widget_impl.signals] -- [test/live/live_events.ml] asserts
+   that, because an impl that did would connect a second handler nobody removes. *)
+let is_controller_attr name = Option.is_some (controller_family name)
+
+(* In [Attr.Name] order, and derived rather than written again: [Controllers] asks this
+   which attrs decide whether a family's controller should exist at all. *)
+let family_attrs family =
+  List.filter Attr.Name.all ~f:(fun name ->
+    match controller_family name with
+    | Some f -> Family.equal f family
+    | None -> false)
 ;;
 
 let is_supported kind name =

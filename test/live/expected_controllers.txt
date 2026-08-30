@@ -1,3 +1,11 @@
+before gc: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=3
+after gc: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=3
+after gc: button=2 phase=BUBBLE
+gc regression done
+On_click -> family=(Click) attached=(bonsai_gtk.click)
+On_focus_enter -> family=(Focus) attached=(bonsai_gtk.focus)
+On_focus_leave -> family=(Focus) attached=(bonsai_gtk.focus)
+every controller attr attaches a controller
 (GtkWindow (title (controllers)) (css (background))
  (children
   (GtkBox (spacing 0) (css (vertical))
@@ -6,17 +14,19 @@
      (children (GtkLabel (text target))))
     (GtkButton (label (other)) (css (text-button))
      (children (GtkLabel (text other))))))))
-mounted target: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2
-mounted other: gtk=() bonsai=0
+mounted target: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5
+mounted other: gtk=() bonsai=0 total=3
 mounted gesture: button=2 phase=CAPTURE
 focus into target: focus-enter
 focus to other: focus-leave
 focus during a patch: 
 focus away again: focus-leave
-click attr dropped: gtk=(bonsai_gtk.focus) bonsai=1
-focus attrs dropped, click back: gtk=(bonsai_gtk.click) bonsai=1
+click attr dropped: gtk=(bonsai_gtk.focus) bonsai=1 total=4
+on_focus_enter alone dropped: gtk=(bonsai_gtk.focus) bonsai=1 total=4
+focus in and out with only on_focus_leave: focus-leave
+focus attrs dropped, click back: gtk=(bonsai_gtk.click) bonsai=1 total=4
 focus after its attrs were dropped: 
-both attrs back: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2
+both attrs back: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5
 re-added gesture: button=2 phase=CAPTURE
 focus after the attrs came back: focus-enter
 (GtkWindow (title (controllers)) (css (background))
@@ -27,5 +37,6 @@ focus after the attrs came back: focus-enter
      (children (GtkLabel (text target))))
     (GtkButton (label (other)) (css (text-button))
      (children (GtkLabel (text other))))))))
-after destroy: gtk=0
+before destroy: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5
+after destroy: gtk=() total=3
 destroyed cleanly

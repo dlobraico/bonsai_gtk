@@ -36,24 +36,38 @@ let cast = Bonsai_gtk.Private.Gtk_import.cast
    [GtkEventControllerKey] and a [GtkShortcutController] of its own, so "the widget has a
    GtkGestureClick" is true before this library does anything, and the total would move
    the day a GTK release changes how many a button has. *)
-let ours w =
+let all_controllers w =
   let model = W.Widget.observe_controllers w in
   List.init (List_model.get_n_items model) ~f:(List_model.get_object model)
   |> List.filter_opt
   |> List.map ~f:cast
-  |> List.filter ~f:Controllers.is_ours
+;;
+
+let ours w = List.filter (all_controllers w) ~f:Controllers.is_ours
+
+let names w =
+  List.map (ours w) ~f:(fun c ->
+    Option.value ~default:"?" (W.Event_controller.get_name c))
 ;;
 
 (* GTK's own answer beside this library's bookkeeping, compared on every line: a
    controller [Controllers] forgot to remove would show up as a difference between them,
    and a controller it removed from the wrong widget as a difference in [gtk]. *)
+(* GTK's own answer beside this library's bookkeeping, compared on every line, plus the
+   raw total. [total] earns its place on one line in particular: [after destroy] has no
+   [bonsai=] counterpart to disagree with it, so a bare name-filtered count there would
+   read zero both when the controllers were removed and when their *names* merely became
+   unreadable -- which is exactly the failure the previous [set_static_name] bug produced.
+   The total does not go through [get_name] at all, so the two together say which
+   happened. It also puts the [GtkButton]'s own three controllers in the golden, which is
+   the whole reason the filter exists. *)
 let controllers label (live : P.live) w =
   printf
-    !"%s: gtk=%{sexp: string list} bonsai=%d\n"
+    !"%s: gtk=%{sexp: string list} bonsai=%d total=%d\n"
     label
-    (List.map (ours w) ~f:(fun c ->
-       Option.value ~default:"?" (W.Event_controller.get_name c)))
+    (names w)
     (Controllers.attached_count live.controllers)
+    (List.length (all_controllers w))
 ;;
 
 (* [~button] and [~phase] are read back off the live [GtkGestureClick] rather than
@@ -97,8 +111,126 @@ let pump () =
   go 50
 ;;
 
+(* Once, before anything below: every block here needs GTK initialised, and the regression
+   case has to run before the assertions that depend on the thing it pins. *)
+let () = ignore (Ocgtk_gtk.GMain.init () : string array)
+
+(* Regression for the [set_static_name] bug (review C1).
+
+   [gtk_event_controller_set_static_name] stores the pointer it is handed
+   {i without copying}, so naming a controller with a runtime-computed OCaml string left
+   GTK pointing into the heap: after a collection [get_name] read garbage, and after a
+   compaction that returned the chunk to the OS it was a read of unmapped memory --
+   reachable from GTK Inspector on any application built with this library.
+
+   It also hollowed out this whole file. Every [gtk=] line above is [observe_controllers]
+   filtered by [Controllers.is_ours], which is that same read: under allocation pressure
+   the filter starts rejecting our own controllers, so the lines with a [bonsai=] beside
+   them go flaky-red with no bug behind them, and [after destroy] passes {i vacuously} --
+   it cannot tell "removed" from "unnameable". So this runs before the assertions that
+   depend on it.
+
+   The churn is deliberate: short-lived allocations force minor collections, and
+   [Gc.compact] moves and can release what survives, which is what turns a stale pointer
+   from "wrong bytes" into "freed memory". *)
 let () =
-  ignore (Ocgtk_gtk.GMain.init () : string array);
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  (* A label, not a button: a label emits no signal at all, so a controller on one can
+     only have come from the attr. *)
+  let live =
+    P.mount
+      ctx
+      ~path:"gc"
+      ~is_root:true
+      (Node.label
+         ~attrs:
+           [ Attr.on_click ~button:2 (fun _ -> Ui_effect.Ignore)
+           ; Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
+           ]
+         "x")
+  in
+  P.run_fixups ctx;
+  controllers "before gc" live live.widget;
+  for _ = 1 to 20 do
+    for _ = 1 to 100_000 do
+      ignore (Sys.opaque_identity (Bytes.create 8) : Bytes.t)
+    done;
+    Gc.compact ()
+  done;
+  (* The names must read back exactly as they did, and the gesture's own properties with
+     them -- a stale [priv->name] and a stale anything else fail the same way. *)
+  controllers "after gc" live live.widget;
+  click_gesture_props "after gc" live.widget;
+  P.destroy ctx live;
+  printf "gc regression done\n"
+;;
+
+(* Every controller attr [Events] admits is one [Controllers] actually attaches (review
+   I1).
+
+   [Events.controller_family] is what makes these attrs legal on every kind, skipped by
+   [Signals.require_slots] and connected by no widget impl. The exhaustive match in
+   [Controllers.update] is what stops a family being named there and attached by nothing;
+   this is the other half, and it is what catches a family that is dispatched but wired
+   {i wrongly} -- a [sync] whose [wanted] reads the empty attr set, say, which the
+   compiler cannot see.
+
+   The row list is hand-written because there is no way to derive a *value* per
+   constructor of [Attr.Name.t]; the assertion below is what stops it going stale, exactly
+   as [live_events.ml]'s [all_kinds] count does for [Kind.t]. *)
+let each_controller_attr : (Attr.Name.t * Attr.t) list =
+  [ On_click, Attr.on_click (fun _ -> Ui_effect.Ignore)
+  ; On_focus_enter, Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
+  ; On_focus_leave, Attr.on_focus_leave (fun () -> Ui_effect.Ignore)
+  ]
+;;
+
+let () =
+  assert (
+    List.equal
+      Attr.Name.equal
+      (List.map each_controller_attr ~f:fst)
+      (List.filter Attr.Name.all ~f:Events.is_controller_attr))
+;;
+
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+  in
+  List.iter each_controller_attr ~f:(fun (name, attr) ->
+    (* A label again: it emits nothing, so anything attached came from the attr, and the
+       node is accepted at all only because controller attrs are legal on every kind. *)
+    let live = P.mount ctx ~path:"sweep" ~is_root:true (Node.label ~attrs:[ attr ] "x") in
+    P.run_fixups ctx;
+    printf
+      !"%{sexp: Attr.Name.t} -> family=%{sexp: Events.Family.t option} attached=%{sexp: \
+        string list}\n"
+      name
+      (Events.controller_family name)
+      (names live.widget);
+    P.destroy ctx live);
+  printf "every controller attr attaches a controller\n"
+;;
+
+let () =
   let events = ref [] in
   let record s = events := s :: !events in
   let drain label =
@@ -123,7 +255,7 @@ let () =
      focus to. The gesture is on the button, not on the window, so the counts below show
      where the controller went -- [Live_tree] cannot see controllers, so what this test
      asserts about them is their presence on the right widget and their behaviour. *)
-  let view ~with_click ~with_focus =
+  let view ?(with_focus_enter = true) ~with_click ~with_focus () =
     Node.window
       ~title:"controllers"
       (Node.box
@@ -131,7 +263,7 @@ let () =
          [ Node.button
              ~attrs:
                (List.filter_opt
-                  [ (if with_focus
+                  [ (if with_focus && with_focus_enter
                      then
                        Some
                          (Attr.on_focus_enter (fun () ->
@@ -167,7 +299,7 @@ let () =
          ])
   in
   let live =
-    P.mount ctx ~path:"root" ~is_root:true (view ~with_click:true ~with_focus:true)
+    P.mount ctx ~path:"root" ~is_root:true (view ~with_click:true ~with_focus:true ())
   in
   P.run_fixups ctx;
   print_s (Live_tree.dump live.widget);
@@ -206,10 +338,15 @@ let () =
         ~path:"root"
         ~is_root:true
         live
-        (view ~with_click:false ~with_focus:true))
+        (view ~with_click:false ~with_focus:true ()))
   in
   P.run_fixups ctx;
   controllers "click attr dropped" (nth live 0) (nth live 0).widget;
+  (* One attr of a shared family going away is not the family going away: dropping
+     [on_focus_enter] alone must leave the [GtkEventControllerFocus] attached with one
+     slot emptied, not remove it. That is [sync]'s [Some _, true] branch with an attr
+     actually disappearing, which nothing else here reaches -- everywhere else the two
+     focus attrs move together. *)
   let live =
     Scheduler.with_patch_guard scheduler (fun () ->
       P.patch
@@ -217,7 +354,25 @@ let () =
         ~path:"root"
         ~is_root:true
         live
-        (view ~with_click:true ~with_focus:false))
+        (view ~with_click:false ~with_focus:true ~with_focus_enter:false ()))
+  in
+  P.run_fixups ctx;
+  controllers "on_focus_enter alone dropped" (nth live 0) (nth live 0).widget;
+  ignore (W.Widget.grab_focus (nth live 1).widget : bool);
+  pump ();
+  ignore (W.Widget.grab_focus (nth live 0).widget : bool);
+  pump ();
+  ignore (W.Widget.grab_focus (nth live 1).widget : bool);
+  pump ();
+  drain "focus in and out with only on_focus_leave";
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch
+        ctx
+        ~path:"root"
+        ~is_root:true
+        live
+        (view ~with_click:true ~with_focus:false ()))
   in
   P.run_fixups ctx;
   controllers "focus attrs dropped, click back" (nth live 0) (nth live 0).widget;
@@ -229,7 +384,12 @@ let () =
   drain "focus after its attrs were dropped";
   let live =
     Scheduler.with_patch_guard scheduler (fun () ->
-      P.patch ctx ~path:"root" ~is_root:true live (view ~with_click:true ~with_focus:true))
+      P.patch
+        ctx
+        ~path:"root"
+        ~is_root:true
+        live
+        (view ~with_click:true ~with_focus:true ()))
   in
   P.run_fixups ctx;
   controllers "both attrs back" (nth live 0) (nth live 0).widget;
@@ -241,8 +401,13 @@ let () =
   pump ();
   drain "focus after the attrs came back";
   print_s (Live_tree.dump live.widget);
-  let target = (nth live 0).widget in
+  let target_live = nth live 0 in
+  let target = target_live.widget in
+  controllers "before destroy" target_live target;
   P.destroy ctx live;
-  printf "after destroy: gtk=%d\n" (List.length (ours target));
+  printf
+    !"after destroy: gtk=%{sexp: string list} total=%d\n"
+    (names target)
+    (List.length (all_controllers target));
   printf "destroyed cleanly\n"
 ;;

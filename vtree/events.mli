@@ -18,16 +18,48 @@ open! Core
     at mount if the two ever do drift. Do not weaken either. *)
 val for_kind : Kind.t -> Attr.Name.t list
 
-(** [true] for the event attrs that are not any widget class's signal but an event
-    controller the runtime attaches to whatever widget carries the attr: {!Attr.on_click},
-    {!Attr.on_focus_enter}, {!Attr.on_focus_leave}.
+(** One [GtkEventController] the runtime attaches on demand. A family, rather than one per
+    attr, because {!Attr.on_focus_enter} and {!Attr.on_focus_leave} share a single
+    [GtkEventControllerFocus] -- a widget carrying either pays for one -- and Task 5's two
+    key attrs will share a [GtkEventControllerKey] the same way. *)
+module Family : sig
+  type t =
+    | Click (** [GtkGestureClick] *)
+    | Focus (** [GtkEventControllerFocus] *)
+  [@@deriving sexp_of, equal, compare, enumerate]
+end
 
-    They are legal on every kind, so they never appear in {!for_kind} and {!is_supported}
-    short-circuits on them. They are also not connected by any widget impl --
-    [Controllers] creates their slots from the attr itself, on the frame the attr appears
-    -- so [Signals.require_slots] skips them, and [test/live/live_events.ml] asserts that
-    no impl declares one. *)
+(** Which controller an event attr asks for; [None] for every ordinary widget property and
+    every attr that is some widget class's own signal.
+
+    The single point of truth for the controller carve-out, and the reason it is a table
+    rather than a predicate. Three things read it and would otherwise drift:
+    {!is_supported} admits exactly the names with a family (they are legal on every kind,
+    so they never appear in {!for_kind}); [Signals.require_slots] skips exactly those
+    names, because their slots belong to [Controllers] rather than to the widget; and
+    [Controllers.update] dispatches on {!Family.t} with an exhaustive match, so a family
+    named here that nothing attaches is a compile error.
+
+    Without that last link a controller attr could be accepted on every node by both the
+    runtime and the headless handle, skipped by every mount-time check, and wired to
+    nothing -- silent inertness, which is the failure [Signals.require_specs] exists to
+    prevent. Exhaustive over [Attr.Name.t] with no wildcard, so a new attr cannot skip the
+    decision either.
+
+    [test/live/live_controllers.ml] closes the loop from the other end: it mounts a node
+    carrying each name this gives a family to, and asserts a controller of ours appears. *)
+val controller_family : Attr.Name.t -> Family.t option
+
+(** [true] for the event attrs {!controller_family} gives a family, derived from it so the
+    two cannot disagree: {!Attr.on_click}, {!Attr.on_focus_enter}, {!Attr.on_focus_leave}.
+    No widget impl declares one -- [test/live/live_events.ml] asserts that, because an
+    impl that did would connect a second handler nobody removes. *)
 val is_controller_attr : Attr.Name.t -> bool
+
+(** The attr names belonging to one family, in [Attr.Name] order. [Controllers] asks this
+    whether a family's controller should exist at all: it should, exactly while at least
+    one of these attrs is present. *)
+val family_attrs : Family.t -> Attr.Name.t list
 
 (** [is_supported kind name] is [true] if [name] is not an event name, is a controller
     attr (legal everywhere), or is a signal this kind emits. A non-event name is always

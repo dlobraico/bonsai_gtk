@@ -52,8 +52,8 @@ val clear : t -> unit
     [Signals.clear_slots].
 
     Leaves [t] empty rather than unusable: a later {!update} would attach afresh. Nothing
-    does that today — teardown is the end of a live node — but it is what makes [release]
-    and the attr-removal path in {!update} the same code. *)
+    does that today — teardown is the end of a live node. It is the same three steps in
+    the same order as {!update}'s attr-removal path, run for every family at once. *)
 val release : t -> unit
 
 (** How many controllers are attached, for tests. Counts what {i this} module attached,

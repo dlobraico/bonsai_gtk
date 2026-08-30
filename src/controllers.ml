@@ -23,21 +23,51 @@ type t =
 
 let create ctx ~node_path widget = { ctx; node_path; widget; click = None; focus = None }
 
-(* [gtk_event_controller_set_static_name] is GTK's own debugging label, and it is the only
-   way to tell a controller this library attached from one the widget class attached
-   itself: a [GtkButton] ships with a [GtkGestureClick], a [GtkEventControllerKey] and a
-   [GtkShortcutController] of its own, so "the widget has a GtkGestureClick" says nothing.
-   The name shows up in GTK Inspector, and [test/live/live_controllers.ml] counts by it.
+(* GTK's own debugging label, and the only way to tell a controller this library attached
+   from one the widget class attached itself: a [GtkButton] ships with a
+   [GtkGestureClick], a [GtkEventControllerKey] and a [GtkShortcutController] of its own,
+   so "the widget has a GtkGestureClick" says nothing. The name shows up in GTK Inspector,
+   and [test/live/live_controllers.ml] counts by it.
 
-   Static in GTK's sense means "not copied", so the string must outlive the controller;
-   these are literals, which do. *)
+   [set_name], never [set_static_name]. The "static" one stores the pointer it is handed
+   without copying -- it assigns the argument straight into [priv->name] and sets
+   [priv->name_is_static] -- so the string must outlive the controller, and nothing OCaml
+   can pass it qualifies. This concatenation is a fresh heap value that is unreachable the
+   moment the call returns, so GTK would be left pointing into memory the collector
+   reclaims: garbage from [get_name] after the next collection, and a read of unmapped
+   memory after a compaction that returns the chunk to the OS. Hoisting the two names to
+   top-level literals is not the fix either -- OCaml does not promise literals are static
+   data, and under bytecode they live in the heap and are moved by compaction. [set_name]
+   g_strdups, which is what a runtime-computed name needs.
+   [test/live/live_controllers.ml]'s heap-churn case is the regression test. *)
 let name_prefix = "bonsai_gtk."
 
 let set_name (c : W.Event_controller.t) suffix =
-  W.Event_controller.set_static_name c (Some (name_prefix ^ suffix))
+  W.Event_controller.set_name c (Some (name_prefix ^ suffix))
 ;;
 
-let present attrs name = Option.is_some (Attrs.find attrs name)
+(* Whether this family's controller should exist: exactly while at least one of the attrs
+   [Events] assigns to it is present. Asking the table rather than naming the attrs here
+   is what keeps "which attrs mean click" in one place -- Task 5's second key attr joins
+   its family in [vtree/events.ml] and nothing in this file changes. *)
+let wanted attrs family =
+  List.exists (Events.family_attrs family) ~f:(fun name ->
+    Option.is_some (Attrs.find attrs name))
+;;
+
+(* Every attached family's slots. The one place that has to know all of them; the
+   [Events.Family.t] match is what makes a new family a compile error here rather than a
+   controller [clear] silently skips. *)
+let attached t (family : Events.Family.t) =
+  match family with
+  | Click -> Option.map t.click ~f:(fun a -> a.slots)
+  | Focus -> Option.map t.focus ~f:(fun a -> a.slots)
+;;
+
+let clear t =
+  List.iter Events.Family.all ~f:(fun family ->
+    Option.iter (attached t family) ~f:Signals.clear_slots)
+;;
 
 (* [wanted] is whether any of this family's attrs is present. Attach on the first, detach
    on the last, and in between only re-slot and re-configure.
@@ -63,7 +93,14 @@ let sync
   match get t, wanted with
   | None, false -> ()
   | Some a, false ->
-    Signals.clear_slots a.slots;
+    (* Every family's slots, not just this one's, and for the reason [release] gives:
+       [remove_controller] can itself provoke a leave or a cancel, and a still-armed slot
+       on a *sibling* controller of the same widget would reach Bonsai from inside it.
+       Unreachable today -- [update] only runs from a patch, which the driver wraps in the
+       reentrancy guard -- but the slot-emptying exists precisely as belt-and-braces
+       against that guard not being the whole story, and the two removal paths must not
+       disagree about it. *)
+    clear t;
     Signals.disconnect a.connections;
     W.Widget.remove_controller t.widget (upcast a.controller);
     set t None
@@ -165,56 +202,74 @@ let configure_click (gc : W.Gesture_click.t) attrs =
   | Some _ | None -> ()
 ;;
 
-let update t attrs =
-  sync
-    t
-    ~wanted:(present attrs On_click)
-    ~get:(fun t -> t.click)
-    ~set:(fun t a -> t.click <- a)
-    ~make:W.Gesture_click.new_
-    ~upcast:(fun gc -> (gc :> W.Event_controller.t))
-    ~specs:(fun gc -> [ click_spec gc ])
-    ~configure:configure_click
-    ~name:"click"
-    attrs;
-  sync
-    t
-    ~wanted:(present attrs On_focus_enter || present attrs On_focus_leave)
-    ~get:(fun t -> t.focus)
-    ~set:(fun t a -> t.focus <- a)
-    ~make:W.Event_controller_focus.new_
-    ~upcast:(fun fc -> (fc :> W.Event_controller.t))
-    ~specs:focus_specs
-      (* A focus controller has nothing to configure: there is no [Attr.on_focus_*] phase
-         in M2, so it stays in GTK's default (bubble) phase. *)
-    ~configure:(fun _ _ -> ())
-    ~name:"focus"
-    attrs
-;;
+(* One [sync] per family, dispatched from an exhaustive match on [Events.Family.t].
 
-let clear t =
-  Option.iter t.click ~f:(fun a -> Signals.clear_slots a.slots);
-  Option.iter t.focus ~f:(fun a -> Signals.clear_slots a.slots)
+   The match is the point. [Events.controller_family] is what makes a controller attr
+   legal on every kind, skipped by [Signals.require_slots], and connected by no widget
+   impl; this is the other end of that, and without the exhaustiveness a family could be
+   named there and attached by nothing -- accepted everywhere, wired nowhere, with no
+   diagnostic. Task 5 adds [Key] to the variant and the compiler asks for its arm here. *)
+let update t attrs =
+  List.iter Events.Family.all ~f:(fun (family : Events.Family.t) ->
+    let wanted = wanted attrs family in
+    match family with
+    | Click ->
+      sync
+        t
+        ~wanted
+        ~get:(fun t -> t.click)
+        ~set:(fun t a -> t.click <- a)
+        ~make:W.Gesture_click.new_
+        ~upcast:(fun gc -> (gc :> W.Event_controller.t))
+        ~specs:(fun gc -> [ click_spec gc ])
+        ~configure:configure_click
+        ~name:"click"
+        attrs
+    | Focus ->
+      sync
+        t
+        ~wanted
+        ~get:(fun t -> t.focus)
+        ~set:(fun t a -> t.focus <- a)
+        ~make:W.Event_controller_focus.new_
+        ~upcast:(fun fc -> (fc :> W.Event_controller.t))
+        ~specs:focus_specs
+          (* A focus controller has nothing to configure: there is no [Attr.on_focus_*]
+             phase in M2, so it stays in GTK's default (bubble) phase. *)
+        ~configure:(fun _ _ -> ())
+        ~name:"focus"
+        attrs)
 ;;
 
 (* Slots first, for every controller, and only then the disconnecting and detaching:
    [gtk_widget_remove_controller] can provoke a leave or a cancel, and one still-armed
    slot on a *different* controller of the same widget would reach Bonsai from inside
-   teardown. Emptying all of them up front is what makes that impossible. *)
+   teardown. Emptying all of them up front is what makes that impossible -- which is also
+   why [clear] is a call here rather than three lines inlined per family.
+
+   Detaching one family is [sync]'s [Some _, false] branch, which does the same three
+   steps in the same order; the difference is only that this one runs for every family and
+   leaves [t] empty. *)
 let release t =
   clear t;
-  Option.iter t.click ~f:(fun a ->
-    Signals.disconnect a.connections;
-    W.Widget.remove_controller t.widget (a.controller :> W.Event_controller.t));
-  t.click <- None;
-  Option.iter t.focus ~f:(fun a ->
-    Signals.disconnect a.connections;
-    W.Widget.remove_controller t.widget (a.controller :> W.Event_controller.t));
-  t.focus <- None
+  List.iter Events.Family.all ~f:(fun (family : Events.Family.t) ->
+    let detach (a : _ attached) upcast =
+      Signals.disconnect a.connections;
+      W.Widget.remove_controller t.widget (upcast a.controller)
+    in
+    match family with
+    | Click ->
+      Option.iter t.click ~f:(fun a -> detach a (fun c -> (c :> W.Event_controller.t)));
+      t.click <- None
+    | Focus ->
+      Option.iter t.focus ~f:(fun a -> detach a (fun c -> (c :> W.Event_controller.t)));
+      t.focus <- None)
 ;;
 
+(* Derived from the same [Events.Family.t] match as everything else here, so a family that
+   is added and then not counted is not a possible state. *)
 let attached_count t =
-  List.count [ Option.is_some t.click; Option.is_some t.focus ] ~f:Fn.id
+  List.count Events.Family.all ~f:(fun family -> Option.is_some (attached t family))
 ;;
 
 let is_ours (c : W.Event_controller.t) =
