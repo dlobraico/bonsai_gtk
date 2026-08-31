@@ -244,8 +244,8 @@ module Selection_memo =
 let take_report = Selection_memo.take_report
 
 (* [selected] with each key kept at its first occurrence -- order-preserving, because the
-   write below iterates it in the model's order. Reported through [note_duplicates] when
-   anything was dropped. *)
+   write below iterates it in the model's order. When anything was dropped, the report is
+   minted here too (once per distinct list, through the memo). *)
 let dedup_selected (st : Selection_memo.t) ~arg selected =
   let seen = Hash_set.create (module String) in
   let deduped =

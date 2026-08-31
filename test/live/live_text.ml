@@ -2427,7 +2427,11 @@ let () =
   in
   let live = P.mount ctx ~path:"caret" ~is_root:true (view "hello world") in
   P.run_fixups ctx;
-  (* The mount's own writes moved the caret inside the patch guard: nothing arrived. *)
+  (* The mount's own text write moved the caret, and nothing arrived -- by {i ordering}
+     here, not the guard: [Patcher.mount] runs [create] (which writes the text) before
+     [connect_all] exists, so there was no connection to fire. Under the real driver the
+     patch guard covers the same frame as well; this test's [P.mount] is not under
+     [with_patch_guard], so ordering is the mechanism actually pinned. *)
   drain "caret after mount";
   place_cursor live 5;
   place_cursor live 0;
