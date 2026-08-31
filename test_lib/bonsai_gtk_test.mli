@@ -452,7 +452,7 @@ end
  #  what the runtime refuses                              vtree  checked here
  1  event attr the kind cannot emit                        yes    yes
  2  placement attr the parent does not read                yes    yes
- 3  two key attrs with different ~phase                    yes    yes
+ 3  one family's attrs with different ~phase               yes    yes
  4  root is not a Node.window (or is one, under embed)     yes    yes  (?root_kind)
  5  Node.window below the root                             yes    yes
  6  duplicate keys among siblings                          yes    yes
@@ -466,7 +466,17 @@ end
 14  a NUL in any text, or invalid UTF-8 in a text_view      yes    no   (refused live)
 15  entry ~text longer than ~max_length                     yes    no   (truncated live)
 16  a Move to a container with no reorder primitive         yes    n/a  (this handle never diffs)
+17  two Attr.autofocus grabs firing in one frame            yes    yes  (see below)
     v}
+
+    Row 17 is the one stateful check: which grabs {i fire} is an edge — a mount, or a
+    false-to-true flip — so the handle remembers, per frame and by node path, which paths
+    carried [autofocus true] last frame (reset by each {!create}, with [?root_kind]'s
+    most-recent-handle caveat). A widget that keeps rendering [true] beside one that flips
+    is therefore accepted, exactly as the runtime accepts it; a keyed child that {i moves}
+    while carrying [true] is the approximation's edge — its path changes, so the handle
+    would count it as firing again where the live widget would not. Per toplevel is per
+    tree here, until [Node.windows] widens it.
 
     Rows 8-12 are the ones that could still be closed cheaply: they are tree walks over
     data this library already has. Rows 14 and 15 are {i refusals} rather than rejections
