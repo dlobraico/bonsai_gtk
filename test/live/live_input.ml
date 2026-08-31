@@ -399,19 +399,11 @@ let () =
      only the facts that are not. *)
   let box_of w ~name =
     let bounds_ok, r = W.Widget.compute_bounds w window in
-    (* Read out of the [graphene_rect_t] before anything else touches ocgtk -- and know
-       that this is luck rather than a rule.
-
-       [ml_gtk_widget_compute_bounds] declares a [graphene_rect_t] as a C {i stack local}
-       and hands its address to [Val_graphene_rect_t], which is a val_ptr wrapper and does
-       not copy. So the OCaml value points into a frame that [CAMLreturn] destroys, and
-       every read through it is a read-after-return: undefined behaviour, not a
-       stale-but-defined buffer. Reading "immediately" still dereferences the dead frame
-       -- each accessor is itself a C call that pushes a frame which may or may not land
-       on the same bytes -- so this works by stack layout on this build and is not
-       guaranteed by anything. It is a workaround for a bug to be fixed in the generator
-       (there are 153 stubs of this shape; see [docs/m2-backlog.md]), not a pattern to
-       copy. *)
+    (* The [graphene_rect_t] is a heap copy the OCaml value owns: the generator
+       g_boxed_copy's every by-value record out-parameter on the way out (ocgtk
+       r2-bindings), so these reads are ordinary and order-independent. Until that fix,
+       the stub wrapped the address of a C stack local and reading the fields before any
+       other ocgtk call was stack-layout luck this comment used to have to explain. *)
     let rx = Rect.get_x r
     and ry = Rect.get_y r
     and rw = Rect.get_width r
@@ -429,19 +421,12 @@ let () =
     x, y, bw, bh
   in
   let lx, ly, lw, lh = box_of label_target ~name:"label" in
-  (* The hazard [box_of] works around, asserted rather than only described, because it is
-     invisible until a coordinate is wrong and it would break this file first: the
-     [graphene_rect_t] that [Widget.compute_bounds] answers with points into a destroyed
-     stack frame. Reading a width off it after one more call into the binding gave 0 where
-     the widget is 320 wide.
-
-     This line and the [bounds-is-box] fields above it are canaries rather than assertions
-     about this library: both are reading undefined behaviour, so both could move on an
-     ocgtk rebuild with no change here. Nothing the test actually asserts depends on them
-     -- the aim comes from [translate_coordinates] and [get_width]/[get_height], so every
-     click, every [hit-aim] and the negative are unaffected -- and in 20 recorded runs
-     neither moved. If this line ever prints [true], the generator started copying and the
-     comment in [box_of] can go. *)
+  (* The canary that caught the read-after-return, kept flipped: the [graphene_rect_t]
+     from [Widget.compute_bounds] used to point into a destroyed stack frame, and reading
+     a width off it after one more call into the binding gave 0 where the widget is 320
+     wide. The generator now copies the record out, so this line prints [true] and is a
+     regression tripwire — if it ever reads [false] again, the copy-out was lost in a
+     regeneration (ocgtk docs/dev-notes.md is the re-apply list). *)
   let () =
     let (_ : bool), r = W.Widget.compute_bounds label_target window in
     let w0 = Rect.get_width r in

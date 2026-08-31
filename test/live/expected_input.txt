@@ -1,6 +1,6 @@
 mapped: true
 label geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=true
-compute_bounds rect survives a later ocgtk call: false
+compute_bounds rect survives a later ocgtk call: true
 window active: true
 entry 1 has focus on activation: true
 on activation: (focus-enter e1)
