@@ -26,3 +26,9 @@ focus after Tab: e1=false e2=true
 claim-inner geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=true
 inner claims the sequence: (inner button=1 n_press=1 hit-aim=true in-bounds=true mods=none)
 inner continues: (inner button=1 n_press=1 hit-aim=true in-bounds=true mods=none outer b1)
+menu-button geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=true
+popover mapped after a real click: true
+Escape dismisses the popover: (focus-leave e2 popover-closed)
+popover mapped after Escape: false
+window focus stranded in the popover: false
+a window key after the menu closed: (capture F1 mods=none)

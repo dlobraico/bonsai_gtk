@@ -65,3 +65,9 @@
             (GtkButton (label (del)) (css (text-button))
              (children (GtkLabel (text del))))))))))))))))
 chrome done
+popover mounted closed: open=false closes=0
+model opened it: open=true closes=0
+model closed it: open=false closes=0
+user dismissed it: open=false closes=1
+the model declined: open=true closes=1
+popover done

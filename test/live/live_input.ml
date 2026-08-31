@@ -69,6 +69,7 @@ let log : string list ref = ref []
 let clicks = ref 0
 let keys = ref 0
 let focuses = ref 0
+let closes = ref 0
 let record s = log := s :: !log
 
 (* What the nested claim target answers, flipped by the driver between blocks: [Claim] for
@@ -322,6 +323,23 @@ let view =
                ~text:""
                ()
            ; Node.entry ~attrs:(entry_attrs "e2") ~text:"" ()
+             (* The menu button, for the popover blocks at the end: its popover holds a
+                {i focusable} child, because the focus-repair regression is about focus
+                stranded {i inside} a popped-down popover. *)
+           ; Node.menu_button
+               ~label:"menu"
+               ~popover:
+                 (Node.popover
+                    ~attrs:
+                      [ Attr.on_closed
+                          (Ui_effect.of_sync_fun
+                             (fun () ->
+                               incr closes;
+                               record "popover-closed")
+                             ())
+                      ]
+                    (Node.button ~label:"menu item" ()))
+               ()
            ]
          (* A second click target that {i is} a [GtkButton], for one empirical question
             the label cannot answer: a [GtkButton] has a [GtkGestureClick] of its own, and
@@ -399,9 +417,16 @@ let () =
   let bottom_row = children (List.nth_exn kids 2) in
   let button_target = (List.nth_exn bottom_row 0).widget in
   let claim_inner = (List.nth_exn (children (List.nth_exn bottom_row 1)) 0).widget in
-  let entries = List.map (children (List.nth_exn kids 1)) ~f:(fun c -> c.widget) in
+  let middle = children (List.nth_exn kids 1) in
+  let entries = List.map middle ~f:(fun c -> c.widget) in
   let entry1 = List.nth_exn entries 0
   and entry2 = List.nth_exn entries 1 in
+  let menu_button = (List.nth_exn middle 2).widget in
+  let popover =
+    match (List.nth_exn middle 2).children with
+    | Slots [ ("popover", Single (Some pop)) ] -> pop.widget
+    | _ -> assert false
+  in
   (* A [GtkEntry] never has the focus itself: the focus lands on the [GtkText] it wraps,
      which is why [Attr.on_focus_enter] is documented as firing for a widget
      {i or any of its children} and why [has_focus] on the entry reads [false] throughout. *)
@@ -643,5 +668,35 @@ let () =
   xdotool [ "mousemove"; Int.to_string csx; Int.to_string csy; "click"; "1" ];
   pump_until ~label:"continue" ~ready:(fun () -> !clicks >= before + 2);
   drain ();
-  show "inner continues"
+  show "inner continues";
+  (* --- the menu button, end to end: a real click opens the popover, a real Escape
+     dismisses it through GTK's autohide (the popover has its own surface, so the window's
+     capture-phase Escape handler never sees it -- note no [capture Escape] on the line),
+     [Attr.on_closed] fires, and -- the regression the focus repair exists for
+     (stavekeeper viewer_window.ml:750-797) -- the window's keys still work afterwards:
+     without the repair, focus stays on the popped-down popover's child and every window
+     key goes dead. *)
+  let mx, my, mw, mh = box_of menu_button ~name:"menu-button" in
+  let on_menu = target ~x:mx ~y:my ~w:mw ~h:mh in
+  let msx, msy = on_menu 0.5 0.5 in
+  xdotool [ "mousemove"; Int.to_string msx; Int.to_string msy; "click"; "1" ];
+  pump_until ~label:"menu-open" ~ready:(fun () -> W.Widget.get_mapped popover);
+  drain ();
+  printf "popover mapped after a real click: %b\n" (W.Widget.get_mapped popover);
+  let before = !closes in
+  xdotool [ "key"; "--clearmodifiers"; "Escape" ];
+  pump_until ~label:"menu-escape" ~ready:(fun () -> !closes > before);
+  drain ();
+  show "Escape dismisses the popover";
+  printf "popover mapped after Escape: %b\n" (W.Widget.get_mapped popover);
+  (* The repair's observable half: the window's focus widget is not left inside the
+     popover... *)
+  printf
+    "window focus stranded in the popover: %b\n"
+    (match W.Window.get_focus (cast window) with
+     | None -> false
+     | Some f -> W.Widget.is_ancestor f popover);
+  (* ...and the proof that matters: a window-level key still reaches its handler. *)
+  key ~name:"menu-f1" "F1";
+  show "a window key after the menu closed"
 ;;

@@ -87,3 +87,90 @@ let () =
   P.destroy ctx live;
   printf "chrome done\n"
 ;;
+
+(* The popover's controlled [~open_], model-driven both ways, and the declined-dismissal
+   reopen (M3 Task 5 step 4). The window is presented -- popping up a popover wants a
+   realized parent -- and the popover's [open] flag in the dump is [Widget.get_visible],
+   the very bit [apply_open] compares against. The last act is the controlled rule's whole
+   point: the model pins [~open_:true], a programmatic [popdown] (a user dismissal in
+   every respect the runtime can see -- outside the patch guard, so [on_closed] fires)
+   closes it, and the next idle frame's fixup puts it back. *)
+let () =
+  ignore (Sys.opaque_identity 0 : int);
+  let module W = Bonsai_gtk.Private.Gtk_import.W in
+  let cast = Bonsai_gtk.Private.Gtk_import.cast in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let closes = ref 0 in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
+  in
+  let view ~open_ =
+    Node.window
+      ~title:"popover"
+      (Node.menu_button
+         ~label:"menu"
+         ~popover:
+           (Node.popover
+              ~open_
+              ~attrs:[ Attr.on_closed (Ui_effect.of_sync_fun (fun () -> incr closes) ()) ]
+              (Node.label "menu body"))
+         ())
+  in
+  let popover_of (live : P.live) =
+    match live.children with
+    | Single (Some mb) ->
+      (match mb.P.children with
+       | Slots [ ("popover", Single (Some pop)) ] -> pop.P.widget
+       | _ -> assert false)
+    | _ -> assert false
+  in
+  (* [run_fixups] inside the guard, exactly as [Driver.frame] runs it -- the fixup's
+     [popdown] is what emits the synchronous [closed] the guard must cover, so a helper
+     that ran the fixups outside would hand the model its own close. (It did, in this
+     block's first draft: [closes] read 1 after "model closed it".) *)
+  let patch live v =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.patch ctx ~path:"pop" ~is_root:true live v in
+      P.run_fixups ctx;
+      live)
+  in
+  let idle live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"pop" live;
+      P.run_fixups ctx)
+  in
+  let open_bit live =
+    Bonsai_gtk.Private.Gtk_import.Widget.get_visible (popover_of live)
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.mount ctx ~path:"pop" ~is_root:true (view ~open_:false) in
+      P.run_fixups ctx;
+      live)
+  in
+  printf "popover mounted closed: open=%b closes=%d\n" (open_bit live) !closes;
+  (* The model opens it... *)
+  let live = patch live (view ~open_:true) in
+  printf "model opened it: open=%b closes=%d\n" (open_bit live) !closes;
+  (* ...and closes it -- the closed this popdown emits is synchronous inside the guarded
+     fixup (pre-flight 8), so the handler hears nothing. *)
+  let live = patch live (view ~open_:false) in
+  printf "model closed it: open=%b closes=%d\n" (open_bit live) !closes;
+  (* The declined dismissal: the model pins [true]; a dismissal from outside the guard
+     fires [on_closed]; the next idle frame's fixup re-opens. *)
+  let live = patch live (view ~open_:true) in
+  W.Popover.popdown (cast (popover_of live));
+  printf "user dismissed it: open=%b closes=%d\n" (open_bit live) !closes;
+  idle live;
+  printf "the model declined: open=%b closes=%d\n" (open_bit live) !closes;
+  P.destroy ctx live;
+  printf "popover done\n"
+;;
