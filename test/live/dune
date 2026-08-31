@@ -34,7 +34,7 @@
 ; explicitly asked for:
 ;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 ;
-; The eleven rules whose executable presents a toplevel carry `(locks x-display)`.
+; The twelve rules whose executable presents a toplevel carry `(locks x-display)`.
 ; One `xvfb-run` gives every executable below the same X display, and a window
 ; mapping on a display takes the input focus off whichever window held it -- so a
 ; neighbour starting up mid-test is indistinguishable, to
