@@ -325,12 +325,19 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
        row and selects it has nothing to select until the pass is over. Unlike
        [W_stack.select] this one rejects nothing -- a key naming no row is ignored, and
        [Node.list_box] says why -- so there is no path to prefix. *)
-    Queue.enqueue ctx.fixups (fun () -> W_list_box.apply_selection widget ~selected)
+    Queue.enqueue ctx.fixups (fun () ->
+      W_list_box.apply_selection widget ~selected;
+      (* The dedup report, on the select-fixup arms' pattern: a [~selected] that lists a
+         key twice is deduped and said once, and the fixup is where that is decided. *)
+      Option.iter (W_list_box.take_report widget) ~f:(ctx.report ~node_path:path))
   | Flow_box { selected; _ } ->
     (* The list box's arm, over the other container: the children are attached after this
        on a mount and patched after this on a patch, and a key naming no child is ignored
        rather than rejected, so there is no path to prefix here either. *)
-    Queue.enqueue ctx.fixups (fun () -> W_flow_box.apply_selection widget ~selected)
+    Queue.enqueue ctx.fixups (fun () ->
+      W_flow_box.apply_selection widget ~selected;
+      (* The list box's polling, over the other copy of the same container. *)
+      Option.iter (W_flow_box.take_report widget) ~f:(ctx.report ~node_path:path))
   | Notebook { current_page; _ } ->
     (* A stack's arm over the other container that shows exactly one child, and it rejects
        an unknown key for the same reason: the pages are attached after this on a mount

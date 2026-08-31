@@ -218,6 +218,61 @@ let forget_rows (w : Widget.t) =
    a [row_selectable false] row) therefore still rewrites on every frame; that is
    documented on [Node.list_box] as a model to bring into line with its mode, and it is
    not the same thing as a key that is simply not here yet. *)
+(* The [~selected] dedup memo (M3 Task 3 step 2, docs/m2-backlog.md:150-158). A duplicated
+   key in [~selected] used to make [current] and [wanted] never compare equal -- ["a"]
+   against ["a"; "a"] -- so every frame ran [unselect_all] plus the redundant re-select,
+   forever, with no diagnostic. The ruling takes both halves the backlog said to decide
+   together: the selection is {b deduped} before the comparison (the behaviour fix -- the
+   churn stops) {b and reported once per distinct list} (the model typo stays visible).
+   [Refusal]'s machinery again, keyed on the whole [~selected] value: the same duplicated
+   list reports once however many frames it is rendered, a different duplicated list is a
+   new datum, and a clean list clears the memo so a reintroduced duplicate is reported
+   again. The patcher polls [take_report] after the fixup. *)
+module Selection_memo =
+  Refusal.Make
+    (struct
+      type t = string list
+
+      let equal = List.equal String.equal
+    end)
+    (Refusal.No_extra)
+
+let take_report = Selection_memo.take_report
+
+(* [selected] with each key kept at its first occurrence -- order-preserving, because the
+   write below iterates it in the model's order. Reported through [note_duplicates] when
+   anything was dropped. *)
+let dedup_selected (st : Selection_memo.t) ~arg selected =
+  let seen = Hash_set.create (module String) in
+  let deduped =
+    List.filter selected ~f:(fun key ->
+      if Hash_set.mem seen key
+      then false
+      else (
+        Hash_set.add seen key;
+        true))
+  in
+  if List.length deduped = List.length selected
+  then Selection_memo.landed st
+  else if not (Selection_memo.already_refused st selected)
+  then (
+    let dups =
+      List.find_all_dups selected ~compare:String.compare
+      |> List.map ~f:(sprintf "%S")
+      |> String.concat ~sep:", "
+    in
+    Selection_memo.refuse
+      st
+      selected
+      ~reason:
+        (sprintf
+           "%s lists %s more than once; a selection holds each key at most once, and the \
+            duplicates were ignored"
+           arg
+           dups));
+  deduped
+;;
+
 let apply_selection (w : Widget.t) ~selected =
   let sorted = List.sort ~compare:String.compare in
   (* One walk of the list box, and a key table built from it for this call only -- the
@@ -240,6 +295,7 @@ let apply_selection (w : Widget.t) ~selected =
   let current =
     List.filter all ~f:W.List_box_row.is_selected |> List.filter_map ~f:key_of_row
   in
+  let selected = dedup_selected (Selection_memo.state w) ~arg:"~selected" selected in
   let wanted = List.filter selected ~f:(Hashtbl.mem by_key) in
   if not (List.equal String.equal (sorted current) (sorted wanted))
   then (

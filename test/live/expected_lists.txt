@@ -317,3 +317,20 @@ notebook on page 1 once the page is visible (reports=1)
 report hpn/0: ~current_page names the hidden page "b"; GTK will not switch to it
 notebook on page 0 after re-hiding (reports=2)
 notebook hidden-page memo done
+report dup/0: ~selected lists "a" more than once; a selection holds each key at most once, and the duplicates were ignored
+list box mounted with a duplicate: selected=(a) reports=1
+list box after 5 parked frames: selected=(a) reports=1
+report dup/0: ~selected lists "b" more than once; a selection holds each key at most once, and the duplicates were ignored
+list box with a different duplicate: selected=(a,b) reports=2
+list box with a clean list: selected=(a) reports=2
+report dup/0: ~selected lists "a" more than once; a selection holds each key at most once, and the duplicates were ignored
+list box with the duplicate back: selected=(a) reports=3
+report dup/0: ~selected lists "a" more than once; a selection holds each key at most once, and the duplicates were ignored
+flow box mounted with a duplicate: selected=(a) reports=1
+flow box after 5 parked frames: selected=(a) reports=1
+report dup/0: ~selected lists "b" more than once; a selection holds each key at most once, and the duplicates were ignored
+flow box with a different duplicate: selected=(a,b) reports=2
+flow box with a clean list: selected=(a) reports=2
+report dup/0: ~selected lists "a" more than once; a selection holds each key at most once, and the duplicates were ignored
+flow box with the duplicate back: selected=(a) reports=3
+selected dedup done

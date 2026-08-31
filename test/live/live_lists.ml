@@ -2056,3 +2056,80 @@ let () =
   P.destroy ctx live;
   printf "notebook hidden-page memo done\n"
 ;;
+
+(* The [~selected] dedup, reported once (M3 Task 3 step 2), over {i both} copies of the
+   container -- the final review's mutation lesson: a fix made in one file only must fail
+   a golden. A duplicated key used to make the comparison never equal, so every frame ran
+   [unselect_all] plus the redundant re-select; now the selection is deduped (the churn
+   stops -- the same-list idle frames below add no report and the selection reads back
+   deduped) and the typo is said once per distinct list, cleared by a clean list. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let reports = ref 0 in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path msg ->
+        incr reports;
+        printf "report %s: %s\n" node_path msg)
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let cards = [ Node.label ~key:"a" "a"; Node.label ~key:"b" "b" ] in
+  let run ~name ~container ~selected_keys =
+    let view ~selected = Node.window ~title:"dup" (container ~selected) in
+    let patch live v =
+      let live =
+        Scheduler.with_patch_guard scheduler (fun () ->
+          P.patch ctx ~path:"dup" ~is_root:true live v)
+      in
+      P.run_fixups ctx;
+      live
+    in
+    let idle live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:"dup" live;
+        P.run_fixups ctx)
+    in
+    let show live label =
+      printf
+        "%s %s: selected=(%s) reports=%d\n"
+        name
+        label
+        (String.concat ~sep:"," (selected_keys live))
+        !reports
+    in
+    reports := 0;
+    let live = P.mount ctx ~path:"dup" ~is_root:true (view ~selected:[ "a"; "a" ]) in
+    P.run_fixups ctx;
+    show live "mounted with a duplicate";
+    for _ = 1 to 5 do
+      idle live
+    done;
+    show live "after 5 parked frames";
+    (* A different duplicated list is a new datum. *)
+    let live = patch live (view ~selected:[ "b"; "b"; "a" ]) in
+    show live "with a different duplicate";
+    (* A clean list clears the memo... *)
+    let live = patch live (view ~selected:[ "a" ]) in
+    show live "with a clean list";
+    (* ...so the same duplicate again is reported again. *)
+    let live = patch live (view ~selected:[ "a"; "a" ]) in
+    show live "with the duplicate back";
+    P.destroy ctx live
+  in
+  run
+    ~name:"list box"
+    ~container:(fun ~selected -> Node.list_box ~selection_mode:Multiple ~selected cards)
+    ~selected_keys:(fun live -> W_list_box.selected_keys (list_box live));
+  run
+    ~name:"flow box"
+    ~container:(fun ~selected -> Node.flow_box ~selection_mode:Multiple ~selected cards)
+    ~selected_keys:(fun live -> W_flow_box.selected_keys (flow_box live));
+  printf "selected dedup done\n"
+;;
