@@ -1804,7 +1804,16 @@ let () =
 
    The golden gets the verdict rather than the numbers, because a timing is not
    reproducible; the numbers go to stderr, which is not compared, so a failure says how
-   far over it went rather than only [false]. *)
+   far over it went rather than only [false].
+
+   {b Run over both plural containers, not only the flow box}, which is the final review's
+   live I2. [w_list_box.ml] and [w_flow_box.ml] are two copies of one container -- the
+   backlog says so, and this very fix was made twice, in the same round, for the same
+   reason -- and until now the list box's copy had no cost regression at all. The reviewer
+   demonstrated the gap by mutation: putting the quadratic shape back in [w_flow_box.ml]
+   moved the ratio to 51, and putting the identical mutation in [w_list_box.ml] left every
+   golden byte-identical. Two copies with one regression test between them is how copies
+   drift. *)
 let () =
   let n = 1000 in
   let many = 200 in
@@ -1824,26 +1833,24 @@ let () =
   in
   let key i = sprintf "k%d" i in
   let cards = List.init n ~f:(fun i -> Node.label ~key:(key i) (Int.to_string i)) in
-  (* One measurement: mount a grid of [n] cards with [sel] of them selected, run [frames]
-     idle frames through the fixup queue, and answer the milliseconds each one cost. The
-     selection is spread through the list rather than taken from the front, so that
-     neither the walk nor the map is flattered by locality. *)
-  let idle_frame_ms ~sel =
+  (* One measurement: mount a container of [n] children with [sel] of them selected, run
+     [frames] idle frames through the fixup queue, and answer the milliseconds each one
+     cost. The selection is spread through the list rather than taken from the front, so
+     that neither the walk nor the map is flattered by locality. *)
+  let idle_frame_ms ~name ~container ~selected_keys ~sel =
     let selected = List.init sel ~f:(fun i -> key (i * (n / sel))) in
     let live =
       P.mount
         ctx
         ~path:"bench"
         ~is_root:true
-        (Node.window
-           ~title:"bench"
-           (Node.flow_box ~selection_mode:Multiple ~selected cards))
+        (Node.window ~title:"bench" (container ~selected))
     in
     P.run_fixups ctx;
     (* The selection is exactly the one asked for, which is what stops this from timing a
        fixup that has quietly stopped doing anything. *)
-    let selected_count = List.length (W_flow_box.selected_keys (flow_box live)) in
-    printf "bench: n=%d, selected %d of %d\n" n selected_count sel;
+    let selected_count = List.length (selected_keys live) in
+    printf "bench: %s n=%d, selected %d of %d\n" name n selected_count sel;
     let start = Time_ns.now () in
     for _ = 1 to frames do
       Scheduler.with_patch_guard scheduler (fun () ->
@@ -1856,20 +1863,32 @@ let () =
     P.destroy ctx live;
     ms
   in
-  let one = idle_frame_ms ~sel:1 in
-  let lots = idle_frame_ms ~sel:many in
-  let ratio = lots /. one in
-  printf
-    "bench: %d idle frames at 1 and at %d selected, cost ratio under %g: %b\n"
-    frames
-    many
-    bound_ratio
-    Float.(ratio < bound_ratio);
-  eprintf
-    "bench: %.3f ms at sel=1, %.3f ms at sel=%d, ratio %.2f (bound %g)\n%!"
-    one
-    lots
-    many
-    ratio
-    bound_ratio
+  let bench ~name ~container ~selected_keys =
+    let one = idle_frame_ms ~name ~container ~selected_keys ~sel:1 in
+    let lots = idle_frame_ms ~name ~container ~selected_keys ~sel:many in
+    let ratio = lots /. one in
+    printf
+      "bench: %s, %d idle frames at 1 and at %d selected, cost ratio under %g: %b\n"
+      name
+      frames
+      many
+      bound_ratio
+      Float.(ratio < bound_ratio);
+    eprintf
+      "bench: %s %.3f ms at sel=1, %.3f ms at sel=%d, ratio %.2f (bound %g)\n%!"
+      name
+      one
+      lots
+      many
+      ratio
+      bound_ratio
+  in
+  bench
+    ~name:"flow box"
+    ~container:(fun ~selected -> Node.flow_box ~selection_mode:Multiple ~selected cards)
+    ~selected_keys:(fun live -> W_flow_box.selected_keys (flow_box live));
+  bench
+    ~name:"list box"
+    ~container:(fun ~selected -> Node.list_box ~selection_mode:Multiple ~selected cards)
+    ~selected_keys:(fun live -> W_list_box.selected_keys (list_box live))
 ;;

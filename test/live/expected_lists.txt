@@ -296,6 +296,9 @@ nb driver, after mount: score (Bonsai saw 0)
 nb driver, after the user clicked a tab: parts
 nb driver, after the frame the click armed: score (Bonsai saw 1)
 nb driver, after one more frame: score (Bonsai saw 1)
-bench: n=1000, selected 1 of 1
-bench: n=1000, selected 200 of 200
-bench: 200 idle frames at 1 and at 200 selected, cost ratio under 5: true
+bench: flow box n=1000, selected 1 of 1
+bench: flow box n=1000, selected 200 of 200
+bench: flow box, 200 idle frames at 1 and at 200 selected, cost ratio under 5: true
+bench: list box n=1000, selected 1 of 1
+bench: list box n=1000, selected 200 of 200
+bench: list box, 200 idle frames at 1 and at 200 selected, cost ratio under 5: true

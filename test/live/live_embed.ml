@@ -571,14 +571,24 @@ let () =
    work, not the window being free.
 
    A ratio rather than a wall-clock bound, for [task-7-review.md] N1's reason: contention
-   scales both measurements and cancels. The verdict goes to the golden and the numbers to
-   stderr, which is not compared, so a failure says how far over it went.
+   scales both measurements and cancels.
+   {b That argument requires the two measurements to be concurrent, not merely both
+     present}
+   -- contention cancels only to the extent that load is stationary across them, and each
+   phase here is 2000 frames at ~9 us, about 18 ms of wall clock, which is short enough
+   for one descheduling event or one major GC slice to move a phase by tens of percent.
+   Taken sequentially the bound failed 3 times in 30 runs at 2x oversubscription (final
+   review, live C2). So the two are {i interleaved}: one loop, one windowed frame and one
+   embedded frame per iteration, two totals. The verdict goes to the golden and the
+   numbers to stderr, which is not compared, so a failure says how far over it went.
 
-   Measured at 2f8eeb9 + this task, three runs under xvfb: 0.0085/0.0086/0.0086 ms
-   embedded against 0.0096/0.0098/0.0096 ms windowed, a ratio of 0.89 every time. The gap
-   is the [Node.window] itself -- one more node whose [reassert] runs every frame -- and
-   it is why the bound is one-sided at 1.2 rather than symmetric: the claim is "no worse",
-   and 1.2 still catches a doubling. *)
+   Measured interleaved, three runs under xvfb on an idle host: 0.0089/0.0089/0.0108 ms
+   embedded against 0.0090/0.0090/0.0109 ms windowed, ratios 0.98/0.99/0.99. Under 2x
+   oversubscription, five runs: 0.97 to 1.02. (The sequential version reported 0.89, which
+   was the [Node.window]'s own [reassert] {i plus} whatever the ordering gave the second
+   phase -- the two are not separable when the phases do not overlap, which is the same
+   objection the interleaving answers.) The bound stays one-sided at 1.2 rather than
+   symmetric: the claim is "no worse", and 1.2 still catches a doubling. *)
 let bench_view =
   Node.box
     ~orientation:Vertical
@@ -593,33 +603,46 @@ let bench_windowed (_graph @ local) =
 let bench_embedded (_graph @ local) = Bonsai.return bench_view
 
 let () =
-  let frames = 2000 in
+  (* Ten times what the sequential version used, which is the other half of the fix: the
+     interleaving makes contention cancel, and the longer window averages out the single
+     descheduling event that a 18 ms phase cannot absorb. 20 000 frames is ~0.2 s per side
+     on an idle host and is the difference between a worst observed ratio of 1.18 and one
+     of 1.03 at 2x oversubscription. *)
+  let frames = 20_000 in
   let bound_ratio = 1.2 in
-  let ms_per_frame ~run =
-    (* One frame first, outside the timing: that is the mount, which builds 101 widgets
-       and is not what this measures. *)
-    run ();
-    let start = Time_ns.now () in
-    for _ = 1 to frames do
-      run ()
-    done;
-    Time_ns.Span.to_ms (Time_ns.diff (Time_ns.now ()) start) /. Int.to_float frames
-  in
   let windowed =
     Expert.Driver.create
       ~time_source:(time_source ())
       ~on_window_created:(fun _ -> ())
       bench_windowed
   in
-  let windowed_ms = ms_per_frame ~run:(fun () -> Expert.Driver.frame windowed) in
-  Expert.Driver.stop windowed;
   (* [~target_frames_per_second:0.] installs no tick: the frames below are the ones this
      loop drives and nothing else, and no GLib source outlives the measurement. *)
   let embedded =
     Expert.embed ~time_source:(time_source ()) ~target_frames_per_second:0. bench_embedded
   in
-  let embedded_ms = ms_per_frame ~run:(fun () -> Expert.Embedded.frame embedded) in
+  (* One frame each first, outside the timing: that is the mount, which builds 101 widgets
+     and is not what this measures. *)
+  Expert.Driver.frame windowed;
+  Expert.Embedded.frame embedded;
+  let windowed_total = ref Time_ns.Span.zero in
+  let embedded_total = ref Time_ns.Span.zero in
+  for _ = 1 to frames do
+    let t0 = Time_ns.now () in
+    Expert.Driver.frame windowed;
+    let t1 = Time_ns.now () in
+    Expert.Embedded.frame embedded;
+    let t2 = Time_ns.now () in
+    (* Two [Time_ns.now ()] calls per frame more than the sequential version, against a ~9
+       us frame: below a tenth of a percent, and paid by both sides equally. *)
+    windowed_total := Time_ns.Span.( + ) !windowed_total (Time_ns.diff t1 t0);
+    embedded_total := Time_ns.Span.( + ) !embedded_total (Time_ns.diff t2 t1)
+  done;
+  Expert.Driver.stop windowed;
   Expert.Embedded.stop embedded;
+  let per_frame total = Time_ns.Span.to_ms total /. Int.to_float frames in
+  let windowed_ms = per_frame !windowed_total in
+  let embedded_ms = per_frame !embedded_total in
   let ratio = embedded_ms /. windowed_ms in
   printf
     "bench: %d idle frames, embedded/windowed cost ratio under %g: %b\n"

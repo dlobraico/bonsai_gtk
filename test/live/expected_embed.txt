@@ -59,4 +59,4 @@ a mount that registers then raises: root/1: Label does not emit On_clicked
 the same ctx then mounts a tree naming the same stack, and a switcher finds it
 5 embeds stopped and dropped: 5 wrappers finalized
 5 embeds dropped without stop: 0 wrappers finalized
-bench: 2000 idle frames, embedded/windowed cost ratio under 1.2: true
+bench: 20000 idle frames, embedded/windowed cost ratio under 1.2: true

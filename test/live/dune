@@ -26,29 +26,38 @@
 
 ; Live tests drive a real GTK display, so they run only under xvfb and only when
 ; explicitly asked for:
-;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest -j 1
+;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 ;
-; `-j 1` because that one `xvfb-run` gives every executable below the same X
-; display, and each of them presents a real toplevel. A window mapping on a
-; display takes the input focus off whichever window held it, so a neighbour
-; starting up mid-test is indistinguishable, to `live_controllers.ml`'s focus
-; block, from the focus controller losing focus on its own -- an intermittent
-; golden diff that reads as a regression in the controller. Without it, 1 run in
-; 10 fails (3 in 7 on a loaded machine); with it, 0 in 15. scripts/ci.sh carries
-; the rest of the measurements.
+; The nine rules whose executable presents a toplevel carry `(locks x-display)`.
+; One `xvfb-run` gives every executable below the same X display, and a window
+; mapping on a display takes the input focus off whichever window held it -- so a
+; neighbour starting up mid-test is indistinguishable, to `live_controllers.ml`'s
+; focus block, from the focus controller losing focus on its own: an intermittent
+; golden diff that reads as a regression in the controller. Measured
+; unserialised: 1 run in 10 fails, 3 in 7 on a loaded machine, 4 in 7 on a very
+; loaded one. Serialised: 0 focus failures in 6 loaded runs, 0 in 15 with the
+; older `-j 1`.
 ;
-; Note that `-j 1` limits the whole invocation, so its measured 2 s cost is
-; against a tree whose executables are already built -- which is true inside
-; ci.sh and need not be true here. On a cold tree this serialises compiling and
-; linking eleven executables as well as running them; `dune build @test/live` (or
-; @all) first, then the line above. `(locks)` on the rules would not have that
-; property, and is the fix on the backlog.
+; `(locks x-display)` rather than `-j 1` on one call site (final review, live
+; lens), for two reasons. It binds the constraint to the *rules*, so `dune test`,
+; `dune build @test/live/runtest` with no flags, an editor's run-tests action and
+; anything else that reaches these rules all inherit it -- `-j 1` protected one
+; line in one script and nothing else. And it serialises only these rule actions:
+; measured on a cold tree, `-j 1` costs 26 s (59 s against 33 s) because it also
+; serialises compiling and linking eleven executables, where the lock costs 1 s.
+; Warm -- which is what ci.sh always is -- the two are indistinguishable at ~31 s.
+;
+; `live_events` and `live_keyvals` deliberately have no lock: neither calls
+; `GMain.init` and both run to completion with DISPLAY unset. They live here
+; because `test/` links only `bonsai_gtk.vtree` and they need ocgtk, not because
+; they touch X.
 
 (rule
  (alias runtest)
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_patcher.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -61,6 +70,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_driver.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -73,6 +83,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_signals.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -85,6 +96,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_controls.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -97,6 +109,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_containers.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -121,6 +134,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_controllers.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -145,6 +159,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_lists.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -157,6 +172,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_text.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to
@@ -169,6 +185,7 @@
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
  (deps live_embed.exe)
+ (locks x-display)
  (action
   (progn
    (with-stdout-to

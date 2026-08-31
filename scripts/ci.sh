@@ -3,15 +3,41 @@
 # (./scripts/setup-switch.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-eval "$(opam env --switch=. --set-switch)"
+# Two lines rather than `eval "$(opam env ...)"`, because `set -e` does not fire
+# on a command substitution used as an argument and `eval ""` succeeds: with the
+# one-liner, a missing or broken local switch left the gate running against
+# whatever OCaml and dune were on PATH inside the dev shell. Usually that fails
+# confusingly two lines later; the case worth guarding is a *usable but
+# different* switch, where the gate silently certifies against the wrong
+# dependency set.
+opam_env=$(opam env --switch=. --set-switch)
+eval "$opam_env"
+
+# The live rules are enabled by this variable, and they must run only under the
+# xvfb line at the bottom. A developer who has been running live tests by hand --
+# exactly the developer who has `export BONSAI_GTK_LIVE_TESTS=1` in their shell,
+# because `test/live/dune`'s header tells them to type it -- otherwise changes
+# what three earlier sections do: `@test/runtest` is recursive and reaches
+# `test/live/runtest`, and both `-p` builds reach it too (the `executables` and
+# `rule` stanzas in `test/live/dune` name no package, so `--only-packages` does
+# not filter them out). The live suites then run inside "pure + headless tests",
+# in parallel, and the real live section finds every target up to date and runs
+# nothing: a false green that silently deletes the serialisation. On a host with
+# no DISPLAY the same leak aborts the gate at that step with "GTK initialization
+# failed" reported under the wrong heading. Neutralised here and pinned again on
+# each step below, so every line says which it means.
+export BONSAI_GTK_LIVE_TESTS=0
 
 echo "== nix: ocgtk pin builds and passes its tests"
 nix build .#ocgtk --no-link
 
 echo "== format"
 # Plain `dune fmt` / `dune build @fmt` walks the whole tree, including the
-# `result` symlink `nix build` leaves behind (a read-only Nix store path full
-# of ocgtk's own generated sources) and reports bogus diffs against it. Check
+# `result` symlink a bare `nix build` leaves behind (a read-only Nix store path
+# full of ocgtk's own generated sources) and reports bogus diffs against it.
+# This script's own `nix build` passes `--no-link` and creates no such symlink;
+# the hazard is a developer who ran `nix build` by hand, which is common enough
+# that the aliases below are worth keeping. Check
 # each real source directory's `@<dir>/fmt` alias instead; each exits
 # non-zero when its files need formatting.
 dune build @vtree/fmt @src/fmt @test/fmt @test_lib/fmt @test/live/fmt @examples/fmt
@@ -36,7 +62,7 @@ echo "== generated opam files are committed"
 git diff --exit-code HEAD -- '*.opam'
 
 echo "== pure + headless tests"
-dune build @test/runtest
+BONSAI_GTK_LIVE_TESTS=0 dune build @test/runtest
 
 # `opam install <pkg> --with-test` runs `dune build -p <pkg> ... @runtest`, which
 # is not what the line above does: `--only-packages` hides every library owned by
@@ -45,7 +71,7 @@ dune build @test/runtest
 # directories of their own so that the release-mode flags do not invalidate the
 # main `_build`.
 echo "== per-package builds, the way opam --with-test runs them"
-dune build --build-dir=_build.pkg -p bonsai_gtk @runtest
+BONSAI_GTK_LIVE_TESTS=0 dune build --build-dir=_build.pkg -p bonsai_gtk @runtest
 # bonsai_gtk_test depends on bonsai_gtk, and `-p` hides it -- so it has to come
 # from an installed copy, which is what opam does for real.
 dune build --build-dir=_build.pkg -p bonsai_gtk @install
@@ -53,39 +79,28 @@ prefix=$(mktemp -d)
 trap 'rm -rf "$prefix"' EXIT
 dune install --build-dir=_build.pkg --prefix "$prefix" --libdir "$prefix/lib" \
   bonsai_gtk >/dev/null
-OCAMLPATH="$prefix/lib${OCAMLPATH:+:$OCAMLPATH}" \
+OCAMLPATH="$prefix/lib${OCAMLPATH:+:$OCAMLPATH}" BONSAI_GTK_LIVE_TESTS=0 \
   dune build --build-dir=_build.pkgtest -p bonsai_gtk_test @runtest
 
 echo "== live tests (xvfb)"
-# `-j 1` is load-bearing, not caution. One `xvfb-run` wraps the whole dune
-# invocation, so all eleven live executables share a single X display, and dune
-# runs them in parallel -- `live_text` alone takes 25 s of the section's 29, so
-# it overlaps every other test in the directory. Each of them presents a real
-# toplevel, and a window mapping on an X display takes the input focus off
-# whichever window held it. `live_controllers.ml`'s focus block sees that as a
-# `focus-leave` arriving before the `grab_focus` that is supposed to cause it,
-# and reports it as a golden diff that looks exactly like a regression in the
-# focus controller, which is the expensive part.
+# The serialisation these need lives on the rules now, as `(locks x-display)` in
+# `test/live/dune` -- see that file's header for the measurements and for why
+# nine of the eleven rules carry it. It used to be a `-j 1` on this line, which
+# protected this line and nothing else: `dune test`, an editor's run-tests
+# action, and the leaked-environment path this script now closes above all
+# reached the same rules unserialised.
 #
-# Measured, because the failure is rare enough to be dismissed as noise: 1 fail
-# in 10 parallel runs of this alias, 0 in 15 serial ones, 0 in 15 solo runs of
-# `live_controllers.exe` alone, and 2 in 8 when other toplevels are deliberately
-# mapped on the display throughout the test. (Note for anyone re-measuring:
-# `--force` does NOT re-run these rules, because each declares a target --
-# delete `_build/default/test/live/output_*.txt` between runs instead, or a loop
-# of "passes" will be measuring nothing at all.)
-#
-# Serialising costs 2 s of 29 (28.6 s -> 30.8 s) on a warm tree -- which this
-# is, since `dune build @all` above has already built the executables -- because
-# one test dominates the section either way. Two alternatives are on the backlog
-# rather than here: an `xvfb-run` per rule (eleven displays, but it adds
-# `xvfb-run -a`'s own race for a free display number), and `(locks x-display)` on
-# the eleven rules, which is dune's own answer to "these must not run at once"
-# and binds the constraint to the rules rather than to this one flag on this one
-# call site. The second is probably the right end state; it is a change to eleven
-# rules with no review round behind it, which is not a thing a CI pass should
-# decide on its own.
-BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest -j 1
+# The `rm` is load-bearing too. Each of these rules declares a target, so dune
+# will not re-run one whose dependencies are unchanged -- and `--force` does not
+# either. That is sound for an ordinary rule and wrong for these five: their
+# goldens include wall-clock *ratios*, which are not a function of their deps, so
+# the caching is asymmetric in the worst direction -- a run that got lucky stays
+# green until an executable changes, while a red is re-run every time. It also
+# means a second `ci.sh` in the same tree exercised the live suite not at all
+# (4 s, zero bench lines, and a green section), which is exactly the state anyone
+# investigating a flaky bench would be in.
+rm -f _build/default/test/live/output_*.txt
+BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 
 echo "== example smoke"
 # Built first, and run out of `_build` rather than through `dune exec`: the
@@ -100,7 +115,9 @@ for ex in counter gallery embed; do
   code=$?
   set -e
   # 124 is timeout's "still running when time ran out", which is what a GUI that
-  # came up and stayed up looks like. Anything else means it fell over.
+  # came up and stayed up looks like. Anything else means it fell over. Note what
+  # this does *not* say: a main loop that came up and then deadlocked satisfies it
+  # too. It is a "did not crash on startup" check, not a liveness assertion.
   [ "$code" = 124 ] || { echo "$ex example exited with $code"; exit 1; }
 done
 echo "all green"

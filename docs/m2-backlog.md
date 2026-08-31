@@ -533,41 +533,43 @@ Do not "fix" these when an expected file surprises you:
   **Diagnosed and fixed in M2's Task 16, and no longer a quirk to accept.** It was not timing
   and nothing arrived "one frame early": the eleven live executables shared one X display, and
   a neighbour's toplevel mapping took the input focus away before the `grab_focus` that was
-  meant to move it. `-j 1` on the live alias is the fix. **If you see this diff again, the
-  serialisation has been lost** — check `scripts/ci.sh` and how you invoked the alias before
-  you touch the golden. See *Plumbing / hygiene*, "The live tests share one X display".
+  meant to move it. `(locks x-display)` on the nine rules that present a toplevel is the fix
+  (it was `-j 1` on the live alias until the final review's fix wave). **If you see this diff
+  again, the serialisation has been lost** — check `test/live/dune` before you touch the
+  golden. See *Plumbing / hygiene*, "The live tests share one X display".
   task-14 M11, closed by task-16.
 - `expected_controllers.txt`'s `gtk=` name lists follow attach order, so reordering
   `Events.Family.t` for tidiness reorders them even though every `armed=` assertion holds.
 
 ## Plumbing / hygiene
 
-- **The live tests share one X display, and one of them cares who has the focus.** M2's
-  clean-tree pass caught `live_controllers.ml`'s focus block failing once in ten runs of
-  `@test/live/runtest` — and the reviewer, on the same host under a heavier load, at three in
-  seven, so treat one-in-ten as a floor: another live executable presenting its toplevel takes the input focus
-  away, so a `focus-leave` arrives before the `grab_focus` meant to cause it and the golden
-  diff reads as a regression in the focus controller. Fixed for now by `-j 1` in `scripts/ci.sh`
-  (2 s of 29). Two better fixes, neither taken because both are more than a CI pass should
-  decide: **an `xvfb-run` per rule** — eleven displays, no coupling at all, at the cost of
-  `xvfb-run -a`'s own race for a free display number — or **making the block not depend on
-  toplevel focus**, which is the honest one, since what it wants to assert is that
-  `Widget.grab_focus` drives the controller, not that nothing else on the display ever takes
-  the focus. A third, cheaper than either and verified on this toolchain by task-16's reviewer:
-  **`(locks x-display)` on the eleven rules**, which is dune's own answer to "these must not run
-  at once" and which binds the constraint to the rules instead of to one flag on one call site —
-  so the alias races again for nobody, however it is invoked. This entry is the same phenomenon
-  as the struck one under *Known-and-accepted dump quirks*, which is where a maintainer hitting
-  the diff is most likely to land first.
+- ~~**The live tests share one X display, and one of them cares who has the focus.**~~
+  **Closed by the final review's fix wave**, with `(locks x-display)` on the nine rules whose
+  executable presents a toplevel — dune's own answer to "these must not run at once", binding
+  the constraint to the rules instead of to one `-j 1` on one call site, so every invocation
+  inherits it and a cold tree no longer pays 26 s to serialise eleven compiles as well
+  (59 s → 33 s; warm, where ci.sh always is, the two are indistinguishable). Measured
+  unserialised at 4 focus failures in 7 loaded runs; with the lock, 0 in 6. The phenomenon:
+  another live executable presenting its toplevel takes the input focus away, so a
+  `focus-leave` arrives before the `grab_focus` meant to cause it and the golden diff reads as
+  a regression in the focus controller. What is still *not* taken, and is the honest fix if
+  this ever comes back: **making the block not depend on toplevel focus at all**, since what it
+  wants to assert is that `Widget.grab_focus` drives the controller, not that nothing else on
+  the display ever takes the focus. This entry is the same phenomenon as the struck one under
+  *Known-and-accepted dump quirks*, which is where a maintainer hitting the diff is most likely
+  to land first.
 - **`live_text.exe` is 25 s of the live section's 29** (the other ten are 24–563 ms each,
   measured 2026-08-30). It is the 100 000-character editable-label bench and the 1 MB text-view
-  ones. Nothing is wrong with it, but the whole gate is now shaped by one file, and `-j 1`
-  costs nothing precisely because of that; if the section ever needs to be faster, that is the
-  only place to look.
+  ones. Nothing is wrong with it, but the whole gate is now shaped by one file, and
+  serialising the display costs nothing precisely because of that; if the section ever needs to
+  be faster, that is the only place to look.
 - **`dune build @test/live/runtest --force` does not re-run these rules** — each declares a
   target (`with-stdout-to output_*.txt`), so `--force` returns in 3 s having done nothing, and
   a loop of them will report a flaky test as green ten times running. Delete
-  `_build/default/test/live/output_*.txt` between runs instead. Cost M2's Task 16 an hour;
+  `_build/default/test/live/output_*.txt` between runs instead, which is what `scripts/ci.sh`
+  now does before its live step: the same trap applied to the plain gate command, so a second
+  `ci.sh` in one tree exercised the live suite not at all (final review, live I1). Cost M2's
+  Task 16 an hour;
   written down so it costs the next person nothing.
 - **The gallery's click card is not a click target; the words inside it are.** `Attr.on_click`
   sits on the `Node.label`, and `Attr.margin 24` is space *outside* a widget's allocation, so
