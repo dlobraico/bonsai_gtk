@@ -354,8 +354,8 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   `Attr.on_click` attaches a `GtkGestureClick` with the button and phase it asked for, that
   the key attrs attach one shared `GtkEventControllerKey` carrying the phase read back off
   the live controller, that dropping an attr empties one slot and removes the controller
-  (`test/live/live_controllers.ml`, which prints `armed=` on every line for exactly this
-  reason); and that a middle click with Shift reaches the application's closure with the
+  (`test/live/live_controllers_key.ml` and its `_click`/`_focus` siblings, which print
+  `armed=` on every line for exactly this reason); and that a middle click with Shift reaches the application's closure with the
   right `Click_event.t`, and that a key handler consumes Escape and lets `x` through
   (`test/handle/test_handle.ml`, headlessly) — and GTK's routing *in between* is tested by
   driving the X server the live suite already runs on. `test/live/live_input.ml` is both the
