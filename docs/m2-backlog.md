@@ -511,10 +511,12 @@ Consistency:
     same shape of miss that made a working handler look broken in the by-hand run. The right
     pair is `translate_coordinates` of (0,0) plus `get_width`/`get_height`, and
     `live_input.ml` reports `bounds-is-box` per target so the difference is on the record.
-  - **The `graphene_rect_t` `compute_bounds` answers with does not own its storage.** One
-    more call into the binding and its accessors return zeros; reading a width off a kept
-    rect gave 0 where the widget is 320 wide. `live_input.ml` pins this with a golden line,
-    and it is an ocgtk bug worth an upstream issue — see "ocgtk" below.
+  - **The `graphene_rect_t` `compute_bounds` answers with points into a destroyed stack
+    frame.** One more call into the binding and its accessors return zeros; reading a width
+    off a kept rect gave 0 where the widget is 320 wide. It is undefined behaviour rather
+    than a stale buffer, it is generator-wide rather than specific to this method, and
+    `live_input.ml` pins it with a golden line — see "Still open on the fork" below, where
+    it is now a scoped fork item rather than an audit.
 
   Two facts about GTK the file also records, because both would otherwise read as bugs in
   this library: an `Attr.on_click` on a `GtkButton` *does* see the press, despite the
@@ -771,15 +773,60 @@ pin. `ci.sh` is green against it.
 
 ### Still open on the fork
 
-- **`Widget.compute_bounds`'s `graphene_rect_t` does not own its storage.** Found by
-  `test/live/live_input.ml`: read the rectangle's width immediately and it is 320, make one
-  more call into the binding and read it again and it is 0 — the accessors answer with zeros
-  once whatever buffer the stub returned has been reused. Any caller that keeps the rect and
-  reads it later gets garbage, silently and with no crash, which is the worst shape a
-  geometry bug can take. `live_input.ml` works around it by reading all four fields
-  immediately and pins the behaviour with a golden line (`compute_bounds rect survives a
-  later ocgtk call: false`), so a fork round that fixes this turns that line green-to-red and
-  says so. Worth checking every stub that returns a boxed struct by value, not just this one.
+- **153 generated stubs return a pointer to a destroyed stack frame.** The highest-value
+  *correctness* item on the fork after the `char*` leak below, and the one with the
+  smallest fix. Found by `test/live/live_input.ml`, which was bitten by it in
+  `Widget.compute_bounds`: read the rectangle's width immediately and it is 320, make one
+  more call into the binding and read it again and it is 0.
+
+  It is not a lifetime convention and not a stale-but-defined buffer — it is undefined
+  behaviour. The stub declares the out-parameter as a C stack local and wraps its
+  *address*:
+
+  ```c
+  /* src/gtk/generated/ml_widget_gen.c */
+  CAMLexport CAMLprim value ml_gtk_widget_compute_bounds(value self, value arg1)
+  {
+    CAMLparam2(self, arg1);
+    graphene_rect_t out2;                                /* a C stack local */
+    gboolean result = gtk_widget_compute_bounds(…, &out2);
+    …
+    Store_field(ret, 1, Val_graphene_rect_t(&out2));     /* wraps the pointer, no copy */
+    CAMLreturn(ret);
+  }
+  ```
+
+  `Val_graphene_rect_t` is `ml_gir_record_val_ptr_with_type(graphene_rect_get_type(), ptr)`
+  (`src/graphene/generated/ml_rect_gen.c:24`) — a *val_ptr* wrapper. So the OCaml value
+  points into a frame `CAMLreturn` destroys, and every read through it is a
+  read-after-return. `live_input.ml`'s workaround (read all four fields before touching
+  ocgtk again) is **stack-layout luck, not a rule**: each accessor is itself a C call that
+  pushes a frame which may or may not land on the same bytes. Its comment says so, so that
+  nobody adopts the pattern on the strength of it working here.
+
+  **The shape is generator-wide.** Swept the generated C for a local `<type> outN;` handed
+  to `Val_<type>(&outN)` — **153 stubs across 22 files** (counted at the fork's `4ae6698c`;
+  the pinned `649498b4` is not in the local checkout, but this is generator output and the
+  generator did not change between them):
+
+  ```
+  graphene_vec3_t 28 · graphene_rect_t 22 · graphene_point3d_t 18 · graphene_vec4_t 17
+  graphene_vec2_t 16 · graphene_point_t 13 · graphene_matrix_t 10 · graphene_box_t 8
+  graphene_quaternion_t 8 · graphene_plane_t 4 · graphene_sphere_t 3 · graphene_quad_t 2
+  graphene_size_t 2 · graphene_euler_t 1 · graphene_ray_t 1
+  ```
+
+  That number is what makes this scoped work rather than an open-ended audit: **one
+  generator change** — allocate and copy on the way out, the way the record converters
+  already do for transfer-full returns — **plus a regeneration**, and all 153 close at
+  once. A per-call-site fix would be 153 patches for the same bug.
+
+  Two golden lines in `live_input.ml` are the canaries: `bounds-is-box=…` on each geometry
+  line, and `compute_bounds rect survives a later ocgtk call: false`. Both are reading
+  undefined behaviour, so both could move on an ocgtk rebuild with no change in this
+  repository — and neither is load-bearing for what the test asserts, since the aim comes
+  from `translate_coordinates` and `get_width`/`get_height`. When the generator is fixed,
+  the `survives` line flips to `true` and the workaround comment in `box_of` can go.
 
 - **No transfer-full `char*` return is freed anywhere in the generated stubs** — a memory leak in
   every one of them, and **the highest-value remaining fork item**. The one M2 walks into is

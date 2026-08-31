@@ -339,7 +339,13 @@ See `docs/upstream/README.md` for the fork, the fixes, and their upstreaming sta
 M2 covers the widgets listed under [Widgets](#widgets) and the input attributes under
 [Input](#input); anything else is a `Node.native` case. What is deliberately still out:
 
-### Testing the input path
+### The input path, and the one part of it still untested
+
+- **What remains uncovered is a real display.** `test/live/live_input.ml` runs under `xvfb`
+  with no window manager and no compositor, so the X11 input path is exercised and
+  Wayland's (`gdk_wayland`) is not. That residual is on the backlog. Everything below it is
+  what *is* covered, and is here because this section is where a reader comes looking for
+  the gap.
 
 - **A real click and a real keystroke are delivered by the X server, not by the binding.**
   The pinned ocgtk binding can synthesise neither: there is no `GdkEvent` constructor for
@@ -358,16 +364,14 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   server delivers to it as ordinary input. Its golden covers buttons 1/2/3 reported as
   themselves, `n_press` 2 on a double click, widget-local coordinates matching the point the
   click was aimed at, `ctrl` carried through a click, a printable key propagating past a
-  `Capture`-phase handler into the entry's text, Escape `Handled` in the capture phase and
-  reaching neither the entry's own controller nor its text, focus enter/leave on a click and
-  on Tab, and — as the check that the coordinates are real — a click 10 px outside the
-  target moving nothing. There are no sleeps and no screenshots in it: it pumps its own main
+  `Capture`-phase handler into the entry's text, focus enter/leave on a click and on Tab,
+  and — as the check that the coordinates are real — a click 10 px outside the target
+  moving nothing. Propagation is a matched pair rather than a bare negative: F1 propagates
+  out of the capture handler and *does* reach the entry's own bubble-phase controller,
+  Escape is `Handled` in the capture phase and does not, and those two golden lines differ
+  in exactly that. There are no sleeps and no screenshots in it: it pumps its own main
   loop until the handler's counter moves. Focus was covered end to end before this too —
   `Widget.grab_focus` on a presented window really drives `GtkEventControllerFocus`.
-
-  **What remains uncovered is a real display**: this runs under `xvfb` with no window
-  manager and no compositor, so the X11 input path is exercised and Wayland's (`gdk_wayland`)
-  is not. That residual is on the backlog.
 
 ### Input
 

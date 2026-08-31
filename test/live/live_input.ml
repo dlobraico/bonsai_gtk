@@ -35,8 +35,13 @@ let cast = Bonsai_gtk.Private.Gtk_import.cast
    {b No sleeps, no screenshots, no hardcoded pixels.} This executable is both the
    application and the driver, which is what makes all three avoidable:
 
-   - coordinates come from [Widget.compute_bounds] on the target in the toplevel's
-     coordinate space, so nothing here encodes a window size, a font or a theme;
+   - coordinates come from the target's own widget box -- [Widget.translate_coordinates]
+     of its (0,0), plus [get_width]/[get_height] -- in the toplevel's coordinate space, so
+     nothing here encodes a window size, a font or a theme. {b Not [compute_bounds]},
+     which is the obvious call, is the one the design sketch named, and is the wrong one
+     for aiming a click: it answers with the region the widget {i draws} in, which on a
+     themed [GtkButton] is inset by (17,5) from the box a gesture reports coordinates in.
+     [box_of] below measures the difference on every run and puts it in the golden;
    - the settling wait is [pump_until], which pumps this process's own main loop until the
      handler's counter moves. Its bound is a GLib timeout source that exists only so that
      a {i failure} terminates: on the passing path it is removed without having fired, and
@@ -46,9 +51,9 @@ let cast = Bonsai_gtk.Private.Gtk_import.cast
 
    {b The one thing assumed about the display} is that the toplevel sits at screen (0,0),
    which is what an Xvfb with no window manager does (Task 16 established it). It is not
-   taken on trust: every click is aimed at a point computed from the widget's bounds and
-   then checked against the widget-local coordinates the handler reports, and the "miss"
-   block aims 10 px past the target's bottom edge and asserts that nothing fires. A window
+   taken on trust: every click is aimed at a point computed from the widget's box and then
+   checked against the widget-local coordinates the handler reports, and the "miss" block
+   aims 10 px past the target's bottom edge and asserts that nothing fires. A window
    anywhere else fails both. *)
 
 (* ------------------------------------------------------------------ the log *)
@@ -173,7 +178,18 @@ let drain () =
    at the rule, naming xdotool, instead of somewhere in here. The by-hand script this
    replaces reached xdotool through a hardcoded /nix/store path and reported its absence
    as "no window". *)
-let xdotool_path = lazy (Sys.get_argv ()).(1)
+let xdotool_path =
+  lazy
+    (let argv = Sys.get_argv () in
+     if Array.length argv < 2
+     then
+       failwith
+         "live_input: pass the path to xdotool as argv(1). The dune rule supplies it \
+          with           %{bin:xdotool}; running this executable by hand needs `$(which \
+          xdotool)`."
+     else argv.(1))
+;;
+
 let devnull = lazy (Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0o644)
 
 (* xdotool's own stdout is discarded -- [search] prints the window ids it found when it
@@ -207,8 +223,8 @@ let title = sprintf "bonsai_gtk live_input %d" (Unix.getpid ())
 (* What the click currently in flight was aimed at, in the target's own coordinates, and
    how big that target is. Set by the driver immediately before each click, read by the
    handler: it is what turns "some coordinates arrived" into "the coordinates that arrived
-   are the ones this click was aimed at", which is the assertion that makes
-   [compute_bounds] and the (0,0) toplevel real rather than assumed. *)
+   are the ones this click was aimed at", which is the assertion that makes the widget box
+   [box_of] computed and the (0,0) toplevel real rather than assumed. *)
 let aim = ref (0., 0.)
 let target_size = ref (0., 0.)
 
@@ -221,6 +237,8 @@ let click_line name (e : Click_event.t) =
     e.button
     e.n_press
     (Float.(abs (e.x -. ax) <= 1.) && Float.(abs (e.y -. ay) <= 1.))
+    (* Implied by [hit-aim] for every aim point used today, all of which are fractions
+       strictly inside the box; kept as the guard for an aim point that is not. *)
     (Float.(e.x >= 0.) && Float.(e.x < w) && Float.(e.y >= 0.) && Float.(e.y < h))
     (mods e.modifiers)
 ;;
@@ -381,10 +399,19 @@ let () =
      only the facts that are not. *)
   let box_of w ~name =
     let bounds_ok, r = W.Widget.compute_bounds w window in
-    (* Read out of the [graphene_rect_t] before anything else touches ocgtk. The rectangle
-       does not own its storage -- the next binding call overwrites it, and the accessors
-       then answer with zeros -- so a rect kept across one is garbage. Measured, and
-       pinned by the line below this function. *)
+    (* Read out of the [graphene_rect_t] before anything else touches ocgtk -- and know
+       that this is luck rather than a rule.
+
+       [ml_gtk_widget_compute_bounds] declares a [graphene_rect_t] as a C {i stack local}
+       and hands its address to [Val_graphene_rect_t], which is a val_ptr wrapper and does
+       not copy. So the OCaml value points into a frame that [CAMLreturn] destroys, and
+       every read through it is a read-after-return: undefined behaviour, not a
+       stale-but-defined buffer. Reading "immediately" still dereferences the dead frame
+       -- each accessor is itself a C call that pushes a frame which may or may not land
+       on the same bytes -- so this works by stack layout on this build and is not
+       guaranteed by anything. It is a workaround for a bug to be fixed in the generator
+       (there are 153 stubs of this shape; see [docs/m2-backlog.md]), not a pattern to
+       copy. *)
     let rx = Rect.get_x r
     and ry = Rect.get_y r
     and rw = Rect.get_width r
@@ -404,10 +431,17 @@ let () =
   let lx, ly, lw, lh = box_of label_target ~name:"label" in
   (* The hazard [box_of] works around, asserted rather than only described, because it is
      invisible until a coordinate is wrong and it would break this file first: the
-     [graphene_rect_t] that [Widget.compute_bounds] answers with is only valid until the
-     next call into the binding. Reading a width off it afterwards gave 0 where the widget
-     is 320 wide. If this line ever prints [true], ocgtk started copying the rectangle and
-     the comment in [box_of] can go. *)
+     [graphene_rect_t] that [Widget.compute_bounds] answers with points into a destroyed
+     stack frame. Reading a width off it after one more call into the binding gave 0 where
+     the widget is 320 wide.
+
+     This line and the [bounds-is-box] fields above it are canaries rather than assertions
+     about this library: both are reading undefined behaviour, so both could move on an
+     ocgtk rebuild with no change here. Nothing the test actually asserts depends on them
+     -- the aim comes from [translate_coordinates] and [get_width]/[get_height], so every
+     click, every [hit-aim] and the negative are unaffected -- and in 20 recorded runs
+     neither moved. If this line ever prints [true], the generator started copying and the
+     comment in [box_of] can go. *)
   let () =
     let (_ : bool), r = W.Widget.compute_bounds label_target window in
     let w0 = Rect.get_width r in
