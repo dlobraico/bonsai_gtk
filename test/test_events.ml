@@ -247,7 +247,7 @@ let%expect_test "every controller attr is supported on every kind" =
   [%expect {| (refused ()) |}];
   (* And a click attr on a label -- which emits nothing -- really does pass the same
      [unsupported] gate the runtime and the handle both call. *)
-  let attrs = Attrs.of_list [ Attr.on_click (fun _ -> Ui_effect.Ignore) ] in
+  let attrs = Attrs.of_list [ Attr.on_click (fun _ -> Click_response.Continue) ] in
   print_s [%sexp (Events.unsupported (Node.label "x").kind attrs : Attr.Name.t option)];
   [%expect {| () |}];
   print_s

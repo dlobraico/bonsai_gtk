@@ -630,7 +630,7 @@ let%expect_test "a controller attr is accepted on a kind that emits no signals" 
          ~title:"controllers"
          (Node.label
             ~attrs:
-              [ Attr.on_click (fun _ -> Ui_effect.Ignore)
+              [ Attr.on_click (fun _ -> Click_response.Continue)
               ; Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
               ]
             "card"))
@@ -669,9 +669,10 @@ let%expect_test "a click action carries the button and the modifiers" =
              ~attrs:
                [ Attr.test_id "card"
                ; Attr.on_click (fun (e : Click_event.t) ->
-                   set_log
-                     (sprintf "b%d n%d shift=%b" e.button e.n_press e.modifiers.shift
-                      :: log))
+                   Click_response.Claim_and
+                     (set_log
+                        (sprintf "b%d n%d shift=%b" e.button e.n_press e.modifiers.shift
+                         :: log)))
                ]
              "card"
          ; Node.label ~attrs:[ Attr.test_id "log" ] (String.concat ~sep:"," log)
@@ -709,6 +710,8 @@ let%expect_test "a click action carries the button and the modifiers" =
   Bonsai_gtk_test.Handle.show_diff handle;
   [%expect
     {|
+    on_click card -> (Claim_and <effect>)
+
       ((kind (Window ((title (clicks))))) (attrs ())
        (children
         (Single

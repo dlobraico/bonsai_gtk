@@ -46,7 +46,7 @@ let () =
                        Some
                          (Attr.on_click (fun _ ->
                             record "click";
-                            Ui_effect.Ignore))
+                            Click_response.Continue))
                      else None)
                   ; (if with_focus
                      then
@@ -211,7 +211,7 @@ let () =
                                     e.button
                                     e.n_press
                                     e.modifiers.control);
-                               Ui_effect.Ignore))
+                               Click_response.Continue))
                      else None)
                   ])
              ~label:"target"

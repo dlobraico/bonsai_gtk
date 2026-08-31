@@ -68,19 +68,22 @@ module Action : sig
         name a page, for the reason [Set_page] gives. *)
     | Click_at of string * Click_event.t
     (** test_id of a node carrying [Attr.on_click], and the click to deliver. Fires that
-        handler with exactly that event; nothing is derived from the node, and in
-        particular the [button] the attr was constructed with is {i not} consulted — a
+        handler with exactly that event, prints the {!Bonsai_gtk_vtree.Click_response.t}
+        it answered, and performs the effect that response carries (if any) —
+        [Key_press]'s shape, and for its reason: the claim decision reaches GTK
+        synchronously ([Gesture.set_state] on the C stack) and headless there is no GTK,
+        so the print is the only place it can land. Nothing is derived from the node, and
+        in particular the [button] the attr was constructed with is {i not} consulted — a
         headless test that delivers button 3 to a [~button:1] gesture is testing its own
         handler, not GTK's filtering, and pretending otherwise would make the action's
         behaviour depend on a detail no headless model has. Build the event with
         {!Bonsai_gtk_vtree.Click_event}'s record and {!Bonsai_gtk_vtree.Modifiers.none}.
 
-        {b This is the only test there is for a click handler.} The pinned ocgtk binding
-        can neither construct a [GdkEvent] nor emit a signal with arguments, so no live
-        test can deliver a real click; what a live test proves is that the gesture is
-        attached and detached (see [test/live/live_controllers_focus.ml]). The gap between
-        "this handler does the right thing" and "GTK routes a real button-2 press to it"
-        is real, and is in the backlog. *)
+        What this {i cannot} model is what the claim does to other gestures: there is no
+        routing here for a claimed sequence to be withheld from. That half is
+        [test/live/live_input.ml]'s nested-targets block, which delivers a real press with
+        XTEST and shows the outer handler silent under [Claim] and firing under
+        [Continue]. *)
     | Focus_enter of string
     | Focus_leave of string
     (** test_id of a node carrying the matching attr. Two actions rather than one for a

@@ -52,7 +52,7 @@ let () =
       ~is_root:true
       (Node.label
          ~attrs:
-           [ Attr.on_click ~button:2 (fun _ -> Ui_effect.Ignore)
+           [ Attr.on_click ~button:2 (fun _ -> Click_response.Continue)
            ; Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
            ]
          "x")
@@ -87,7 +87,7 @@ let () =
    constructor of [Attr.Name.t]; the assertion below is what stops it going stale, exactly
    as [live_events.ml]'s [all_kinds] count does for [Kind.t]. *)
 let each_controller_attr : (Attr.Name.t * Attr.t) list =
-  [ On_click, Attr.on_click (fun _ -> Ui_effect.Ignore)
+  [ On_click, Attr.on_click (fun _ -> Click_response.Continue)
   ; On_focus_enter, Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
   ; On_focus_leave, Attr.on_focus_leave (fun () -> Ui_effect.Ignore)
   ; On_key_pressed, Attr.on_key_pressed (fun _ -> Key_response.Propagate)

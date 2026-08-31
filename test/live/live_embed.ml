@@ -141,7 +141,7 @@ let raises_after_two_natives (_graph @ local) =
   Bonsai.return
     (Node.box
        ~orientation:Vertical
-       ~attrs:[ Attr.on_click (fun _ -> Ui_effect.Ignore) ]
+       ~attrs:[ Attr.on_click (fun _ -> Click_response.Continue) ]
        [ Node.button ~attrs:[ Attr.on_clicked Ui_effect.Ignore ] ~label:"one" ()
        ; Native.node counted "two"
        ; Native.node counted "three"

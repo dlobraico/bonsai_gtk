@@ -307,7 +307,7 @@ let gallery_tree ~n ~set_n =
                        ~attrs:
                          [ Attr.test_id "card"
                          ; Attr.cursor_name "pointer"
-                         ; Attr.on_click ~button:1 (fun _ -> Ui_effect.Ignore)
+                         ; Attr.on_click ~button:1 (fun _ -> Click_response.Continue)
                          ]
                        (Node.label "click me")
                    ; Node.label

@@ -157,7 +157,7 @@ module Private : sig
     | On_click of
         { button : int
         ; phase : Phase.t
-        ; handler : Click_event.t Handler.t
+        ; handler : Click_response.handler
         }
     | On_focus_enter of unit Handler.t
     | On_focus_leave of unit Handler.t
@@ -632,17 +632,19 @@ val on_editing_changed : (bool -> unit Ui_effect.t) -> t
     {!Phase.Bubble}, GTK's own -- a gesture on a card in a selection container wants
     bubble, so that the container's own selection gesture still runs.
 
-    Unlike every other event attr, this one is legal on {i any} node: it is not a signal
-    of some widget class but a controller the runtime attaches to whatever carries it. The
+    Unlike most event attrs, this one is legal on {i any} node: it is not a signal of some
+    widget class but a controller the runtime attaches to whatever carries it. The
     controller exists only while the attr does -- a frame that drops it removes the
     controller, and a later frame that adds it back gets a fresh one.
 
-    The gesture does {i not} claim the event sequence, so a click also reaches whatever
-    else would have handled it. That is deliberate and is what lets a card carry a
-    middle-click handler without breaking its list box's click-to-select; an application
-    that wants to consume the click has no way to say so in M2, which is named in the
-    README's Limitations. *)
-val on_click : ?button:int -> ?phase:Phase.t -> Click_event.t Handler.t -> t
+    The handler answers a {!Click_response.t} rather than returning an effect: whether the
+    gesture {i claims the event sequence} is decided synchronously, inside the [pressed]
+    trampoline, and {!Click_response.Claim} is how a handler consumes the click so that
+    nothing else -- a button's own gesture, a list box's click-to-select -- sees it.
+    {!Click_response.Continue} is the pass-through, and it is also what a missing handler
+    produces: no handler claims nothing, so a card can carry a middle-click handler
+    without breaking its container's selection. *)
+val on_click : ?button:int -> ?phase:Phase.t -> Click_response.handler -> t
 
 (** Fires when focus moves {i into} this widget or any of its children -- which is the
     useful sense for a composite widget like a [GtkSearchEntry], whose own [has_focus] is

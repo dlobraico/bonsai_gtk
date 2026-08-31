@@ -759,14 +759,15 @@ let input (graph @ local) =
              [ Attr.margin 24
              ; Attr.cursor_name "pointer"
              ; Attr.on_click (fun (event : Click_event.t) ->
-                 set_click
-                   (sprintf
-                      "button %d, press %d, at (%.0f, %.0f), %s"
-                      event.button
-                      event.n_press
-                      event.x
-                      event.y
-                      (modifiers event.modifiers)))
+                 Click_response.Continue_and
+                   (set_click
+                      (sprintf
+                         "button %d, press %d, at (%.0f, %.0f), %s"
+                         event.button
+                         event.n_press
+                         event.x
+                         event.y
+                         (modifiers event.modifiers))))
              ]
            "click me")
     ; Node.box

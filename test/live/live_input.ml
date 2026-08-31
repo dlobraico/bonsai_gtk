@@ -71,6 +71,12 @@ let keys = ref 0
 let focuses = ref 0
 let record s = log := s :: !log
 
+(* What the nested claim target answers, flipped by the driver between blocks: [Claim] for
+   the block that proves a claimed sequence is withheld from the outer gesture, [Continue]
+   for the control that proves the same click otherwise reaches both. One tree serves both
+   cases because the handler reads it at fire time. *)
+let inner_response = ref Bonsai_gtk_vtree.Click_response.Continue
+
 let take () =
   let l = List.rev !log in
   log := [];
@@ -247,7 +253,7 @@ let on_click_recording name =
   Attr.on_click (fun (e : Click_event.t) ->
     incr clicks;
     record (click_line name e);
-    Ui_effect.Ignore)
+    Click_response.Continue)
 ;;
 
 (* The target's size is requested rather than inherited from its text, for a reason that
@@ -323,8 +329,38 @@ let view =
             it. Whether an [Attr.on_click] on a button still sees the press -- and with
             which [n_press] -- is a fact about GTK that this suite had no way to ask
             before. The golden records the answer; the assertions that have to be exact
-            are on the label above. *)
-       ; Node.button ~attrs:(target_attrs "button") ~label:"button target" ()
+            are on the label above.
+
+            Beside it, the nested claim pair: an outer box carrying [Attr.on_click] around
+            an inner label whose handler answers [!inner_response]. Both gestures are in
+            the bubble phase, so the inner (target) one runs first -- and whether the
+            outer one runs at all is exactly what [Click_response.Claim] decides, which is
+            the routing no other suite can see. Horizontal rather than another row,
+            because the Xvfb screen is 640x480 and a fourth row would sit below it. *)
+       ; Node.box
+           ~orientation:Horizontal
+           ~spacing:20
+           [ Node.button ~attrs:(target_attrs "button") ~label:"button target" ()
+           ; Node.box
+               ~orientation:Vertical
+               ~attrs:
+                 [ Attr.on_click (fun (e : Click_event.t) ->
+                     incr clicks;
+                     record (sprintf "outer b%d" e.button);
+                     Click_response.Continue)
+                 ]
+               [ Node.label
+                   ~attrs:
+                     [ Attr.width_request 240
+                     ; Attr.height_request 120
+                     ; Attr.on_click (fun (e : Click_event.t) ->
+                         incr clicks;
+                         record (click_line "inner" e);
+                         !inner_response)
+                     ]
+                   "claim target"
+               ]
+           ]
        ])
 ;;
 
@@ -360,7 +396,9 @@ let () =
   in
   let kids = children box in
   let label_target = (List.nth_exn kids 0).widget in
-  let button_target = (List.nth_exn kids 2).widget in
+  let bottom_row = children (List.nth_exn kids 2) in
+  let button_target = (List.nth_exn bottom_row 0).widget in
+  let claim_inner = (List.nth_exn (children (List.nth_exn bottom_row 1)) 0).widget in
   let entries = List.map (children (List.nth_exn kids 1)) ~f:(fun c -> c.widget) in
   let entry1 = List.nth_exn entries 0
   and entry2 = List.nth_exn entries 1 in
@@ -579,5 +617,31 @@ let () =
   pump_until ~label:"tab" ~ready:(fun () -> !focuses >= before + 2);
   drain ();
   show "Tab";
-  printf "focus after Tab: e1=%b e2=%b\n" (focus_in entry1) (focus_in entry2)
+  printf "focus after Tab: e1=%b e2=%b\n" (focus_in entry1) (focus_in entry2);
+  (* --- the claim, end to end: the inner (target-phase-first) gesture claims the event
+     sequence, and the outer gesture on its ancestor -- which the [Continue] control below
+     proves would otherwise fire -- stays silent. This is the routing half of
+     [Click_response]: the decision half is headless ([test/handle/test_handle.ml]) and
+     the [set_state] plumbing is the trampoline's, so a real press through GTK's own
+     gesture machinery is the only thing that can show a claimed click being withheld from
+     another handler.
+
+     The claim block waits for one click and then drains: an outer press that a broken
+     claim let through would already be queued behind the inner one, so the drain pulls it
+     into the log and the golden line shows it. *)
+  let cx, cy, cw, ch = box_of claim_inner ~name:"claim-inner" in
+  let on_claim = target ~x:cx ~y:cy ~w:cw ~h:ch in
+  inner_response := Click_response.Claim;
+  click ~button:1 ~label:"claim" (on_claim 0.25 0.5);
+  show "inner claims the sequence";
+  (* The control: the same press with the handler answering [Continue] reaches both
+     handlers, inner first (bubble runs from the target outward). This line and the one
+     above differ in exactly one thing, and that difference is [Claim] working. *)
+  inner_response := Click_response.Continue;
+  let before = !clicks in
+  let csx, csy = on_claim 0.75 0.5 in
+  xdotool [ "mousemove"; Int.to_string csx; Int.to_string csy; "click"; "1" ];
+  pump_until ~label:"continue" ~ready:(fun () -> !clicks >= before + 2);
+  drain ();
+  show "inner continues"
 ;;

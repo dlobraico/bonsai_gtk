@@ -229,11 +229,16 @@ module Private = struct
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
-       rebuilds its closures every frame changes the handler on every frame regardless. *)
+       rebuilds its closures every frame changes the handler on every frame regardless.
+
+       The handler is not a [Handler.t]: it returns a [Click_response.t] rather than an
+       effect, because whether the gesture claims the event sequence is decided
+       synchronously inside the [pressed] trampoline, on the C stack -- see
+       [Click_response]. *)
     | On_click of
         { button : int
         ; phase : Phase.t
-        ; handler : Click_event.t Handler.t
+        ; handler : Click_response.handler
         }
     | On_focus_enter of unit Handler.t
     | On_focus_leave of unit Handler.t
@@ -369,11 +374,12 @@ let rec equal a b =
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
-     unequal) on every frame anyway. *)
+     unequal) on every frame anyway. The handler is a [Click_response.handler] rather than
+     a [Handler.t], so [phys_equal] is spelled out, as [On_key_pressed]'s is. *)
   | On_click a, On_click b ->
     Int.equal a.button b.button
     && Phase.equal a.phase b.phase
-    && Handler.equal a.handler b.handler
+    && phys_equal a.handler b.handler
   | On_focus_enter a, On_focus_enter b -> Handler.equal a b
   | On_focus_leave a, On_focus_leave b -> Handler.equal a b
   (* Same rule as [On_click]: the controller property structurally, the handler

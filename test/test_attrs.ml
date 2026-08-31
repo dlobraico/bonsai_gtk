@@ -83,7 +83,7 @@ let%expect_test "M1 widget-wide attrs round-trip through of_list and diff" =
    golden has to be able to see that [~button:2] made it in, since nothing else prints
    it), and they diff on the same physical-handler rule as every other event attr. *)
 let%expect_test "controller attrs round-trip and diff" =
-  let click = Attr.on_click ~button:2 (fun _ -> noop) in
+  let click = Attr.on_click ~button:2 (fun _ -> Click_response.Continue) in
   let attrs = Attrs.of_list [ click; Attr.on_focus_enter (fun () -> noop) ] in
   print_s [%sexp (attrs : Attrs.t)];
   [%expect
@@ -108,7 +108,7 @@ let%expect_test "controller attrs round-trip and diff" =
    change in either has to be a [Set] even when the handler is physically unchanged --
    that is what [Controllers.update] re-reads them from. *)
 let%expect_test "a click attr's button and phase are part of its identity" =
-  let h : Click_event.t Handler.t = fun _ -> noop in
+  let h : Click_response.handler = fun _ -> Click_response.Continue in
   let base = Attrs.of_list [ Attr.on_click h ] in
   print_s
     [%sexp
@@ -213,6 +213,28 @@ let%expect_test "a key response sexps its decision and hides its effect" =
     (Handled (handled true) (has_effect false))
     ((Propagate_and <effect>) (handled false) (has_effect true))
     ((Handled_and <effect>) (handled true) (has_effect true))
+    |}]
+;;
+
+(* The click twin, on the same terms: [claim] is the whole of what reaches GTK
+   ([Gesture.set_state] with [`CLAIMED]), and the effect hides behind [<effect>].
+   [Continue] is what a missing handler produces, so its row is the [declined] path's
+   contract as well as the constructor's. *)
+let%expect_test "a click response sexps its decision and hides its effect" =
+  List.iter
+    [ Click_response.Continue; Claim; Continue_and noop; Claim_and noop ]
+    ~f:(fun r ->
+      print_s
+        [%sexp
+          (r : Click_response.t)
+          , `claim (Click_response.claim r : bool)
+          , `has_effect (Option.is_some (Click_response.effect r) : bool)]);
+  [%expect
+    {|
+    (Continue (claim false) (has_effect false))
+    (Claim (claim true) (has_effect false))
+    ((Continue_and <effect>) (claim false) (has_effect true))
+    ((Claim_and <effect>) (claim true) (has_effect true))
     |}]
 ;;
 

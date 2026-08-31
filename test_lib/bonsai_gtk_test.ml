@@ -296,11 +296,19 @@ module Result_spec = struct
        constructed with is *not* consulted: a headless test that delivers button 3 to a
        [~button:1] gesture is testing its own handler, not GTK's filtering, and pretending
        otherwise would make the action's behaviour depend on a detail no headless model
-       has. The same reason [Set_text] does not consult [text]. *)
+       has. The same reason [Set_text] does not consult [text].
+
+       The response is printed, on [Key_press]'s rule and for its reason: the claim
+       decision reaches GTK synchronously and headless there is no GTK, so the golden is
+       the only place it can land -- without it, [Claim_and eff] and [Continue_and eff]
+       would be indistinguishable. *)
     | Click_at (id, event) ->
       let n = node_exn node id in
       (match (Attrs.find n.attrs On_click :> Attr.Private.t option) with
-       | Some (On_click { handler; _ }) -> handler event
+       | Some (On_click { handler; _ }) ->
+         let response = handler event in
+         printf !"on_click %s -> %{sexp: Click_response.t}\n" id response;
+         Option.value (Click_response.effect response) ~default:Ui_effect.Ignore
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_click handler" id ())
     (* Two actions rather than one for a focus *move*, because the two handlers are
        independent: the widget focus leaves and the widget focus enters are different

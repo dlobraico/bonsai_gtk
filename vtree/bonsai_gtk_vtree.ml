@@ -17,6 +17,7 @@ module Grid_cell = Grid_cell
 module Phase = Phase
 module Modifiers = Modifiers
 module Click_event = Click_event
+module Click_response = Click_response
 module Keyval = Keyval
 module Key_event = Key_event
 module Key_response = Key_response

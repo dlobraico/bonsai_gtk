@@ -23,3 +23,6 @@ key Escape (capture handles): (capture Escape mods=none)
 entry 1 text after Escape: "x"
 Tab: (capture Tab mods=none entry1 Tab focus-leave e1 focus-enter e2)
 focus after Tab: e1=false e2=true
+claim-inner geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=true
+inner claims the sequence: (inner button=1 n_press=1 hit-aim=true in-bounds=true mods=none)
+inner continues: (inner button=1 n_press=1 hit-aim=true in-bounds=true mods=none outer b1)

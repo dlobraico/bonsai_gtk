@@ -163,10 +163,22 @@ let click_spec (gc : W.Gesture_click.t) : Signals.spec =
     ; fire =
         (fun _w attr (e : Click_event.t) ->
           match (attr :> Attr.Private.t) with
-          | On_click { handler; _ } -> (), Some (handler e)
+          | On_click { handler; _ } ->
+            let response = handler e in
+            (* Synchronously, on the C stack, while the sequence is still current: this is
+               the whole reason the handler answers a [Click_response.t] rather than
+               returning an effect. [set_state] answers whether the state could be
+               changed, which nothing here can act on -- a sequence that is already
+               claimed or denied stays that way -- so the [bool] is ignored by type. *)
+            if Click_response.claim response
+            then ignore (W.Gesture.set_state (gc :> W.Gesture.t) `CLAIMED : bool);
+            (), Click_response.effect response
           | _ -> (), None)
-        (* A [pressed] callback returns nothing to GTK, so there is no unsafe answer to
-           get wrong here. [key_pressed_spec] below is where [declined] earns its keep. *)
+        (* A [pressed] callback returns nothing to GTK, and the three no-handler paths
+           claim nothing ([declined] is [Continue]-shaped), which preserves M2's
+           behaviour: a click nobody answers still reaches whatever else would have
+           handled it. [key_pressed_spec] below is where a [declined] {i value} earns its
+           keep. *)
     ; declined = ()
     }
 ;;
