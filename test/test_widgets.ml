@@ -765,9 +765,17 @@ let%expect_test "notebook constructors and defaults" =
         ((kind (Label ((text Beta)))) (key b) (attrs ((Tab_label Beta)))
          (children No_children))))))
     |}];
-  (* A page with no [Attr.tab_label] is legal: GTK draws an unnamed tab for it (measured
-     -- [get_tab_label] answers [None] and there is no label widget at all), which is what
-     [~show_tabs:false] wants and what dropping the attr restores. *)
+  (* A page with no [Attr.tab_label] is legal, and this notebook is [~show_tabs:false], so
+     GTK builds no tab label for it at all.
+
+     The earlier version of this comment generalised that to every notebook and called it
+     measured. The measurement had been taken through [gtk_notebook_get_tab_label], which
+     answers [None] for a default tab {i even though the label exists and is drawn}
+     (gtknotebook.c:6578-6580), so it could not have seen otherwise. Re-measured with
+     [show_tabs] on, in [test/live/live_lists.ml] ("what GTK draws for the dropped tab"):
+     GTK builds a positional ["Page N"] label and renumbers it on every reorder. See
+     [Attr.tab_label], which now tells applications to label every page of a tab-showing
+     notebook. *)
   print_s
     [%sexp
       (Node.notebook

@@ -75,7 +75,19 @@ let page_names (s : W.Stack.t) =
    to be silently inert, and why a typo in a [~visible_child] showed up as a stack stuck
    on whatever page GTK picked. By the time the fixups run the whole tree exists, so every
    page this frame renders is already added and an absent name is absent from the rendered
-   tree. The patcher prefixes the stack's node path. *)
+   tree. The patcher prefixes the stack's node path.
+
+   What this does {i not} catch, and cannot from here: a page that exists but carries
+   [Attr.visible false]. [gtk_stack_set_visible_child_full] ends with
+   [if (gtk_widget_get_visible (child_info->widget)) set_visible_child (...)] --
+   gtkstack.c:2308-2310, no [else] and no warning -- so the lookup below succeeds, the
+   setter runs, nothing moves, [get_visible_child_name] keeps answering with the page that
+   really is showing, and this writes again on every frame forever with nothing on stderr.
+   It is the twin of [w_notebook.ml]'s hidden-[~current_page] divergence; both are
+   documented on their constructors and both are on the backlog for the
+   [Patcher.ctx.report] hook. Not closed here because saying it {i once} rather than every
+   frame needs the refusal memo the four reporting widgets have, which is what that
+   backlog item is for. *)
 let select (w : Widget.t) ~visible_child =
   let s : W.Stack.t = cast w in
   match W.Stack.get_child_by_name s visible_child with

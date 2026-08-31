@@ -310,15 +310,25 @@ val row_selectable : bool -> t
     {!row_selectable}, and [false] on the same kind of row. *)
 val row_activatable : bool -> t
 
-(** The text a {!Node.notebook} draws on this page's tab. A page without one gets GTK's
-    own unnamed tab; the page's {i key} -- what [~current_page] selects it by and what
-    {!on_page_changed} hands back -- is the node's {!Key.t}, not this.
+(** The text a {!Node.notebook} draws on this page's tab. The page's {i key} -- what
+    [~current_page] selects it by and what {!on_page_changed} hands back -- is the node's
+    {!Key.t}, not this.
+
+    {b Give every page of a tab-showing notebook one.} A page without this attr does not
+    get a blank tab or no tab: with [~show_tabs] on (GTK's default), GTK builds a label
+    reading ["Page N"] from the page's {i position}, and rewrites every such label from
+    its current position on each insert, remove and reorder. So the captions of unlabelled
+    pages renumber underneath a reordered notebook -- position naming identity, in the one
+    container whose premise is that those are different things. Measured in
+    [test/live/live_lists.ml] ("what GTK draws for the dropped tab"): dropping this attr
+    from the second of two pages draws ["Page 2"]. Under [~show_tabs:false] GTK builds no
+    label at all and the question does not arise.
 
     A container-placement attr like {!page_title}: the tab label is a [GtkLabel] the
     {i notebook} builds and owns on the page's behalf, so it rides on the page node's
     attrs and is written by the notebook's impl -- at insert, and again through
-    [Widget_impl.list_ops.updated] when it changes (dropping the attr puts the unnamed tab
-    back).
+    [Widget_impl.list_ops.updated] when it changes (dropping the attr hands the page back
+    to that positional default rather than leaving the old text or drawing a blank tab).
 
     {b A [string] and not a node}, which is the one place this library's "children are
     nodes" rule is broken on purpose. A node would mean a second child list under every

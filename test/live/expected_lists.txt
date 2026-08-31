@@ -26,8 +26,11 @@ gc: after 250 frames + full_major, selected a,b
     (GtkListBoxRow (css (activatable)) (children (GtkLabel (text C))))
     (GtkLabel (text "nothing here"))))))
 after mount: b
+GTK's own selected row after mount: b
 same GObjects after reorder: true
 the original rows are now at: 0,2,3,1
+GTK's own selected row after the reorder: b
+the library still reads: b
 (GtkWindow (title (lists)) (css (background)) hidden
  (children
   (GtkListBox (selection-mode multiple) show-separators (selected-rows 1)
@@ -40,6 +43,9 @@ the original rows are now at: 0,2,3,1
     (GtkListBoxRow selected (css (activatable))
      (children (GtkLabel (text B))))
     (GtkLabel (text "nothing here"))))))
+after moving the selected row: HEADER,B,C,A
+GTK's own selected row, having moved it: b
+the library still reads: b
 rows after a rightward move: C,A,HEADER,B
 rows after a middle insert: C,A,NEW,HEADER,B
 rows after the middle row went away: HEADER,C,A,B
@@ -135,6 +141,10 @@ fb same GObjects after reorder: true
 fb the original cards are now at: 1,2,0
 fb order after reorder: C,A,B
 fb selection survived the reorder: b
+fb GTK's own selected children: b
+fb after moving the selected card: C,B,A
+fb GTK's own selected children: b
+fb keyboard focus enters at: b
 fb after a middle insert: C,A,NEW,B
 fb after the middle card went away: C,A,B
 fb after the user clicked: a,b
@@ -242,6 +252,7 @@ add-and-select: draft (pages PARTS,SCORE,NOTES,DRAFT)
 kind change replaced the page widget: true
 kind change kept the tab and the current page: Parts,Score | parts
 after a tab rename and a tab dropped: Renamed,<none>
+what GTK draws for the dropped tab: Renamed,Page 2
 (GtkWindow (title (tabs)) (css (background)) hidden
  (children
   (GtkNotebook (pages 2) (current-page 0) no-tabs no-border scrollable

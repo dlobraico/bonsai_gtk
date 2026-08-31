@@ -125,6 +125,23 @@ All thirteen, in the tasks the plan put them in.
   selection mode cannot hold. Both are "a model to bring into line", both are candidates for
   the `Patcher.ctx.report` hook Task 9 built, and whichever task gives it to them should
   measure their parked frames at the same time. Tasks 8–10.
+  **`w_stack.ml`'s select fixup has the identical hole** (final review, containers I3), for a
+  different GTK reason: `gtk_stack_set_visible_child_full` ends with
+  `if (gtk_widget_get_visible (child_info->widget)) set_visible_child (...)` —
+  gtkstack.c:2308-2310, no `else`, no warning — so a `~visible_child` naming a page that
+  carries `Attr.visible false` resolves, writes, does nothing, and is written again on every
+  frame. The fix wave took the documentation half (both constructors and both impls now say
+  it); the report-once half is this item, and the stack and the notebook should get it
+  together, since it is one memo shape serving both.
+- **A duplicate key in `~selected` writes on every frame** (final review, containers N4).
+  `~selected:["a"; "a"]` with `a` present gives `current = ["a"]` and `wanted = ["a"; "a"]`
+  in both `w_list_box.ml` and `w_flow_box.ml`, which never compare equal, so every frame runs
+  `unselect_all` plus a redundant `select_row`, forever, with no diagnostic. Unlike the mode
+  case this is a pure model typo, and the fix is one `List.dedup_and_sort` in
+  `apply_selection`. Left out of the fix wave deliberately: it is a behaviour change on the
+  selection path that the controller's rulings did not cover, and it wants deciding together
+  with the item above — dedupe silently, or report once like everything else in M2 that
+  cannot be held.
 - **`w_list_box.ml` and `w_flow_box.ml` are two copies of one container.** M2 declined to
   functorise them (task-7 deviation 8, and the reviewer agreed) on the grounds that no fix
   had had to be made twice — and then I1 was made twice in the same round. The standing

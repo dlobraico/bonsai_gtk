@@ -64,6 +64,19 @@ let row_labels (live : P.live) =
        | Some _ | None -> "?"))
 ;;
 
+(* GTK's {i own} side of the selection: [box->selected_row], which is the range anchor a
+   shift-click extends from and where keyboard navigation starts, and which nothing else
+   in this repository reads. Every other selection read here -- [selected_keys],
+   [apply_selection]'s comparison, [Live_tree]'s counts -- goes through
+   [gtk_list_box_row_get_selected], the {i row's} flag, and the two can disagree: GTK's
+   [remove] clears the box's pointer and leaves the row's flag alone. A [move] is
+   remove-and-re-insert, so the pair is exactly where they came apart. *)
+let gtk_selected_row (live : P.live) =
+  match W.List_box.get_selected_row (cast (list_box live)) with
+  | None -> "(none)"
+  | Some row -> Option.value (W_list_box.key_of_row row) ~default:"(unkeyed)"
+;;
+
 (* Through [W_list_box]'s own [Child_keys] lookup, which is the mapping every handler
    answers in: printing GTK's row indices instead would say nothing about whether the key
    a handler receives is the right one. *)
@@ -93,18 +106,21 @@ let () = ignore (Ocgtk_gtk.GMain.init () : string array)
    apart.
 
    [gtk_list_box_get_selected_rows] is transfer-container -- the [GList] is the caller's
-   to free, the rows in it are borrowed -- and ocgtk's generated stub wraps each row with
-   no [g_object_ref_sink] while the wrapper's finaliser unconditionally unrefs it
-   ([ml_list_box_gen.c:229-238]). So every call handed out one unbalanced unref per
-   selected row, and [apply_selection] makes that call on every mount, every patch and
-   every no-change frame. Ten idle frames and one major collection were enough to dispose
-   a still-parented row: the selection emptied itself, GTK logged "has a parent GtkListBox
-   during dispose", and a couple of hundred reads took SIGSEGV.
+   to free, the rows in it are borrowed -- and the stub as it was then wrapped each row
+   with no [g_object_ref_sink] while the wrapper's finaliser unconditionally unrefs it. So
+   every call handed out one unbalanced unref per selected row, and [apply_selection]
+   makes that call on every mount, every patch and every no-change frame. Ten idle frames
+   and one major collection were enough to dispose a still-parented row: the selection
+   emptied itself, GTK logged "has a parent GtkListBox during dispose", and a couple of
+   hundred reads took SIGSEGV.
 
-   The fork fixed the identical bug on [GtkFlowBoxChild] one file over
-   ([ml_flow_box_gen.c:222-233], whose comment describes exactly this); the [GtkListBox]
-   twin is unfixed in the pinned binding, which is why [W_list_box.selected_keys] walks
-   [get_row_at_index] + [is_selected] instead. See docs/m2-backlog.md.
+   The pin has since moved past the fork fix (commit [a913c307] sinks the elements of
+   every transfer-container list return, [ml_list_box_gen.c:229-238] included), so the
+   call is safe today and this test would pass either way. It stays because
+   [W_list_box.selected_keys] still walks [get_row_at_index] + [is_selected] -- for the
+   reasons [w_list_box.ml]'s [rows] gives, none of them safety -- and because the failure
+   it pins is a segfault, which is the kind a suite should keep a canary for. See
+   docs/m2-backlog.md.
 
    The frames here are the real thing: [reassert_only] + [run_fixups] inside the patch
    guard is what [Driver.frame] runs when a computation hands back the physically same
@@ -234,6 +250,9 @@ let () =
   P.run_fixups ctx;
   print_s (Live_tree.dump live.widget);
   printf "after mount: %s\n" (selected_keys live);
+  (* The baseline for the pair below: after a mount that selects a row, the library's read
+     and GTK's own agree. *)
+  printf "GTK's own selected row after mount: %s\n" (gtk_selected_row live);
   (* 2. A keyed reorder moves the same GObjects. Take handles first, patch, compare with
      [Gobject.same] -- the dump alone cannot say this, because two rows holding the same
      label print identically. *)
@@ -252,7 +271,39 @@ let () =
      nothing at all. [hdr;a;b;c] became [hdr;c;a;b], so the four original rows are now at
      0, 2, 3, 1. *)
   printf "the original rows are now at: %s\n" (positions rows_before);
+  (* The row that moved is [b], and it is the selected one. Every other line in this block
+     reads the row's own flag, which [gtk_list_box_remove] never clears -- so all of them
+     report the selection intact whether or not GTK still has an anchor for it, and the
+     divergence this pins was invisible to the whole suite. This line is GTK's answer:
+     without the unselect/select pair in [W_list_box]'s [move] it reads [(none)], and with
+     it the anchor is back on [b].
+
+     What [(none)] costs a user: a shift-click after the reorder takes
+     [select_row_internal]'s [selected_row == NULL] branch, throws the existing
+     multi-selection away and selects one row instead of the range; Tab/Down enters at row
+     0 rather than at the selection; and any code holding the same [GtkListBox] --
+     GtkBuilder-side, or through [Expert.embed] -- is told nothing is selected while a row
+     is painted selected. *)
+  printf "GTK's own selected row after the reorder: %s\n" (gtk_selected_row live);
+  printf "the library still reads: %s\n" (selected_keys live);
   print_s (Live_tree.dump live.widget);
+  (* The case above moves [c] and leaves [b] where the shifting puts it --
+     [Reconcile.diff] emits a [Move] for the row that jumps, not for the ones that slide
+     -- so it is not yet the case that costs GTK its anchor. This is: [b] is selected
+     {i and} is the row the reconciler moves, so it goes through [remove] + [insert]
+     itself. *)
+  let live =
+    patch
+      live
+      (view
+         ~placeholder:(Node.label "nothing here")
+         ~selected:[ "b" ]
+         ~rows:[ "hdr"; "b"; "c"; "a" ]
+         ())
+  in
+  printf "after moving the selected row: %s\n" (row_labels live);
+  printf "GTK's own selected row, having moved it: %s\n" (gtk_selected_row live);
+  printf "the library still reads: %s\n" (selected_keys live);
   (* A reorder that leaves a row behind the moved one, so that a [move] landing one place
      too far in either direction is visible: GTK clamps an index past the end, so a
      reorder whose moved row ends up last cannot tell a correct index from an off-by-one. *)
@@ -622,6 +673,43 @@ let card_keys (live : P.live) =
   | keys -> String.concat ~sep:"," keys
 ;;
 
+(* GTK's own reader for the flow box, and the honest note about what it can say.
+   [gtk_flow_box_get_selected_children] walks the children and collects the ones whose
+   {i own} flag is set (gtkflowbox.c:4728-4735) -- so unlike
+   [gtk_list_box_get_selected_row], which returns [box->selected_row] directly
+   (gtklistbox.c:846-851), it agrees with this library's readers by construction and
+   cannot see the anchor going missing. The flow box's anchor has no getter at all; it is
+   read at gtkflowbox.c:1105-1111 (extending a shift-click) and :3210 (where keyboard
+   focus enters), neither of which a test without synthetic input can reach. So this line
+   pins that the repair leaves the selection alone, and the list-box twin above is where
+   the anchor itself is asserted. *)
+let gtk_selected_cards (live : P.live) =
+  match W.Flow_box.get_selected_children (cast (flow_box live)) with
+  | [] -> "(none)"
+  | cs ->
+    String.concat
+      ~sep:","
+      (List.map cs ~f:(fun c ->
+         Option.value (W_flow_box.key_of_child c) ~default:"(unkeyed)"))
+;;
+
+(* Where GTK's own keyboard navigation enters the container, which {i is} the anchor: with
+   no focus child, [gtk_flow_box_focus] takes [BOX_PRIV (box)->selected_child] when it has
+   one and falls back to the first focusable child otherwise (gtkflowbox.c:3208-3221).
+   That makes this the one reachable observation of the flow box's private anchor -- no
+   synthetic input, just [gtk_widget_child_focus] -- and it is what a user pressing Tab
+   after a reorder gets. [gtk_list_box_move_cursor] has the same fallback. *)
+let focus_enters_at (live : P.live) =
+  let fb = flow_box live in
+  ignore (Widget.child_focus fb `TAB_FORWARD : bool);
+  match Widget.get_focus_child fb with
+  | None -> "(nothing)"
+  | Some c ->
+    (match W_flow_box.key_of_child (cast c) with
+     | Some key -> key
+     | None -> "(unkeyed)")
+;;
+
 let select_card_by_hand (live : P.live) key =
   let w = flow_box live in
   match W_flow_box.child_by_key w key with
@@ -805,6 +893,16 @@ let () =
   printf "fb the original cards are now at: %s\n" (card_positions cards_before);
   printf "fb order after reorder: %s\n" (card_labels live);
   printf "fb selection survived the reorder: %s\n" (card_keys live);
+  (* GTK's own two answers about that selection. The first is the flag walk, which agrees
+     with the library either way; the second is the anchor, and it is [a] -- the first
+     card -- unless the reorder put it back. *)
+  printf "fb GTK's own selected children: %s\n" (gtk_selected_cards live);
+  (* As on the list box, the reorder above moves [c] and merely shifts [b]. This is the
+     one that moves the selected card itself. *)
+  let live = patch live (view ~selected:[ "b" ] ~cards:[ "c"; "b"; "a" ] ()) in
+  printf "fb after moving the selected card: %s\n" (card_labels live);
+  printf "fb GTK's own selected children: %s\n" (gtk_selected_cards live);
+  printf "fb keyboard focus enters at: %s\n" (focus_enters_at live);
   (* A middle insert and a middle removal, which is the index arithmetic from both sides:
      the index comes from the predecessor's own [get_index], not from the reconciler's. *)
   let live = patch live (view ~selected:[ "b" ] ~cards:[ "c"; "a"; "new"; "b" ] ()) in
@@ -1376,8 +1474,9 @@ let () =
     (tab_texts live)
     (current_key live);
   (* The tab label is re-read when it changes, and -- the half an [Option.iter] over the
-     new attrs would miss -- dropping the attr puts GTK's unnamed tab back rather than
-     leaving the old text or drawing a blank one. *)
+     new attrs would miss -- dropping the attr hands the page back to GTK's own default
+     rather than leaving the old text or drawing a blank one. The next line is what that
+     default turns out to be. *)
   let live =
     patch
       live
@@ -1390,6 +1489,21 @@ let () =
             ]))
   in
   printf "after a tab rename and a tab dropped: %s\n" (tab_texts live);
+  (* What GTK actually {i draws} for the page whose attr was dropped, which is not what
+     [tab_texts] can say: [gtk_notebook_get_tab_label] returns NULL for a default tab even
+     though the label exists and is drawn (gtknotebook.c:6578-6580), so every reading in
+     this repository that went through it reported "no tab" for a tab that is on screen.
+     Read from the header's own widget tree instead.
+
+     The answer is a {i positional} "Page N": with [show_tabs] on,
+     [gtk_notebook_set_tab_label] builds [gtk_label_new (_("Page %u"))] from the page's
+     position (:6627-6641), and [gtk_notebook_update_labels] rewrites every default tab's
+     text from its current position on every insert, remove and reorder (:4410-4448). So a
+     page with no [Attr.tab_label] is captioned by where it happens to sit -- in the one
+     container whose whole premise is that position is not identity. Five places in the
+     branch said "GTK's own unnamed tab", one of them claiming to have measured it; this
+     is the measurement. *)
+  printf "what GTK draws for the dropped tab: %s\n" (tabs_in_dump live);
   (* The four props, as one diff in one batch, read back off the widget. *)
   let live =
     patch

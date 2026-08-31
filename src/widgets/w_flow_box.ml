@@ -175,8 +175,10 @@ let forget_children (w : Widget.t) =
    comparison (GTK answers in widget order, the model lists whatever order it built, and
    two orderings of one selection must not look like a change); the narrowing of
    [selected] to the keys that resolve, which is what makes a ghost key {i inert} rather
-   than merely harmless; and the write iterating the unnarrowed [selected], so that what
-   the model asked for reaches GTK and what GTK kept is what the next frame reads back.
+   than merely harmless; and the write iterating the unnarrowed [selected], which emits
+   the same calls iterating [wanted] would (an unresolvable key is skipped by the lookup
+   either way) while saying at the call site that what the model asked for is what reaches
+   GTK.
 
    The case this container adds is a selected child being {i removed}. GTK drops it from
    the selection and -- measured, contrary to a claim that has been made about
@@ -229,8 +231,9 @@ let apply_selection (w : Widget.t) ~selected =
     (* A no-op in [Browse] mode, where GTK refuses to leave nothing selected; the
        [select_child] below replaces the selection there instead. *)
     W.Flow_box.unselect_all fb;
-    (* The unnarrowed [selected], so that what the model asked for reaches GTK and what
-       GTK kept is what the next frame reads back. *)
+    (* The unnarrowed [selected]: the lookup skips a key naming no child, so this is the
+       same sequence of calls as iterating [wanted], written the way that says what the
+       model asked for is what reaches GTK. *)
     List.iter selected ~f:(fun key ->
       Option.iter (Hashtbl.find by_key key) ~f:(W.Flow_box.select_child fb)))
 ;;
@@ -387,6 +390,17 @@ let impl : Widget_impl.t =
                    with [from > to_], so the predecessor is always before the moved
                    child); this is an assumption not made rather than a bug fixed. *)
                 let c = child_of ~what:"the child being moved" child in
+                (* The list box's repair, over the other container, because GTK does the
+                   same thing here: [gtk_flow_box_remove] clears [priv->selected_child]
+                   and leaves [CHILD_PRIV (child)->selected] set (gtkflowbox.c:3132-3137),
+                   and [insert] does not restore it. Every reader in this library reads
+                   the flag, so the divergence is invisible to [selected_keys], to
+                   [apply_selection] and to the goldens, while GTK's own side has lost the
+                   range anchor a shift-click needs (:1105-1111) and the row keyboard
+                   navigation starts from (:3210). A sortable grid of cards -- this
+                   container's showcase use -- reproduces it by sorting with a card
+                   selected. *)
+                let was_selected = W.Flow_box_child.is_selected c in
                 W.Flow_box.remove (cast parent) (c :> Widget.t);
                 let index =
                   match after with
@@ -395,7 +409,18 @@ let impl : Widget_impl.t =
                     W.Flow_box_child.get_index (child_of ~what:"the preceding child" w)
                     + 1
                 in
-                W.Flow_box.insert (cast parent) (c :> Widget.t) index)
+                W.Flow_box.insert (cast parent) (c :> Widget.t) index;
+                (* The pair rather than a plain re-select, for the reason
+                   [w_list_box.ml]'s twin gives: [gtk_flow_box_select_child_internal]
+                   early-outs on [if (CHILD_PRIV (child)->selected) return]
+                   (gtkflowbox.c:1013-1014), so selecting a child whose flag survived does
+                   nothing at all. In [Multiple] the unselect clears this child alone
+                   (:996); in [Single]/[Browse] the round trip lands on the same single
+                   selection. *)
+                if was_selected
+                then (
+                  W.Flow_box.unselect_child (cast parent) c;
+                  W.Flow_box.select_child (cast parent) c))
         ; remove =
             (fun parent child ->
               let c = child_of ~what:"the child being removed" child in
@@ -403,14 +428,16 @@ let impl : Widget_impl.t =
 
                  Dropped {i before} the GTK call. GTK does emit
                  [selected-children-changed] synchronously from the remove (measured -- it
-                 does, and so does [remove_all], contrary to a claim in circulation), so a
-                 handler really does run while this patch is half-done. What that handler
-                 is told does not depend on this ordering, though: [selected_keys] walks
-                 the children the box still holds, so a departed card cannot appear in it
-                 whatever the table remembers. The order is kept because it is free and
-                 because it keeps the table matching the tree at every point a handler
-                 could look -- not because moving it breaks anything, which was checked
-                 and does not. *)
+                 does, and so does [remove_all], contrary to a claim in circulation).
+                 Under [Driver] the reentrancy guard swallows that emission and the
+                 application's handler never runs; a test driving [Patcher.patch] by hand
+                 sees one while the patch is half-done, which is where it was measured.
+                 What a handler that does run is told does not depend on this ordering,
+                 though: [selected_keys] walks the children the box still holds, so a
+                 departed card cannot appear in it whatever the table remembers. The order
+                 is kept because it is free and because it keeps the table matching the
+                 tree at every point a handler could look -- not because moving it breaks
+                 anything, which was checked and does not. *)
               Child_keys.remove child_keys child;
               W.Flow_box.remove (cast parent) (c :> Widget.t))
         ; updated =

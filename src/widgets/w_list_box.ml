@@ -209,12 +209,15 @@ let forget_rows (w : Widget.t) =
    [Node.stack ~visible_child] has, and the reason this is a fixup rather than a
    [reassert].
 
-   What is deliberately {i not} narrowed is the write itself: [selected] is what gets
-   written, so ruling 5 is untouched -- what the model asked for reaches GTK, and what GTK
-   kept is what the next frame reads back. A model asking for something the mode cannot
-   hold (three keys in [Single], a [row_selectable false] row) therefore still rewrites on
-   every frame; that is documented on [Node.list_box] as a model to bring into line with
-   its mode, and it is not the same thing as a key that is simply not here yet. *)
+   The write below iterates the unnarrowed [selected] rather than [wanted], which is a
+   difference of expression and not of behaviour: an unresolvable key is skipped by the
+   [Hashtbl.find] either way, so the two emit the same [select_row] calls. (They part only
+   on a duplicate key, which is a model typo on the backlog.) Ruling 5 is untouched either
+   way -- what the model asked for reaches GTK, and what GTK kept is what the next frame
+   reads back. A model asking for something the mode cannot hold (three keys in [Single],
+   a [row_selectable false] row) therefore still rewrites on every frame; that is
+   documented on [Node.list_box] as a model to bring into line with its mode, and it is
+   not the same thing as a key that is simply not here yet. *)
 let apply_selection (w : Widget.t) ~selected =
   let sorted = List.sort ~compare:String.compare in
   (* One walk of the list box, and a key table built from it for this call only -- the
@@ -390,6 +393,28 @@ let impl : Widget_impl.t =
                          assumption not made: it is what [after]'s contract says, and it
                          stays right if that invariant ever widens. *)
                       let row = row_of ~what:"the row being moved" child in
+                      (* Read before the removal, because the removal is what loses it,
+                         and it is not the flag: [gtk_list_box_remove] does
+                         [if (row == box->selected_row) box->selected_row = NULL] and
+                         never clears [ROW_PRIV (row)->selected] (gtklistbox.c:2485-2492),
+                         and [gtk_list_box_insert] does not restore it. So a reordered
+                         selected row comes back with its own flag set and the box's
+                         pointer NULL, and every reader in this library agrees it is
+                         selected -- [is_selected] {i is} that flag, so [selected_keys],
+                         [apply_selection]'s [current] and [Live_tree]'s counts all say
+                         the selection survived, [current = wanted], and the fixup writes
+                         nothing. The divergence is structurally invisible to us.
+
+                         What is lost is GTK's own: [box->selected_row] is the range
+                         anchor (gtklistbox.c:1853-1868), so a shift-click after a reorder
+                         takes the [selected_row == NULL] branch, throws the user's whole
+                         multi-selection away and selects one row instead of the range;
+                         keyboard navigation with no focus row starts from it and falls
+                         back to the first row (:2118); and
+                         [gtk_list_box_get_selected_row] answers NULL for a box that is
+                         painting a selected row, which is what an [Expert.embed] consumer
+                         or GtkBuilder-side code sees. *)
+                      let was_selected = W.List_box_row.is_selected row in
                       W.List_box.remove (cast parent) (row :> Widget.t);
                       let index =
                         match after with
@@ -398,7 +423,23 @@ let impl : Widget_impl.t =
                           W.List_box_row.get_index (row_of ~what:"the preceding row" w)
                           + 1
                       in
-                      W.List_box.insert (cast parent) (row :> Widget.t) index)
+                      W.List_box.insert (cast parent) (row :> Widget.t) index;
+                      (* The pair, not a plain re-select: [select_row] early-outs on
+                         [if (ROW_PRIV (row)->selected) return] (gtklistbox.c:1754-1755),
+                         so on a row whose flag survived it does exactly nothing and the
+                         anchor stays NULL. The unselect is what makes the select do work.
+
+                         In [Multiple] the unselect clears this row alone and leaves its
+                         siblings' selection standing (:1740-1741); in [Single]/[Browse]
+                         the round trip is unselect-all then select-one, which lands on
+                         the same single selection it started from. Both emit
+                         [selected-rows-changed] on the way through, which the reentrancy
+                         guard swallows under the driver -- a hand-driven patch sees two
+                         extra emissions, with the same selection before and after. *)
+                      if was_selected
+                      then (
+                        W.List_box.unselect_row (cast parent) row;
+                        W.List_box.select_row (cast parent) (Some row)))
               ; remove =
                   (fun parent child ->
                     let row = row_of ~what:"the row being removed" child in
@@ -410,14 +451,16 @@ let impl : Widget_impl.t =
                        *Before* the GTK call, which is the right order but -- correcting
                        what this comment claimed in M2 -- is belt-and-braces rather than
                        load-bearing. GTK does emit [selected-rows-changed] synchronously
-                       from the remove, so a handler really does run mid-patch; but
-                       [selected_keys] answers by walking the rows the list box still
-                       holds, so a row that has left cannot appear in that answer whatever
-                       the table still remembers. Moving this line down changes no
-                       observable behaviour (measured in [live_lists.ml], for both
-                       containers). Keep the order anyway: it is free, and it is what
-                       makes the table's contents match the tree at every point a handler
-                       could look. *)
+                       from the remove; under [Driver] the reentrancy guard swallows it
+                       and the application's handler does not run at all, while a test
+                       driving [Patcher.patch] by hand (as [live_lists.ml] does) really
+                       does see one mid-patch. Either way, [selected_keys] answers by
+                       walking the rows the list box still holds, so a row that has left
+                       cannot appear in that answer whatever the table still remembers.
+                       Moving this line down changes no observable behaviour (measured in
+                       [live_lists.ml], for both containers). Keep the order anyway: it is
+                       free, and it is what makes the table's contents match the tree at
+                       every point a handler could look. *)
                     Child_keys.remove row_keys child;
                     W.List_box.remove (cast parent) (row :> Widget.t))
               ; updated =

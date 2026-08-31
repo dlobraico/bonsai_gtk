@@ -71,9 +71,18 @@ let page_key (node : Node.t) =
    the rule [Attr.page_title] and [Attr.grid_cell] follow.
 
    An [option] rather than [Attr.row_selectable]'s "GTK's default if absent": the absence
-   of a tab label is a real GTK state ([gtk_notebook_set_tab_label] with NULL, which draws
-   an unnamed tab) rather than a value, so [None] is what [updated] writes back when the
-   attr goes away. *)
+   of a tab label is a real GTK state ([gtk_notebook_set_tab_label] with NULL) rather than
+   a value, so [None] is what [updated] writes back when the attr goes away.
+
+   What that state {i draws} is not nothing, which this comment used to claim. With
+   [show_tabs] on, NULL makes GTK build a [GtkLabel] reading "Page N" from the page's
+   {i position}, and renumber every such label from its current position on each insert,
+   remove and reorder (gtknotebook.c:6627-6641 and :4410-4448; measured in
+   [test/live/live_lists.ml]). So an unlabelled page is captioned by where it sits.
+   [Attr.tab_label]'s doc says so and tells applications to label every page of a
+   tab-showing notebook; this impl still writes NULL, because [Some ""] would replace a
+   positional caption with a blank clickable tab -- the trade [w_stack.ml] already refused
+   for a switcher button. *)
 let tab_label (node : Node.t) =
   match (Attrs.find node.attrs Tab_label :> Attr.Private.t option) with
   | Some (Tab_label text) -> Some text
@@ -336,8 +345,9 @@ let impl : Widget_impl.t =
               Child_keys.set page_keys child (page_key node);
               (* The tab label is a widget GTK owns from here on. Built rather than passed
                  through: [Attr.tab_label] is a [string] (see its doc), and [None] leaves
-                 GTK's unnamed tab. The [int] result is the index the page landed at,
-                 which is the [index] just computed. *)
+                 GTK to caption the page positionally (see [tab_label] above). The [int]
+                 result is the index the page landed at, which is the [index] just
+                 computed. *)
               let tab =
                 Option.map (tab_label node) ~f:(fun text ->
                   (W.Label.new_ (Some text) :> Widget.t))
@@ -346,11 +356,13 @@ let impl : Widget_impl.t =
         ; move =
             Some
               (fun parent ~child ~after ->
-                (* {b The one real reorder in the library.} [GtkNotebook] has
-                   [reorder_child], so this is a single call rather than the
-                   remove-and-re-insert its two siblings do -- which means the page keeps
-                   not only its GObject but its tab label, its scroll position and its
-                   place in the focus chain, none of which survives an unparenting.
+                (* {b The one real reorder among the keyed containers.} (A [Node.box]
+                   reorders for real too, with [W.Box.reorder_child_after] -- see
+                   [w_box.ml], which counts the two.) [GtkNotebook] has [reorder_child],
+                   so this is a single call rather than the remove-and-re-insert its two
+                   siblings do -- which means the page keeps not only its GObject but its
+                   tab label, its scroll position and its place in the focus chain, none
+                   of which survives an unparenting.
 
                    [reorder_child]'s [position] is the page's index
                    {i in the resulting list}, which is not what the docstring's "so that
@@ -418,8 +430,8 @@ let impl : Widget_impl.t =
               (* The key cannot change -- a changed key is a different page to the
                  reconciler -- so the tab label is the only thing to re-read. Writing
                  [None] as [set_tab_label ... None] rather than as an empty string is what
-                 makes dropping the attr restore GTK's unnamed tab instead of drawing a
-                 blank one. *)
+                 hands the page back to GTK's positional "Page N" default (see [tab_label]
+                 above) instead of drawing a blank clickable tab. *)
               if not (Option.equal String.equal (tab_label old) (tab_label node))
               then (
                 let nb : W.Notebook.t = cast parent in

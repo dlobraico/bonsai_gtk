@@ -765,6 +765,23 @@ val grid
     no name it could pass that would be right, and the frame that adds the first page
     selects it.
 
+    {b A page carrying [Attr.visible false] cannot be shown}, which is the other way to
+    make [~visible_child] unable to land — and unlike a name that resolves to nothing,
+    this one is silent. [gtk_stack_set_visible_child_full] ends with
+    [if (gtk_widget_get_visible (child_info->widget)) set_visible_child (...)]: no [else],
+    no warning. So the name resolves and nothing is raised, the write is made and nothing
+    happens, [get_visible_child_name] goes on answering with the page that really is
+    showing, the comparison is unequal again next frame, and the write is repeated forever
+    with no diagnostic. The stack shows the previous page while the model believes it
+    navigated. A wizard step or a detail pane hidden behind [Attr.visible] while it loads,
+    and named as [~visible_child] on the same frame, is the shape that reaches it: make
+    the page visible on the frame that selects it.
+
+    {!notebook}'s [~current_page] has the identical divergence for a different GTK reason
+    and says so. Both are on the backlog for the [Patcher.ctx.report] hook {!text_view}
+    and {!drop_down} already use: a write that can never land ought to say so once rather
+    than be repeated in silence.
+
     [~transition] ([None_]) and [~transition_duration] (200 ms, GTK's own) describe the
     animation between pages; a test that dumps the tree straight after a selection change
     should keep [None_] or it races it. [~hhomogeneous] and [~vhomogeneous] (both [true],
