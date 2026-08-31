@@ -59,3 +59,17 @@ the list-pair shape; functorise as an early-M4 motion-only task, promoted from d
 to scheduled in Task 13's backlog rewrite — not in the fix wave (no churn under the
 lenses' feet), not in Task 13 itself. The new both-copy goldens are the safety net that
 makes that motion cheap.
+
+### Task 4 — HeaderBar + ActionBar: APPROVED
+629ae6a..6749003 (task-3 minors + task + lock bookkeeping) + doc-minors folded into the
+Task 5 start. Review confirmed: slots shape loud and ordered; within-area reorder is
+silently-insertion-order-with-identity as the mli says (pinned in test_reconcile +
+live_containers); `revealed` plain is right (GTK sets it synchronously, animation is the
+internal revealer's business); coverage mechanism real; both deferrals recorded in-tree.
+Minors to the Task 5 start: node.mli:1451's move=None precedent citation inverted
+(list_box is ordered — cite overlay); the live dune header's presents-a-toplevel sentence
+false for two dump-only rules + conservative-lock reasoning nowhere in-tree; cross-area
+pack move = remove+insert identity loss undocumented (+ optional two-line cross-area
+duplicate-key pin); live_chrome identity-survival comment overclaims (real pins are
+test_reconcile + sweep 1U). Carry: examples/gallery.ml still lacks the new kinds —
+Task 12 (existing carry, reconfirmed).
