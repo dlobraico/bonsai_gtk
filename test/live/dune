@@ -10,7 +10,8 @@
   live_keyvals
   live_lists
   live_text
-  live_embed)
+  live_embed
+  live_input)
  (libraries
   core
   bonsai
@@ -20,7 +21,9 @@
   ocgtk.gtk
   ocgtk.gdk
   ocgtk.gio
-  ocgtk.common)
+  ocgtk.graphene
+  ocgtk.common
+  core_kernel.caml_unix)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))
 
@@ -192,3 +195,22 @@
     output_embed.txt
     (run %{exe:live_embed.exe}))
    (diff expected_embed.txt output_embed.txt))))
+
+; `live_input` is the only rule that needs a program from outside the switch.
+; `%{bin:xdotool}` both declares the dependency and hands the executable the
+; absolute path, so a dev shell without it fails here, naming xdotool, rather
+; than inside the test as "no window" -- which is exactly how the by-hand script
+; this replaces failed. `xdotool` is in the devShell in `flake.nix`.
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_input.exe)
+ (locks x-display)
+ (action
+  (progn
+   (with-stdout-to
+    output_input.txt
+    (run %{exe:live_input.exe} %{bin:xdotool}))
+   (diff expected_input.txt output_input.txt))))

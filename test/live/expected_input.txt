@@ -1,0 +1,25 @@
+mapped: true
+label geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=true
+compute_bounds rect survives a later ocgtk call: false
+window active: true
+entry 1 has focus on activation: true
+on activation: (focus-enter e1)
+button 1: (label button=1 n_press=1 hit-aim=true in-bounds=true mods=none)
+button 2: (label button=2 n_press=1 hit-aim=true in-bounds=true mods=none)
+button 3: (label button=3 n_press=1 hit-aim=true in-bounds=true mods=none)
+double click: (label button=1 n_press=1 hit-aim=true in-bounds=true mods=none label button=1 n_press=2 hit-aim=true in-bounds=true mods=none)
+ctrl click: (capture Control_L mods=none entry1 Control_L label button=1 n_press=1 hit-aim=true in-bounds=true mods=control)
+10 px below the target, then a sentinel on it: (label button=1 n_press=1 hit-aim=true in-bounds=true mods=none)
+button geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=false
+primary click on a GtkButton: (focus-leave e1 button button=1 n_press=1 hit-aim=true in-bounds=true mods=none)
+click into entry 2: (focus-enter e2)
+focus: e1=false e2=true
+click back into entry 1: (focus-leave e2 focus-enter e1)
+focus: e1=true e2=false
+key x: (capture x mods=none)
+entry 1 text after x: "x"
+key F1 (capture propagates): (capture F1 mods=none entry1 F1)
+key Escape (capture handles): (capture Escape mods=none)
+entry 1 text after Escape: "x"
+Tab: (capture Tab mods=none entry1 Tab focus-leave e1 focus-enter e2)
+focus after Tab: e1=false e2=true
