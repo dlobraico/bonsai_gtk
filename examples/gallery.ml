@@ -672,13 +672,13 @@ let dates (graph @ local) =
    {b This page is load-bearing rather than decorative.} The pinned ocgtk binding can
    construct no [GdkEvent] and can emit no signal carrying arguments, so no automated test
    in this repository delivers a real click or a real key press. What
-   [test/live/live_controllers.ml] proves is that the controller is attached, named, given
-   the phase the attr asked for, and removed again; what [Bonsai_gtk_test.Action.Click_at]
-   and [Key_press] prove is that the handler does the right thing when something calls it.
-   The step in between -- GTK routing a real button press or a real keystroke into that
-   handler -- is demonstrated here and nowhere else, by a person clicking and typing on a
-   real display. [docs/m2-backlog.md] carries the gap with the condition that would close
-   it.
+   [test/live/live_controllers_*.ml] proves is that the controller is attached, named,
+   given the phase the attr asked for, and removed again; what
+   [Bonsai_gtk_test.Action.Click_at] and [Key_press] prove is that the handler does the
+   right thing when something calls it. The step in between -- GTK routing a real button
+   press or a real keystroke into that handler -- is demonstrated here and nowhere else,
+   by a person clicking and typing on a real display. [docs/m2-backlog.md] carries the gap
+   with the condition that would close it.
 
    So the check, and it is worth doing by hand before the milestone closes: click the card
    with each mouse button and with modifiers held, then double-click it. Type in the entry

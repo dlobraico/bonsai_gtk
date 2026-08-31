@@ -29,7 +29,7 @@ let create ctx ~node_path widget =
    from one the widget class attached itself: a [GtkButton] ships with a
    [GtkGestureClick], a [GtkEventControllerKey] and a [GtkShortcutController] of its own,
    so "the widget has a GtkGestureClick" says nothing. The name shows up in GTK Inspector,
-   and [test/live/live_controllers.ml] counts by it.
+   and [test/live/live_controllers_util.ml] counts by it.
 
    [set_name], never [set_static_name]. The "static" one stores the pointer it is handed
    without copying -- it assigns the argument straight into [priv->name] and sets
@@ -41,7 +41,7 @@ let create ctx ~node_path widget =
    top-level literals is not the fix either -- OCaml does not promise literals are static
    data, and under bytecode they live in the heap and are moved by compaction. [set_name]
    g_strdups, which is what a runtime-computed name needs.
-   [test/live/live_controllers.ml]'s heap-churn case is the regression test. *)
+   [test/live/live_controllers_click.ml]'s heap-churn case is the regression test. *)
 let name_prefix = "bonsai_gtk."
 
 let set_name (c : W.Event_controller.t) suffix =
@@ -219,7 +219,7 @@ let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
    name that type. *)
 (* [GDK_EVENT_PROPAGATE]. Named rather than written [false] at the two places it is
    needed, so that the spec's [declined] and this module's fallback are the same value by
-   construction; [test/live/live_controllers.ml] pins it against [Gdk_constants]. *)
+   construction; [test/live/live_controllers_key.ml] pins it against [Gdk_constants]. *)
 let key_pressed_declined = Gdk_constants.event_propagate
 
 (* The whole of the decision, lifted out of the spec so that it can be called. It is the

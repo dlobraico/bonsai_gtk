@@ -655,8 +655,8 @@ let%expect_test "a controller attr is accepted on a kind that emits no signals" 
    carries [button] and [modifiers].
 
    The click is delivered to the *handler*, not through GTK: there is no synthetic click
-   in the binding (see [test/live/live_controllers.ml]), so what a headless suite proves
-   is the half an application actually writes. *)
+   in the binding (see [test/live/live_controllers_util.ml]), so what a headless suite
+   proves is the half an application actually writes. *)
 let%expect_test "a click action carries the button and the modifiers" =
   let app (graph @ local) =
     let log, set_log = Bonsai.state [] graph in

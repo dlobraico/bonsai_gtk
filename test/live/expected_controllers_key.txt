@@ -1,0 +1,26 @@
+keys both attrs: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed On_key_released)
+keys both attrs: phase=CAPTURE
+keys released dropped: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed)
+keys released dropped: phase=CAPTURE
+keys pressed dropped: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_released)
+keys pressed dropped: phase=CAPTURE
+keys both dropped: gtk=() bonsai=0 total=3 armed=()
+keys both dropped: no key controller of ours
+keys re-added in bubble: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed On_key_released)
+keys re-added in bubble: phase=BUBBLE
+keys moved to target: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=(On_key_pressed On_key_released)
+keys moved to target: phase=TARGET
+keys nothing was delivered: 
+key lifecycle done
+mount rejected: phases/0/0: Attr.on_key_pressed asks for Capture and Attr.on_key_released for Bubble, but they share one GtkEventControllerKey and so one propagation phase
+phases agreeing: phase=CAPTURE
+patch rejected: phases/0/0: Attr.on_key_pressed asks for Capture and Attr.on_key_released for Target, but they share one GtkEventControllerKey and so one propagation phase
+phases after the rejected patch: gtk=(bonsai_gtk.key) bonsai=1 total=4 armed=()
+phases after the rejected patch: phase=CAPTURE
+phase rejection done
+Propagate -> handled=false performed=false
+Handled -> handled=true performed=false
+(Propagate_and <effect>) -> handled=false performed=true
+(Handled_and <effect>) -> handled=true performed=true
+declined=false event_propagate=false event_stop=true
+key answers done

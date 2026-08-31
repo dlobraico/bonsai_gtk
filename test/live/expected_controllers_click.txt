@@ -1,0 +1,10 @@
+before gc: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=3 armed=(On_click On_focus_enter)
+after gc: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=3 armed=(On_click On_focus_enter)
+after gc: button=2 phase=BUBBLE
+gc regression done
+On_click -> family=(Click) attached=(bonsai_gtk.click)
+On_focus_enter -> family=(Focus) attached=(bonsai_gtk.focus)
+On_focus_leave -> family=(Focus) attached=(bonsai_gtk.focus)
+On_key_pressed -> family=(Key) attached=(bonsai_gtk.key)
+On_key_released -> family=(Key) attached=(bonsai_gtk.key)
+every controller attr attaches a controller

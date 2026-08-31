@@ -17,7 +17,7 @@ let cast = Bonsai_gtk.Private.Gtk_import.cast
 
    Every other live suite proves an {i input} to GTK's event routing -- that the attr
    attached a controller with the button and the phase it asked for
-   ([live_controllers.ml]), that the trampoline hands GTK the right answer
+   ([live_controllers_*.ml]), that the trampoline hands GTK the right answer
    ([live_signals.ml]) -- and [test/handle/test_handle.ml] proves the handler half
    headlessly. The routing in between is GTK's own, and it was the milestone's one
    genuinely uncovered claim. This file closes it by driving the X server the live suite

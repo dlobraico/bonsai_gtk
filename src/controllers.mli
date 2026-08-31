@@ -63,7 +63,7 @@ val release : t -> unit
 
 (** How many controllers are attached, for tests. Counts what {i this} module attached,
     not what GTK reports: [Widget.observe_controllers] is the other half of that assertion
-    and is what [test/live/live_controllers.ml] compares this against. *)
+    and is what [test/live/live_controllers_util.ml] compares this against. *)
 val attached_count : t -> int
 
 (** Which controller-attr slots currently hold a handler, across every attached family, in
@@ -72,8 +72,8 @@ val attached_count : t -> int
     Introspection for tests, and the only evidence there is that a click slot is armed: no
     click can be synthesised through this binding, so "the gesture is attached" and "the
     gesture will call anything" are two different facts and only this one says the second.
-    [test/live/live_controllers.ml] uses it to assert that removing one family does not
-    disarm another's slots. *)
+    [test/live/live_controllers_focus.ml] uses it to assert that removing one family does
+    not disarm another's slots. *)
 val armed : t -> Attr.Name.t list
 
 (** What [Attr.on_key_pressed]'s handler answers GTK for this attr and this event: the
@@ -87,7 +87,7 @@ val armed : t -> Attr.Name.t list
 
     The [attr] is expected to be an [Attr.on_key_pressed]; anything else answers
     {!key_pressed_declined}, which is the arm a slot holding some other attr would take
-    and is unreachable in practice. Exposed for [test/live/live_controllers.ml]. *)
+    and is unreachable in practice. Exposed for [test/live/live_controllers_key.ml]. *)
 val key_pressed_answer : Attr.t -> Key_event.t -> bool * unit Ui_effect.t option
 
 (** [Gdk_constants.event_propagate] — the answer GTK gets when the application has said
@@ -106,5 +106,5 @@ val key_pressed_declined : bool
     [GtkGestureClick], a [GtkEventControllerKey] and a [GtkShortcutController] — so a live
     test that counted by class would be counting GTK's as well as ours, and one that
     counted the total would break the day a GTK release changes how many a button has.
-    Exposed for [test/live/live_controllers.ml], which is the only caller. *)
+    Exposed for [test/live/live_controllers_util.ml], which is the only caller. *)
 val is_ours : Gtk_import.W.Event_controller.t -> bool

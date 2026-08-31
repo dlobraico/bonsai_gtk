@@ -48,8 +48,9 @@ end
     prevent. Exhaustive over [Attr.Name.t] with no wildcard, so a new attr cannot skip the
     decision either.
 
-    [test/live/live_controllers.ml] closes the loop from the other end: it mounts a node
-    carrying each name this gives a family to, and asserts a controller of ours appears. *)
+    [test/live/live_controllers_click.ml] closes the loop from the other end: it mounts a
+    node carrying each name this gives a family to, and asserts a controller of ours
+    appears. *)
 val controller_family : Attr.Name.t -> Family.t option
 
 (** [true] for the event attrs {!controller_family} gives a family, derived from it so the

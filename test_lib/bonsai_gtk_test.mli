@@ -78,9 +78,9 @@ module Action : sig
         {b This is the only test there is for a click handler.} The pinned ocgtk binding
         can neither construct a [GdkEvent] nor emit a signal with arguments, so no live
         test can deliver a real click; what a live test proves is that the gesture is
-        attached and detached (see [test/live/live_controllers.ml]). The gap between "this
-        handler does the right thing" and "GTK routes a real button-2 press to it" is
-        real, and is in the backlog. *)
+        attached and detached (see [test/live/live_controllers_focus.ml]). The gap between
+        "this handler does the right thing" and "GTK routes a real button-2 press to it"
+        is real, and is in the backlog. *)
     | Focus_enter of string
     | Focus_leave of string
     (** test_id of a node carrying the matching attr. Two actions rather than one for a
@@ -112,7 +112,7 @@ module Action : sig
         ([Event_controller_key.forward] only re-routes an event a controller is already
         handling), so what a live test proves is that the controller is attached, named,
         detached, and given the phase the attr asked for — see
-        [test/live/live_controllers.ml]. The gap is in the backlog. *)
+        [test/live/live_controllers_key.ml]. The gap is in the backlog. *)
     | Key_release of string * Key_event.t
     (** test_id of a node carrying [Attr.on_key_released], and the key. Fires that handler
         with exactly that event. Nothing is printed: [key-released] returns [unit] to GTK,

@@ -85,7 +85,7 @@ OCAMLPATH="$prefix/lib${OCAMLPATH:+:$OCAMLPATH}" BONSAI_GTK_LIVE_TESTS=0 \
 echo "== live tests (xvfb)"
 # The serialisation these need lives on the rules now, as `(locks x-display)` in
 # `test/live/dune` -- see that file's header for the measurements and for why
-# ten of the twelve rules carry it. It used to be a `-j 1` on this line, which
+# eleven of the fourteen rules carry it. It used to be a `-j 1` on this line, which
 # protected this line and nothing else: `dune test`, an editor's run-tests
 # action, and the leaked-environment path this script now closes above all
 # reached the same rules unserialised.

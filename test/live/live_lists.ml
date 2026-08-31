@@ -87,9 +87,9 @@ let selected_keys (live : P.live) =
 ;;
 
 (* The user clicking a row, as far as a test can get: there is no synthetic click in the
-   pinned binding (see [test/live/live_controllers.ml]), so the selection is moved with
-   the same setter GTK's own click handler calls. What matters for the claim below is that
-   the widget's selection differs from the model's when the next frame runs. *)
+   pinned binding (see [test/live/live_controllers_util.ml]), so the selection is moved
+   with the same setter GTK's own click handler calls. What matters for the claim below is
+   that the widget's selection differs from the model's when the next frame runs. *)
 let select_row_by_hand (live : P.live) key =
   let w = list_box live in
   match W_list_box.row_by_key w key with
@@ -100,10 +100,10 @@ let select_row_by_hand (live : P.live) key =
 let () = ignore (Ocgtk_gtk.GMain.init () : string array)
 
 (* Regression for the [get_selected_rows] use-after-free (review C1), and it runs before
-   everything else in this file for the reason [live_controllers.ml]'s heap-churn test
-   does: every selection line below is a read of the selection, so if that read is what
-   destroys the rows then the whole golden is measuring a tree that is quietly falling
-   apart.
+   everything else in this file for the reason [live_controllers_click.ml]'s heap-churn
+   test does: every selection line below is a read of the selection, so if that read is
+   what destroys the rows then the whole golden is measuring a tree that is quietly
+   falling apart.
 
    [gtk_list_box_get_selected_rows] is transfer-container -- the [GList] is the caller's
    to free, the rows in it are borrowed -- and the stub as it was then wrapped each row

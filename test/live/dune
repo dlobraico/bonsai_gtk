@@ -6,7 +6,9 @@
   live_controls
   live_containers
   live_events
-  live_controllers
+  live_controllers_click
+  live_controllers_focus
+  live_controllers_key
   live_keyvals
   live_lists
   live_text
@@ -31,11 +33,12 @@
 ; explicitly asked for:
 ;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 ;
-; The ten rules whose executable presents a toplevel carry `(locks x-display)`.
+; The eleven rules whose executable presents a toplevel carry `(locks x-display)`.
 ; One `xvfb-run` gives every executable below the same X display, and a window
 ; mapping on a display takes the input focus off whichever window held it -- so a
-; neighbour starting up mid-test is indistinguishable, to `live_controllers.ml`'s
-; focus block, from the focus controller losing focus on its own: an intermittent
+; neighbour starting up mid-test is indistinguishable, to
+; `live_controllers_focus.ml`, from the focus controller losing focus on its own:
+; an intermittent
 ; golden diff that reads as a regression in the controller. Measured
 ; unserialised: 1 run in 10 fails, 3 in 7 on a loaded machine, 4 in 7 on a very
 ; loaded one. Serialised: 0 focus failures in 6 loaded runs, 0 in 15 with the
@@ -47,13 +50,15 @@
 ; anything else that reaches these rules all inherit it -- `-j 1` protected one
 ; line in one script and nothing else. And it serialises only these rule actions:
 ; measured on a cold tree, `-j 1` costs 26 s (59 s against 33 s) because it also
-; serialises compiling and linking twelve executables, where the lock costs 1 s.
+; serialises compiling and linking every executable here (twelve at the time of
+; the measurement), where the lock costs 1 s.
 ; Warm -- which is what ci.sh always is -- the two are indistinguishable at ~31 s.
 ;
 ; `live_events` and `live_keyvals` deliberately have no lock: neither calls
 ; `GMain.init` and both run to completion with DISPLAY unset. They live here
 ; because `test/` links only `bonsai_gtk.vtree` and they need ocgtk, not because
-; they touch X.
+; they touch X. `live_controllers_click` initialises GTK but presents no
+; toplevel -- its two blocks mount bare labels -- so it takes no lock either.
 
 (rule
  (alias runtest)
@@ -136,14 +141,39 @@
  (alias runtest)
  (enabled_if
   (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
- (deps live_controllers.exe)
+ (deps live_controllers_click.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_controllers_click.txt
+    (run %{exe:live_controllers_click.exe}))
+   (diff expected_controllers_click.txt output_controllers_click.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_controllers_focus.exe)
  (locks x-display)
  (action
   (progn
    (with-stdout-to
-    output_controllers.txt
-    (run %{exe:live_controllers.exe}))
-   (diff expected_controllers.txt output_controllers.txt))))
+    output_controllers_focus.txt
+    (run %{exe:live_controllers_focus.exe}))
+   (diff expected_controllers_focus.txt output_controllers_focus.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_controllers_key.exe)
+ (locks x-display)
+ (action
+  (progn
+   (with-stdout-to
+    output_controllers_key.txt
+    (run %{exe:live_controllers_key.exe}))
+   (diff expected_controllers_key.txt output_controllers_key.txt))))
 
 (rule
  (alias runtest)
