@@ -101,6 +101,8 @@ let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
   | Overlay _
   | Header_bar _
   | Action_bar _
+  | Popover _
+  | Menu_button _
   | Grid _
   | Stack_switcher _
   | Stack_sidebar _
@@ -422,6 +424,7 @@ and drop_stack_names ctx (live : live) =
    | Text_view
    | Drop_down
    | Calendar
+   | Popover _
    | Editable -> ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 

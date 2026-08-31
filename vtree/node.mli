@@ -1432,6 +1432,61 @@ val paned
     [gtk_overlay_set_clip_overlay] is not exposed; see {!Attr.measure_overlay}. *)
 val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t
 
+(** A [GtkPopover] over one child — legal in {b exactly one place in M3}: {!menu_button}'s
+    [~popover] slot. GTK4 popovers are parented with [Widget.set_parent] rather than a
+    container's add, and pointing one at an arbitrary node needs a [GdkRectangle] the
+    pinned binding cannot construct, so free anchoring is a placement design with no
+    consumer yet (backlog). A popover anywhere else is [Invalid_argument] at mount, at
+    patch, and headlessly from [Bonsai_gtk_test], naming the one slot that accepts it.
+
+    {b [~open_] is controlled} (spec §6.5, default [false]): compared against the
+    popover's own visibility and written with [popup]/[popdown] from the end-of-pass
+    fixups, so the frame that mounts an open popover and the frame that declines a
+    dismissal both converge on the model. A user dismissal — click-away or Escape, GTK's
+    [~autohide] — emits [closed] and fires {!Attr.on_closed}'s effect; a model that
+    ignores it gets the popover re-opened on the next frame, the declined-edit rule.
+    {b The opposite direction has no event}: nothing reports the user {i opening} the
+    popover through the menu button's own toggle, so a model that renders [~open_:false]
+    forever will pop such an opening back down on the next frame — drive [~open_] from the
+    model (a click handler on the button area, an action) rather than relying on the
+    built-in toggle. Reporting the open is a backlog candidate ([notify::visible] is the
+    hook).
+
+    [~position] is the {i preferred} edge (GTK flips it when there is no room);
+    [~autohide] ([true]) is GTK's dismiss-on-click-away-or-Escape; [~has_arrow] ([true])
+    draws the little nub. *)
+val popover
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?open_:bool
+  -> ?position:Position.t
+  -> ?autohide:bool
+  -> ?has_arrow:bool
+  -> t
+  -> t
+
+(** A [GtkMenuButton]: the ⋮/☰ button whose press shows a popover.
+
+    [~popover] is the {b one} place a {!popover} may appear; the slot is patched through
+    [set_popover], so swapping the popover node swaps the surface and emptying the slot
+    detaches it. [~menu] — the [Gio.Menu]-model path stavekeeper's viewer menu wants —
+    lands in Task 6; until then a menu is a popover whose child is a box of buttons.
+
+    At most one of [~label]/[~icon_name] (GTK stores one child widget for both;
+    [Invalid_argument] otherwise); neither gives GTK's default ⋮-less arrow-only look.
+    [~primary] ([false]) marks the app's primary menu (F10 opens it); [~always_show_arrow]
+    ([false]) adds the dropdown arrow beside a label or icon. *)
+val menu_button
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?label:string
+  -> ?icon_name:string
+  -> ?primary:bool
+  -> ?always_show_arrow:bool
+  -> ?popover:t
+  -> unit
+  -> t
+
 (** A [GtkHeaderBar]: the title-bar-shaped chrome row, with keyed [~start] and [~end_]
     pack areas and a [~title] {b slot}.
 

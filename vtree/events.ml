@@ -73,6 +73,12 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      [On_editing_changed] is the other half, and it is a [notify::editing] -- the class
      binds no signals at all. *)
   | Editable_label _ -> [ On_changed; On_editing_changed ]
+  (* The popover's one exposed signal; [activate-default] waits for a consumer. *)
+  | Popover _ -> [ On_closed ]
+  (* A [GtkMenuButton]'s [activate] (the button was popped open programmatically or by
+     mnemonic) is deliberately unexposed in M3: nothing reports a {i user} open either
+     (see [Node.popover]), and half an opening story is worse than none. *)
+  | Menu_button _
   (* [GtkHeaderBar] and [GtkActionBar] declare no signals at all -- pure structure. *)
   | Window _
   | Box _
@@ -160,6 +166,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_day_selected
   | On_editing_changed
   | On_cursor_moved
+  | On_closed
   | Row_selectable
   | Row_activatable
   | Tab_label -> None
@@ -252,6 +259,7 @@ let attr_phase (attr : Attr.t) =
   | On_day_selected _
   | On_editing_changed _
   | On_cursor_moved _
+  | On_closed _
   | On_contains_focus_changed _
   | Many _ -> None
 ;;

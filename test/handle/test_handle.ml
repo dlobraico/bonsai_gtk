@@ -2785,6 +2785,84 @@ let%expect_test "a Move_cursor action fires on_cursor_moved" =
   [%expect {| (Failure "Bonsai_gtk_test: node plain is a Label, not a TextView") |}]
 ;;
 
+(* The popover's one legal position, refused headlessly with the mount-time strings: a
+   popover anywhere but a menu button's ~popover slot is a tree the runtime rejects, and
+   this is what stops a headless suite certifying it. *)
+let%expect_test "a popover outside a menu button is rejected by the handle" =
+  let in_box (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"pop"
+         (Node.box ~orientation:Vertical [ Node.popover (Node.label "body") ]))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create in_box in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: a Node.popover may only be a Node.menu_button's ~popover slot, not a child of Box")
+    |}];
+  let at_root (_graph @ local) = Bonsai.return (Node.popover (Node.label "body")) in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create ~root_kind:`Not_window at_root in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root: a Node.popover may only be a Node.menu_button's ~popover slot, not the root")
+    |}]
+;;
+
+(* The popover's controlled ~open_ from the model's side: Close_popover fires
+   [Attr.on_closed] and the model that follows flips [open_]; Open_popover fires nothing
+   (live, opening emits nothing this library exposes), so the prop stands wherever the
+   model holds it -- the headless face of the next-frame popdown. *)
+let%expect_test "popover actions: a dismissal is heard, an opening is not" =
+  let app (graph @ local) =
+    let open_, set_open = Bonsai.state true graph in
+    let%arr open_ and set_open in
+    Node.window
+      ~title:"pop"
+      (Node.menu_button
+         ~label:"menu"
+         ~popover:
+           (Node.popover
+              ~open_
+              ~attrs:[ Attr.test_id "pop"; Attr.on_closed (set_open false) ]
+              (Node.label "body"))
+         ())
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.store_view handle;
+  (* The user opened it? Nothing to hear; with the model already holding [true] the diff
+     is empty. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Open_popover "pop" ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| |}];
+  (* The user dismissed it: on_closed fires, the model follows, open_ flips. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Close_popover "pop" ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (pop))))) (attrs ())
+       (children
+        (Single
+         (((kind (Menu_button ((label (menu))))) (attrs ())
+           (children
+            (Slots
+             ((popover
+               (Single
+    -|          (((kind (Popover ((open_ true))))
+    +|          (((kind (Popover ((open_ false))))
+                  (attrs ((Test_id pop) (On_closed <handler>)))
+                  (children
+                   (Single
+                    (((kind (Label ((text body)))) (attrs ())
+                      (children No_children)))))))))))))))))
+    |}]
+;;
+
 (* The negatives for the two new kinds, both directions, on the rule the drop-down block
    above follows: an attr copied onto a widget that does not emit it is rejected rather
    than accepted and never firing.

@@ -849,6 +849,44 @@ let action_bar
     (Slots [ "center", Single center; "start", List start; "end", List end_ ])
 ;;
 
+let popover
+  ?key
+  ?attrs
+  ?(open_ = Defaults.Popover.open_)
+  ?(position = Defaults.Popover.position)
+  ?(autohide = Defaults.Popover.autohide)
+  ?(has_arrow = Defaults.Popover.has_arrow)
+  child
+  =
+  make
+    ?key
+    ?attrs
+    (Popover { open_; position; autohide; has_arrow })
+    (Single (Some child))
+;;
+
+(* At most one of [~label]/[~icon_name]: GTK's two setters replace each other's child
+   widget, so a call carrying both is asking for a race the constructor can see. *)
+let menu_button ?key ?attrs ?label ?icon_name ?primary ?always_show_arrow ?popover () =
+  (match label, icon_name with
+   | Some _, Some _ ->
+     invalid_arg
+       "Node.menu_button: ~label and ~icon_name are mutually exclusive (GTK stores one \
+        child widget for both)"
+   | (Some _ | None), (Some _ | None) -> ());
+  make
+    ?key
+    ?attrs
+    (Menu_button
+       { label
+       ; icon_name
+       ; primary = Option.value primary ~default:Defaults.Menu_button.primary
+       ; always_show_arrow =
+           Option.value always_show_arrow ~default:Defaults.Menu_button.always_show_arrow
+       })
+    (Slots [ "popover", Single popover ])
+;;
+
 let overlay ?key ?attrs ?(overlays = []) child =
   make
     ?key

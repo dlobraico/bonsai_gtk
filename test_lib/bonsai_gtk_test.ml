@@ -27,6 +27,8 @@ module Action = struct
     | Select_day of string * Date.t
     | Set_editing of string * bool
     | Move_cursor of string * int
+    | Open_popover of string
+    | Close_popover of string
   [@@deriving sexp_of]
 end
 
@@ -117,6 +119,21 @@ let rec require_supported ~path ~parent (node : Node.t) =
    | Window _, Some _ ->
      invalid_argf
        "%s: a Node.window may only be the root node, not a child of another node"
+       path
+       ()
+   (* The popover's one legal position, [Patcher_checks.check_placement]'s strings copied
+      on the window rule's arrangement. *)
+   | Popover _, Some (Kind.Menu_button _) -> ()
+   | Kind.Popover _, Some k ->
+     invalid_argf
+       "%s: a Node.popover may only be a Node.menu_button's ~popover slot, not a child \
+        of %s"
+       path
+       (Kind.name k)
+       ()
+   | Popover _, None ->
+     invalid_argf
+       "%s: a Node.popover may only be a Node.menu_button's ~popover slot, not the root"
        path
        ()
    | (Window _ | _), _ -> ());
@@ -534,6 +551,30 @@ module Result_spec = struct
       (match (Attrs.find n.attrs On_cursor_moved :> Attr.Private.t option) with
        | Some (On_cursor_moved h) -> h offset
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_cursor_moved handler" id ())
+    (* The user opened the popover -- and, honestly, nothing fires: live, opening emits no
+       signal this library exposes (see [Node.popover]'s ~open_ doc), so the headless
+       action mirrors that exactly. It kind-checks the target and hands back [Ignore], so
+       a script reads as the user's session and a mis-aimed id still fails loudly. The
+       diff a test takes after it is the point: the model heard nothing, so the [open_]
+       prop stands wherever the model holds it. *)
+    | Open_popover id ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"Popover" ~is_expected:(function
+        | Kind.Popover _ -> true
+        | _ -> false);
+      Ui_effect.Ignore
+    (* The user dismissed it -- click-away or Escape, GTK's autohide -- which live emits
+       [closed]; fires [Attr.on_closed]'s effect. A popover with no handler fails like
+       every other action, which is exactly the tree whose declined-dismissal reopen the
+       runtime documents. *)
+    | Close_popover id ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"Popover" ~is_expected:(function
+        | Kind.Popover _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_closed :> Attr.Private.t option) with
+       | Some (On_closed h) -> h ()
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_closed handler" id ())
   ;;
 end
 

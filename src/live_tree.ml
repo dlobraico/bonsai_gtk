@@ -483,6 +483,28 @@ let rec dump (w : Widget.t) : Sexp.t =
           [child-revealed] read-back on an action bar); the flag is the input the model
           set. *)
        if W.Action_bar.get_revealed (cast w) then [] else [ Sexp.Atom "concealed" ]
+     | "GtkPopover" ->
+       (* [visible] is the readable open bit the controlled [~open_] compares against, so
+          the dump says which way it stands; the rest are the three preferences. *)
+       let p : W.Popover.t = cast w in
+       flag_prop "open" (Widget.get_visible w)
+       @ (match W.Popover.get_position p with
+          | `BOTTOM -> []
+          | `TOP -> [ Sexp.Atom "points-top" ]
+          | `LEFT -> [ Sexp.Atom "points-left" ]
+          | `RIGHT -> [ Sexp.Atom "points-right" ])
+       @ (if W.Popover.get_autohide p then [] else [ Sexp.Atom "no-autohide" ])
+       @ if W.Popover.get_has_arrow p then [] else [ Sexp.Atom "no-arrow" ]
+     | "GtkMenuButton" ->
+       let mb : W.Menu_button.t = cast w in
+       (match W.Menu_button.get_label mb with
+        | None | Some "" -> []
+        | Some l -> [ [%sexp `label (l : string)] ])
+       @ (match W.Menu_button.get_icon_name mb with
+          | None -> []
+          | Some i -> [ [%sexp `icon (i : string)] ])
+       @ flag_prop "primary" (W.Menu_button.get_primary mb)
+       @ flag_prop "always-show-arrow" (W.Menu_button.get_always_show_arrow mb)
      | "GtkCenterBox" ->
        (* Only the non-GTK value: which of the three slots are filled is visible in the
           children, and an empty slot parents nothing at all. *)

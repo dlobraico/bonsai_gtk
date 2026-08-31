@@ -63,6 +63,8 @@ let all_kinds : Kind.t list =
   ; (Node.overlay (child ())).kind
   ; (Node.header_bar ()).kind
   ; (Node.action_bar ()).kind
+  ; (Node.popover (child ())).kind
+  ; (Node.menu_button ()).kind
   ; (Node.window (child ())).kind
   ; (Native_gtk.node thing_impl ()).kind
   ]

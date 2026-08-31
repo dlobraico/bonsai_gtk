@@ -57,6 +57,7 @@ module Name : sig
     | On_day_selected
     | On_editing_changed
     | On_cursor_moved
+    | On_closed
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -159,6 +160,7 @@ module Private : sig
     | On_day_selected of Date.t Handler.t
     | On_editing_changed of bool Handler.t
     | On_cursor_moved of int Handler.t
+    | On_closed of unit Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -682,6 +684,20 @@ val on_editing_changed : (bool -> unit Ui_effect.t) -> t
     Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
     node is mounted or patched. *)
 val on_cursor_moved : (int -> unit Ui_effect.t) -> t
+
+(** A {!Node.popover} was dismissed — the user clicked away or pressed Escape (GTK's
+    [~autohide]), or anything else popped it down. The write-back half of the popover's
+    controlled [~open_]: a model that flips [~open_] to [false] here follows the user, and
+    one that ignores the event gets the popover re-opened on the next frame (the
+    declined-edit rule; see {!Node.popover}).
+
+    The library's own [popdown]s — the fixup enforcing [~open_:false] — do not fire it:
+    [closed] is emitted synchronously inside [popdown] (measured; pre-flight 8), so the
+    reentrancy guard covers every write the runtime makes.
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched. *)
+val on_closed : unit Ui_effect.t -> t
 
 (** A [GtkGestureClick] on this widget.
 

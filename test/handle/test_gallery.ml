@@ -260,6 +260,20 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                              (List
                               (((kind (Button ((label (Delete))))) (key del)
                                 (attrs ()) (children (Single ()))))))))))
+                        ((kind
+                          (Menu_button
+                           ((icon_name (open-menu-symbolic)) (primary true))))
+                         (attrs ())
+                         (children
+                          (Slots
+                           ((popover
+                             (Single
+                              (((kind (Popover ((open_ false) (position Top))))
+                                (attrs ((On_closed <handler>)))
+                                (children
+                                 (Single
+                                  (((kind (Label ((text "menu body"))))
+                                    (attrs ()) (children No_children)))))))))))))
                         ((kind (Paned ((orientation Vertical) (position (120)))))
                          (attrs ((On_position_changed <handler>)))
                          (children

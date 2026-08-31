@@ -27,6 +27,26 @@ let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t
        "%s: a Node.window may only be the root node, not a child of another node"
        path
        ()
+   (* The one place a popover is legal in M3, and [Bonsai_gtk_test] refuses the same trees
+      with the same strings -- copied there, goldens hold them together, the window rule's
+      arrangement. A [Menu_button] parent implies the ~popover slot: the button has no
+      other child position. *)
+   | Popover _ ->
+     (match parent_kind with
+      | Some (Menu_button _) -> ()
+      | Some k ->
+        invalid_argf
+          "%s: a Node.popover may only be a Node.menu_button's ~popover slot, not a \
+           child of %s"
+          path
+          (Kind.name k)
+          ()
+      | None ->
+        invalid_argf
+          "%s: a Node.popover may only be a Node.menu_button's ~popover slot, not the \
+           root"
+          path
+          ())
    | _ -> ());
   (* [Placement] rather than a table here: it is pure [Kind.t]/[Attr.Name.t] data, and
      [Bonsai_gtk_test] -- which cannot link ocgtk, so cannot see this file -- runs the

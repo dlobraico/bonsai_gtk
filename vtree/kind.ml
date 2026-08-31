@@ -284,6 +284,29 @@ type action_bar_props =
   { revealed : bool [@sexp_drop_if Bool.equal Defaults.Action_bar.revealed] }
 [@@deriving sexp_of, equal]
 
+(* [open_] is controlled (spec §6.5) and so deliberately carries no [sexp_drop_if]: a
+   popover the model holds closed and one it never thought about are different claims. The
+   other three are plain preferences, GTK's defaults, dropped at theirs. *)
+type popover_props =
+  { open_ : bool
+  ; position : Position.t [@sexp_drop_if Position.equal Defaults.Popover.position]
+  ; autohide : bool [@sexp_drop_if Bool.equal Defaults.Popover.autohide]
+  ; has_arrow : bool [@sexp_drop_if Bool.equal Defaults.Popover.has_arrow]
+  }
+[@@deriving sexp_of, equal]
+
+(* [label] and [icon_name] are mutually exclusive -- GTK's setters replace each other's
+   child -- and [Node.menu_button] rejects both at the constructor. [~menu] joins in
+   Task 6. *)
+type menu_button_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; icon_name : string option [@sexp_drop_if Option.is_none]
+  ; primary : bool [@sexp_drop_if Bool.equal Defaults.Menu_button.primary]
+  ; always_show_arrow : bool
+       [@sexp_drop_if Bool.equal Defaults.Menu_button.always_show_arrow]
+  }
+[@@deriving sexp_of, equal]
+
 (* [Grid] holds no per-child anything: a child's cell is on the child node's attrs
    ([Attr.grid_cell]), because [gtk_grid_attach] is a call on the grid rather than a
    property of either widget. *)
@@ -497,6 +520,8 @@ type t =
   | Overlay of overlay_props
   | Header_bar of header_bar_props
   | Action_bar of action_bar_props
+  | Popover of popover_props
+  | Menu_button of menu_button_props
   | Window of window_props
   | Native of Native.t
 [@@deriving sexp_of, variants]
@@ -539,6 +564,8 @@ let name = function
   | Overlay _ -> "Overlay"
   | Header_bar _ -> "HeaderBar"
   | Action_bar _ -> "ActionBar"
+  | Popover _ -> "Popover"
+  | Menu_button _ -> "MenuButton"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
 ;;
@@ -611,6 +638,8 @@ let equal_props a b =
   | Overlay a, Overlay b -> equal_overlay_props a b
   | Header_bar a, Header_bar b -> equal_header_bar_props a b
   | Action_bar a, Action_bar b -> equal_action_bar_props a b
+  | Popover a, Popover b -> equal_popover_props a b
+  | Menu_button a, Menu_button b -> equal_menu_button_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload
   (* The one wildcard left in this file, and it is guarded rather than silent.

@@ -48,6 +48,7 @@ module Name = struct
       | On_day_selected
       | On_editing_changed
       | On_cursor_moved
+      | On_closed
       (* The controller attrs, after every signal name so that no existing [Attrs.diff]
          output reorders. *)
       | On_click
@@ -81,6 +82,7 @@ module Name = struct
       | On_day_selected
       | On_editing_changed
       | On_cursor_moved
+      | On_closed
       (* The controller attrs are events too -- they carry a handler and a widget that
          cannot deliver one is a mistake worth a diagnostic. What they are not is any
          impl's *signal*: no [Widget_impl.signals] declares one and no slot for one lives
@@ -244,6 +246,12 @@ module Private = struct
        This is the attr that closes the controlled write's "approximate caret" caveat: an
        application that owns the caret can put it where its model says. *)
     | On_cursor_moved of int Handler.t
+    (* A [GtkPopover] was dismissed -- by the user (click-away, Escape) or by anything
+       else that popped it down; the reentrancy guard keeps the library's own [popdown]s
+       out, and pre-flight correction 8 is what makes that sufficient ([closed] is emitted
+       synchronously inside [popdown]). Carries nothing: the popover that closed is the
+       node the attr rides on. *)
+    | On_closed of unit Handler.t
     (* [button] and [phase] ride in the constructor rather than being captured by the
        handler because they are properties of the *controller*: [Controllers.update] has
        to see a change in either without the handler having to change, and a view that
@@ -356,6 +364,7 @@ let name = function
   | On_day_selected _ -> Some On_day_selected
   | On_editing_changed _ -> Some On_editing_changed
   | On_cursor_moved _ -> Some On_cursor_moved
+  | On_closed _ -> Some On_closed
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
@@ -411,6 +420,7 @@ let rec equal a b =
   | On_day_selected a, On_day_selected b -> Handler.equal a b
   | On_editing_changed a, On_editing_changed b -> Handler.equal a b
   | On_cursor_moved a, On_cursor_moved b -> Handler.equal a b
+  | On_closed a, On_closed b -> Handler.equal a b
   (* The two controller properties compare structurally and the handler physically: a
      frame that moves the gesture to another button, or into the capture phase, is a
      change [Controllers.update] must see even though the closure is rebuilt (and so
@@ -503,6 +513,7 @@ let on_selected_changed f = On_selected_changed f
 let on_day_selected f = On_day_selected f
 let on_editing_changed f = On_editing_changed f
 let on_cursor_moved f = On_cursor_moved f
+let on_closed eff = On_closed (fun () -> eff)
 
 let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }

@@ -49,6 +49,8 @@ let all_kinds : Kind.t list =
   ; (Node.overlay (child ())).kind
   ; (Node.header_bar ()).kind
   ; (Node.action_bar ()).kind
+  ; (Node.popover (child ())).kind
+  ; (Node.menu_button ()).kind
   ; (Node.window (child ())).kind
   ; (Node.native { Native.name = "thing"; payload = Native.Unit }).kind
   ]
@@ -114,6 +116,8 @@ let%expect_test "every kind's event attrs" =
     (Overlay ())
     (HeaderBar ())
     (ActionBar ())
+    (Popover (On_closed))
+    (MenuButton ())
     (Window ())
     (Native:thing ())
     |}]
@@ -188,7 +192,7 @@ let%expect_test "is_event over every name" =
       On_visible_child_changed On_row_activated On_selected_rows_changed
       On_child_activated On_selected_children_changed On_page_changed
       On_selected_changed On_day_selected On_editing_changed On_cursor_moved
-      On_click On_focus_enter On_focus_leave On_contains_focus_changed
+      On_closed On_click On_focus_enter On_focus_leave On_contains_focus_changed
       On_key_pressed On_key_released))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];

@@ -15,6 +15,7 @@ module Selection_mode = Selection_mode
 module Level_bar_mode = Level_bar_mode
 module Grid_cell = Grid_cell
 module Phase = Phase
+module Position = Position
 module Modifiers = Modifiers
 module Click_event = Click_event
 module Click_response = Click_response

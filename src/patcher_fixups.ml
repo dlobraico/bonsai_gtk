@@ -210,6 +210,12 @@ type interest =
      the widget will not take; the impls refuse them and this is where the path comes
      from. *)
   | Calendar
+  (* The popover's controlled [~open_], applied from the fixups because [popup] needs the
+     popover parented -- its [create] runs before the menu button's slot [set] -- and
+     because [enqueue_fixups] runs on the mount, patch {i and} reassert-only passes, which
+     is exactly the coverage a controlled prop needs (the reassert frame is the one that
+     re-opens a declined dismissal). *)
+  | Popover of Kind.popover_props
   (* One arm for four kinds, because they are one widget as far as the text is concerned:
      entry, password entry, search entry and editable label all write their [~text]
      through [W_entry.set_text_if_needed], which refuses a NUL and records the refusal in
@@ -228,6 +234,7 @@ let interest_of_kind (kind : Kind.t) =
   | Text_view _ -> Text_view
   | Drop_down _ -> Drop_down
   | Calendar _ -> Calendar
+  | Popover p -> Popover p
   | Entry _ | Password_entry _ | Search_entry _ | Editable_label _ -> Editable
   | Label _
   | Button _
@@ -251,6 +258,7 @@ let interest_of_kind (kind : Kind.t) =
   | Overlay _
   | Header_bar _
   | Action_bar _
+  | Menu_button _
   | Grid _
   | Box _
   | Native _ -> Nothing
@@ -297,6 +305,11 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
      [W_entry.set_text_if_needed] whichever [GtkEditable] widget it was written through,
      and the refusals of all four live in one table. *)
   | Editable -> Option.iter (W_entry.take_report widget) ~f:(ctx.report ~node_path:path)
+  | Popover { open_; _ } ->
+    (* Deferred for the reason the selections are: during the mount walk the popover is
+       not yet parented into its menu button when its own node is reached, and [popup] on
+       an unparented popover is a GTK critical. By fixup time the whole tree exists. *)
+    Queue.enqueue ctx.fixups (fun () -> W_popover.apply_open widget ~open_)
   | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected.
@@ -398,6 +411,7 @@ let note_interest
    | Text_view
    | Drop_down
    | Calendar
+   | Popover _
    | Editable -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;

@@ -77,6 +77,7 @@ type interest =
   | Text_view
   | Drop_down
   | Calendar
+  | Popover of Kind.popover_props
   | Editable
 
 val interest_of_kind : Kind.t -> interest

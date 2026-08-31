@@ -39,6 +39,8 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Overlay _ -> W_overlay.impl
   | Header_bar _ -> W_header_bar.impl
   | Action_bar _ -> W_action_bar.impl
+  | Popover _ -> W_popover.impl
+  | Menu_button _ -> W_menu_button.impl
   | Window _ -> W_window.impl
   | Native n -> Native_gtk.impl_of_payload n
 ;;

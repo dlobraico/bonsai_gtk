@@ -112,6 +112,7 @@ let%expect_test "every event attr has an action that fires it" =
     | On_day_selected -> Some "Select_day"
     | On_editing_changed -> Some "Set_editing"
     | On_cursor_moved -> Some "Move_cursor"
+    | On_closed -> Some "Close_popover"
     | On_click -> Some "Click_at"
     | On_focus_enter -> Some "Focus_enter"
     | On_focus_leave -> Some "Focus_leave"
@@ -229,6 +230,10 @@ let%expect_test "the gallery uses the one attr with no name" =
 type placement =
   | Child
   | Root
+  (* The popover's row: a [Node.popover] is legal only as a menu button's [~popover] slot,
+     so its subject sits inside a scaffold menu button rather than beside the scaffold --
+     the same reason the window's sits at the root. *)
+  | In_menu_button
 
 let lifecycle_app ~placement ~before ~after (graph @ local) =
   let step, set_step = Bonsai.state 0 graph in
@@ -258,6 +263,10 @@ let lifecycle_app ~placement ~before ~after (graph @ local) =
   let subject = if step = 0 then Some before else if step = 1 then Some after else None in
   match placement with
   | Child -> Node.window (scaffold subject)
+  | In_menu_button ->
+    (* The menu button is the scaffold's, always present; the {i subject} is the slot, so
+       its unmount phase is the slot emptying. *)
+    Node.window (scaffold (Some (Node.menu_button ?popover:subject ())))
   | Root ->
     (* Record update rather than [Node.window]: the subject's own props are what this row
        is about, so the node the row built is the node that is shown, with the scaffold
@@ -275,6 +284,16 @@ let subject_of ~placement (tree : Node.t) =
        (match box.children with
         | List [ _step; _stack; _stack2 ] -> None
         | List [ _step; _stack; _stack2; subject ] -> Some subject
+        | _ -> failwith "lifecycle sweep: unexpected scaffold")
+     | _ -> failwith "lifecycle sweep: unexpected scaffold")
+  | In_menu_button ->
+    (match tree.children with
+     | Single (Some box) ->
+       (match box.children with
+        | List [ _step; _stack; _stack2; mb ] ->
+          (match mb.children with
+           | Slots [ ("popover", Single subject) ] -> subject
+           | _ -> failwith "lifecycle sweep: unexpected menu button shape")
         | _ -> failwith "lifecycle sweep: unexpected scaffold")
      | _ -> failwith "lifecycle sweep: unexpected scaffold")
 ;;
@@ -347,7 +366,7 @@ let run_row (placement, before, after) =
   let unmounted =
     match placement with
     | Root -> None
-    | Child ->
+    | Child | In_menu_button ->
       Bonsai_gtk_test.Handle.do_actions handle [ Click "step" ];
       phase ()
   in
@@ -361,8 +380,8 @@ let run_row (placement, before, after) =
       name
       (match placement, unmounted with
        | Root, _ -> "n/a(root)"
-       | Child, None -> "ok"
-       | Child, Some _ -> "STILL THERE")
+       | (Child | In_menu_button), None -> "ok"
+       | (Child | In_menu_button), Some _ -> "STILL THERE")
       same_kind
       props_changed
       (child_ops mounted patched);
@@ -477,6 +496,12 @@ let sweep_rows : (placement * Node.t * Node.t) list =
   ; ( Child
     , Node.action_bar ~revealed:false ~center:(child ()) ~start:[ keyed "a" ] ()
     , Node.action_bar ~center:(child ()) ~start:[ keyed "a"; keyed "b" ] () )
+  ; ( Child
+    , Node.menu_button ~label:"a" ()
+    , Node.menu_button ~icon_name:"open-menu-symbolic" ~always_show_arrow:true () )
+  ; ( In_menu_button
+    , Node.popover ~open_:false (child ())
+    , Node.popover ~open_:true ~position:Top (child ()) )
   ; Root, Node.window ~title:"a" (child ()), Node.window ~title:"b" (child ())
   ; ( Child
     , Node.native { Native.name = "thing"; payload = Payload "a" }
@@ -554,6 +579,8 @@ let%expect_test "every kind is diffed, and no kind is skipped" =
     Overlay         mount=ok patch=ok unmount=ok        same_kind=true  props_changed=false child_ops=overlays=1I/0M/0R/1U
     Header_bar      mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=start=1I/0M/0R/1U end=0I/0M/0R/0U
     Action_bar      mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=start=1I/0M/0R/1U end=0I/0M/0R/0U
+    Menu_button     mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
+    Popover         mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     Window          mount=ok patch=ok unmount=n/a(root) same_kind=true  props_changed=true  child_ops=-
     Native          mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     ("kinds with no row" (missing ()))

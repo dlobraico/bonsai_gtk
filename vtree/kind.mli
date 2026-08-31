@@ -270,6 +270,26 @@ type action_bar_props =
   { revealed : bool [@sexp_drop_if Bool.equal Defaults.Action_bar.revealed] }
 [@@deriving sexp_of, equal]
 
+(* [open_] is controlled (spec §6.5) and so deliberately carries no [sexp_drop_if]. *)
+type popover_props =
+  { open_ : bool
+  ; position : Position.t [@sexp_drop_if Position.equal Defaults.Popover.position]
+  ; autohide : bool [@sexp_drop_if Bool.equal Defaults.Popover.autohide]
+  ; has_arrow : bool [@sexp_drop_if Bool.equal Defaults.Popover.has_arrow]
+  }
+[@@deriving sexp_of, equal]
+
+(* [label] and [icon_name] are mutually exclusive; [Node.menu_button] rejects both at the
+   constructor. [~menu] joins in Task 6. *)
+type menu_button_props =
+  { label : string option [@sexp_drop_if Option.is_none]
+  ; icon_name : string option [@sexp_drop_if Option.is_none]
+  ; primary : bool [@sexp_drop_if Bool.equal Defaults.Menu_button.primary]
+  ; always_show_arrow : bool
+       [@sexp_drop_if Bool.equal Defaults.Menu_button.always_show_arrow]
+  }
+[@@deriving sexp_of, equal]
+
 (* [Grid] holds no per-child anything: a child's cell is on the child node's attrs
    ([Attr.grid_cell]), because [gtk_grid_attach] is a call on the grid rather than a
    property of either widget. *)
@@ -457,6 +477,8 @@ type t =
   | Overlay of overlay_props
   | Header_bar of header_bar_props
   | Action_bar of action_bar_props
+  | Popover of popover_props
+  | Menu_button of menu_button_props
   | Window of window_props
   | Native of Native.t
 (* [variants] is here for exactly one thing: [Kind.Variants.descriptions] is a

@@ -247,6 +247,18 @@ module Action : sig
         derived from the node, and there is no headless buffer to clamp against, so an
         offset past the text's end reaches the handler as written where live GTK would
         clamp it — the same deliberate weakness as [Set_value]'s min/max. *)
+    | Open_popover of string
+    (** test_id of a [popover] — the user opened it through the menu button's toggle.
+        Fires {b nothing}, honestly: live, opening emits no signal this library exposes
+        (see [Node.popover]'s [~open_] doc for the asymmetry and its consequence), so the
+        action only kind-checks the target. What a test shows with it is precisely that
+        the model heard nothing — the [open_] prop stands wherever the model holds it,
+        which is the runtime's next-frame popdown in headless form. *)
+    | Close_popover of string
+    (** test_id of a [popover] carrying [Attr.on_closed] — the user dismissed it
+        (click-away or Escape, GTK's [~autohide]). Fires that handler's effect; a model
+        that flips [~open_] to [false] follows the user, and one that ignores it shows the
+        declined-dismissal reopen as an unchanged [open_ true] in the diff. *)
   [@@deriving sexp_of]
 end
 

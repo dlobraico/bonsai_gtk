@@ -201,6 +201,18 @@ module Action_bar = struct
   let revealed = true
 end
 
+module Popover = struct
+  let open_ = false
+  let position = Position.Bottom
+  let autohide = true
+  let has_arrow = true
+end
+
+module Menu_button = struct
+  let primary = false
+  let always_show_arrow = false
+end
+
 module Paned = struct
   let wide_handle = false
   let resize_start = true

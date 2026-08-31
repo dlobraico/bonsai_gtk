@@ -152,6 +152,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_day_selected _
   | On_editing_changed _
   | On_cursor_moved _
+  | On_closed _
   | Many _ -> ()
 ;;
 
@@ -211,7 +212,8 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_selected_changed
   | On_day_selected
   | On_editing_changed
-  | On_cursor_moved -> ()
+  | On_cursor_moved
+  | On_closed -> ()
 ;;
 
 let apply ~defaults w (op : Attrs.op) =

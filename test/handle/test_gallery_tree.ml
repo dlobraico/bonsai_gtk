@@ -266,6 +266,16 @@ let gallery_tree ~n ~set_n =
                        ~start:[ Node.button ~key:"add" ~label:"Add" () ]
                        ~end_:[ Node.button ~key:"del" ~label:"Delete" () ]
                        ()
+                   ; Node.menu_button
+                       ~icon_name:"open-menu-symbolic"
+                       ~primary:true
+                       ~popover:
+                         (Node.popover
+                            ~open_:false
+                            ~position:Top
+                            ~attrs:[ Attr.on_closed Ui_effect.Ignore ]
+                            (Node.label "menu body"))
+                       ()
                    ; Node.paned
                        ~attrs:[ Attr.on_position_changed (fun _ -> Ui_effect.Ignore) ]
                        ~orientation:Vertical
