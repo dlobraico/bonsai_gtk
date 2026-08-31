@@ -438,7 +438,19 @@ and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
        node carrying an [on_*] attr at all has a non-empty diff on every frame, and it is
        the attr-free subtrees rather than the interesting ones that get skipped. *)
     if not (List.is_empty attr_ops)
-    then Signals.require_specs ~node_path:path node.kind node.attrs;
+    then (
+      Signals.require_specs ~node_path:path node.kind node.attrs;
+      (* Beside it on the same terms, closing the mount/patch asymmetry the M2 review
+         named (docs/m2-backlog.md:175-182): [require_specs] asks the [Events] table,
+         this asks the slots that were actually built at mount. The two can only disagree
+         if the table and the impl's [signals] have drifted -- a drift [live_events.ml]
+         catches in CI -- but an attr a frame {i adds} onto a widget whose impl declared
+         no spec for it would otherwise pass the table check and silently never fire. *)
+      Signals.require_slots
+        ~node_path:path
+        ~impl_name:live.impl.name
+        live.slots
+        node.attrs);
     if not (Kind.equal_props live.node.kind node.kind)
     then live.impl.update live.widget ~old:live.node.kind node.kind;
     (* Unconditionally, and after [update]: a controlled prop is compared against the
