@@ -14,12 +14,15 @@ type ctx = private
       window. *)
   ; report : node_path:string -> string -> unit
   (** Where a diagnostic that is {i not} an exception goes: the model asked for something
-      the widget cannot hold, the frame carries on, and somebody has to be told. Today's
-      only caller is a {!Bonsai_gtk_vtree.Node.text_view} whose [~text] GTK will not store
-      (see {!Bonsai_gtk_vtree.Node.text_view}); it is a hook rather than an [eprintf] at
-      the call site so that a test can capture the message instead of racing stderr
-      against a golden, and so that a later milestone can route these somewhere an
-      application can see.
+      the widget cannot hold, the frame carries on, and somebody has to be told. Every
+      widget that refuses a write reaches it — a {!Bonsai_gtk_vtree.Node.text_view} or any
+      [GtkEditable] handed text GTK will not store, a {!Bonsai_gtk_vtree.Node.calendar}
+      handed a date outside GTK's year range, a {!Bonsai_gtk_vtree.Node.drop_down} handed
+      an index it will not take — through the refusal memo they share ([Refusal]), which
+      is also what makes each of those reported once rather than once a frame. It is a
+      hook rather than an [eprintf] at the call site so that a test can capture the
+      message instead of racing stderr against a golden, and so that a later milestone can
+      route these somewhere an application can see.
 
       Distinct from {!Signals.ctx.on_exn}, which reports an exception raised while
       {i dispatching} a signal — and which a widget impl cannot reach in any case. *)
@@ -68,15 +71,17 @@ val create_ctx
     stack's visible page.
 
     Raises [Invalid_argument] if a [stack_switcher] or [stack_sidebar] names a stack no
-    node in the tree registered, naming both the switcher's path and the name it wanted,
-    and if a {!Bonsai_gtk_vtree.Node.stack} that has at least one page gives a
+    node in the tree registered, naming both the switcher's path and the name it wanted;
+    if a {!Bonsai_gtk_vtree.Node.stack} that has at least one page gives a
     [~visible_child] naming none of them, naming the stack's path and the page names it
-    does have. That second one can only be decided here: [create], [update] and [reassert]
-    all run while the stack is still being built, so a page that is not there yet and one
-    that is never coming look the same to them; by the time this runs the whole tree
-    exists. A raise abandons the rest of the queue — the fixups queued behind the failing
-    one do not run, and are dropped with it — which matches the all-or-nothing a raising
-    frame already has: the driver stops for good rather than carrying a half-applied pass
+    does have; and, on the same rule and for the same reason, if a
+    {!Bonsai_gtk_vtree.Node.notebook} gives a [~current_page] naming none of its pages.
+    That second one can only be decided here: [create], [update] and [reassert] all run
+    while the stack is still being built, so a page that is not there yet and one that is
+    never coming look the same to them; by the time this runs the whole tree exists. A
+    raise abandons the rest of the queue — the fixups queued behind the failing one do not
+    run, and are dropped with it — which matches the all-or-nothing a raising frame
+    already has: the driver stops for good rather than carrying a half-applied pass
     forward.
 
     A fixup may not enqueue another; nothing needs to, and a queue that feeds itself is a
@@ -106,11 +111,12 @@ type live =
   ; slots : Signals.slots
   ; connections : Signals.connection list
   ; controllers : Controllers.t
-  (** The event controllers this node's attributes ask for — a [GtkGestureClick] for
-      {!Bonsai_gtk_vtree.Attr.on_click], a [GtkEventControllerFocus] for the focus pair.
-      Unlike [slots], which is fixed at mount, this changes shape as the attrs do: a
-      controller is attached on the frame its first attr appears and removed on the frame
-      its last one goes. *)
+  (** The event controllers this node's attributes ask for: one per
+      {!Bonsai_gtk_vtree.Events.Family.t} whose attrs the node carries, which is the table
+      that decides it — not a list repeated here, for the reason
+      {!Bonsai_gtk_vtree.Events.is_controller_attr}'s doc gives. Unlike [slots], which is
+      fixed at mount, this changes shape as the attrs do: a controller is attached on the
+      frame its first attr appears and removed on the frame its last one goes. *)
   ; mutable children : live Children.t
   }
 

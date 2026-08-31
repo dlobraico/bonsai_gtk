@@ -16,7 +16,13 @@ module Action : sig
         text be this" is what a real edit produces whatever the widget was showing. What
         the model does with it (echo, uppercase, reject) then shows up as the next
         render's [text] prop, which is the whole of what a controlled text widget
-        guarantees. *)
+        guarantees.
+
+        Nor is anything about the {i widget} consulted, which is worth naming for two
+        cases the runtime treats specially: a string longer than an [entry]'s
+        [~max_length] reaches the handler in full (live, GTK truncates it), and a string
+        containing a NUL reaches it in full (live, the write is refused and reported, and
+        the widget keeps what it had). Rows 14 and 15 of the table on {!create}. *)
     | Activate of string
     (** test_id of a node carrying [Attr.on_activate] — the user pressed Enter in it. *)
     | Set_value of string * float
@@ -25,8 +31,11 @@ module Action : sig
         node's own [value] prop is never consulted, for the same reason [Set_text] does
         not consult [text]. Nor are [min]/[max]: there is no GTK adjustment headless, so
         an out-of-range value reaches the handler unclamped, which is what lets a test
-        show the {i model} clamping it. What the model does then shows up as the next
-        render's [value] prop, which is the whole of what a controlled value guarantees. *)
+        show the {i model} clamping it. Nor is a [spin_button]'s [~digits], which GTK
+        rounds a real value to: [3.14159] delivered to a [~digits:2] button reaches the
+        handler whole here and would arrive as [3.14] live. What the model does then shows
+        up as the next render's [value] prop, which is the whole of what a controlled
+        value guarantees. *)
     | Search_changed of string * string
     (** test_id of a [search_entry] carrying [Attr.on_search_changed], and the text the
         user typed. Fires that handler with exactly that string.
@@ -153,8 +162,14 @@ module Action : sig
         The whole selection, not a delta: that is what [selected-rows-changed] and
         [selected-children-changed] both report off the real widget, so an action that
         took one row would be modelling a signal that does not exist. [[]] is a state the
-        widget can reach and so a state the action can deliver. As with [Activate_row],
-        the node's own [~selected] is not consulted. *)
+        widget can reach and so a state the action can deliver.
+
+        [~selection_mode] is not consulted either, and that is the same decision as
+        [Click_at]'s [~button] rather than an oversight: a test may hand two keys to a
+        [~selection_mode:Single] list box, or any key at all to a [None_] one, and certify
+        a model handling a selection GTK could never report. Filtering it would be the
+        only piece of widget behaviour this harness models. As with [Activate_row], the
+        node's own [~selected] is not consulted. *)
     | Set_page of string * Key.t
     (** test_id of a [notebook] carrying [Attr.on_page_changed], and the {!Key.t} of the
         page the user switched to. Fires that handler with exactly that key.
@@ -404,11 +419,67 @@ end
       the cost of that is a loud rejection of a legal tree and never a silent acceptance
       of an illegal one.
 
-    What is still only checked at mount is listed in the gap table below, and the reason
-    is not that those rules need a widget — most of them do not — but that nobody has
-    written them yet. So a suite that is entirely headless can still certify a tree that
-    raises the moment it is shown; the escape from that is a live test, or running the
-    app.
+    {2 What this handle checks, against what the runtime refuses}
+
+    The table below is the whole of it, and it exists because three places in this
+    repository used to say something weaker and different — all of them explaining the
+    remaining gap with a reason that was false: "needs the widget implementations or the
+    live tree". Most of what is still unchecked is decidable from [bonsai_gtk.vtree]
+    alone, which this library already links; the honest reason is that nobody has written
+    those checks yet. This is the one copy, and [README.md] points at it rather than
+    restating it.
+
+    "vtree" means decidable from [bonsai_gtk.vtree] alone.
+
+    {v
+ #  what the runtime refuses                              vtree  checked here
+ 1  event attr the kind cannot emit                        yes    yes
+ 2  placement attr the parent does not read                yes    yes
+ 3  two key attrs with different ~phase                    yes    yes
+ 4  root is not a Node.window (or is one, under embed)     yes    yes  (?root_kind)
+ 5  Node.window below the root                             yes    yes
+ 6  duplicate keys among siblings                          yes    yes
+ 7  stack/list_box/flow_box/notebook child with no ~key     -     yes, at the constructor
+ 8  Node.grid child with no Attr.grid_cell                  yes    no
+ 9  ~visible_child naming no page                           yes    no
+10  ~current_page naming no page                            yes    no
+11  two Node.stacks under one ~name                         yes    no
+12  stack_switcher/_sidebar naming no stack                 yes    no
+13  slot/children shape mismatch                            no     no   (no constructor builds one)
+14  a NUL in any text, or invalid UTF-8 in a text_view      yes    no   (refused live)
+15  entry ~text longer than ~max_length                     yes    no   (truncated live)
+16  a Move to a container with no reorder primitive         yes    n/a  (this handle never diffs)
+    v}
+
+    Rows 8-12 are the ones that could still be closed cheaply: they are tree walks over
+    data this library already has. Rows 14 and 15 are {i refusals} rather than rejections
+    — live the write is declined, the widget keeps what it had, and the runtime says so
+    once through the patcher's report channel — so a green headless test over such a tree
+    is not certifying a crash; it is certifying a value the widget will never show.
+
+    {3 Where a green headless suite does not mean the runtime will hold the state}
+
+    Two places in this repository each used to call themselves "the one place" this
+    happens. There are six, and four of them are deliberate:
+
+    - rows 14 and 15 above: text the runtime refuses or truncates, which an action
+      delivers verbatim;
+    - a [drop_down ~selected] of [-1] over a non-empty list, or past the end — GTK
+      declines it and reports it, and headless there is no GTK ({i deliberate}: see
+      [Action.Set_selected]);
+    - [Action.Activate_row] on a row carrying [Attr.row_activatable false], and
+      [Activate_child]/[Set_page] after it — GTK would never emit the signal
+      ({i deliberate}: filtering it would be the only event routing this harness
+      implements; see [docs/m2-backlog.md]);
+    - [Action.Set_selection] delivering more keys than a [~selection_mode] allows, or any
+      key at all to a [None_] one — GTK would never report it ({i deliberate}, on the same
+      argument as [Click_at]'s [~button]);
+    - a [list_box]/[flow_box] [~selected] naming keys with no rows — inert live until the
+      row arrives, shown as selected headlessly ({i deliberate}, and documented on
+      [Bonsai_gtk_vtree.Node.list_box]);
+    - a [notebook ~current_page] naming a page whose child is hidden, and the same for a
+      [stack ~visible_child] — GTK leaves the page alone, so the model and the screen
+      diverge with nothing said (on the backlog for the report hook).
 
     The second known gap is {i routing}. Every action here is delivered to one node, named
     by [Attr.test_id]; there is no widget hierarchy for an event to travel through. So a

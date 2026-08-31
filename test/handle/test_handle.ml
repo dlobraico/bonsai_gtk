@@ -2248,9 +2248,12 @@ let%expect_test "a declined drop-down choice leaves the node where it was" =
    reasonable thing to ask (nothing chosen yet), and it is {i GTK} that declines it, at
    mount, with the node's path -- see [test/live/live_text.ml]. Headless there is no GTK,
    so what a suite can see here is that the node is legal and that the handler still
-   reaches the model. That asymmetry is worth pinning: it is the one place in M2 where a
-   headless suite going green does not mean the runtime will hold the state, and the
-   runtime says so out loud rather than silently. *)
+   reaches the model. That asymmetry is worth pinning: it is one of the six places where a
+   headless suite going green does not mean the runtime will hold the state -- this
+   comment used to call it the only one, and the backlog called a different case the only
+   one, which is how two mutually exclusive superlatives ended up in one repository. The
+   list lives on [Bonsai_gtk_test.create], once. This case is on the deliberate half of
+   it, and the runtime says so out loud rather than silently. *)
 let%expect_test "nothing selected is a legal node, whatever GTK does with it" =
   let unset (graph @ local) =
     let selected, set_selected = Bonsai.state (-1) graph in

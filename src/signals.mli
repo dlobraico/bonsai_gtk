@@ -73,20 +73,22 @@ val connected : 'a Gobject.obj -> Gobject.Signal.handler_id -> connection
     Every M1 signal is one of these, and so is every [notify::] one, whose generic
     marshaller carries nothing at all.
 
-    [Payload] is for the signals whose arguments cannot be recovered afterwards. Six exist
-    in M2, and they are two rules rather than a list of exceptions. Every signal whose
+    [Payload] is for the signals whose arguments cannot be recovered afterwards, and which
+    ones those are is two rules rather than a list -- stated as rules so that a milestone
+    which adds a signal does not have to remember to update a count. Every signal whose
     argument is a {b child widget}, because the child is gone by the time anything could
-    look for it: [GtkListBox::row-activated], [GtkFlowBox::child-activated] and
-    [GtkNotebook::switch-page]. And every {b controller} signal, because a controller
-    remembers nothing about the event it has just delivered: [GtkGestureClick::pressed]
-    (the coordinates are stored nowhere), [GtkEventControllerKey::key-pressed] (the
-    keyval, and a [bool] GTK wants back) and [GtkEventControllerKey::key-released] (the
-    keyval; its answer to GTK is [unit]). A new signal of either shape is a [Payload], not
-    a [Read_back]. ['p] is the payload the [connect] closure assembles — it may combine
-    the callback's arguments with things read off the object, which is how a click's
-    [button] and [modifiers] get in — and ['r] is what the callback returns to GTK. Both
-    are existential: a [spec list] holds specs with different payloads and different
-    return types, and nothing outside the spec ever names either.
+    look for it ([GtkListBox::row-activated] and its two siblings). And every
+    {b controller} signal, because a controller remembers nothing about the event it has
+    just delivered: [GtkGestureClick::pressed]'s coordinates are stored nowhere,
+    [GtkEventControllerKey::key-pressed] carries the keyval and wants a [bool] back, and
+    [GtkEventControllerKey::key-released] carries the keyval and answers [unit]. A new
+    signal of either shape is a [Payload], not a [Read_back]; the specs themselves are the
+    enumeration, in the widget impls and in [Controllers]. ['p] is the payload the
+    [connect] closure assembles — it may combine the callback's arguments with things read
+    off the object, which is how a click's [button] and [modifiers] get in — and ['r] is
+    what the callback returns to GTK. Both are existential: a [spec list] holds specs with
+    different payloads and different return types, and nothing outside the spec ever names
+    either.
 
     [fire] returning ['r * unit Ui_effect.t option] rather than ['r Ui_effect.t] is the
     load-bearing shape. The return value has to reach GTK {i synchronously}, on the C

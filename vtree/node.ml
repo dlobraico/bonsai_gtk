@@ -117,6 +117,17 @@ let switch ?key ?attrs ~active () = make ?key ?attrs (Switch { active }) No_chil
 (* All three take [~text] as a required labelled argument: a text widget with no text prop
    is uncontrolled, and an uncontrolled text widget in a declarative tree is a bug that
    shows up as "my entry resets when something unrelated re-renders". *)
+(* [~max_length] is a configuration constant, so a value no later frame could make valid
+   is rejected here -- the rule this file already applies to a level bar's bounds, a
+   calendar's marks and a drop-down's [~selected].
+
+   Negative is the whole of that: [gtk_entry_buffer_set_max_length] clamps its argument
+   into [0, 65536], so a [-1] passed in the belief that it means "no limit" (which is what
+   [~width_chars] and [~max_width_chars] use it for, three arguments up) silently becomes
+   [0], which {i is} no limit -- right by accident, and wrong the moment somebody reads it
+   back. Above 65536 is not rejected, because it is a reasonable way to spell "effectively
+   no limit" and GTK's own answer to it is to clamp; what would have made it a per-frame
+   rewrite is handled where the comparison is, in [W_entry.capped]. *)
 let entry
   ?key
   ?attrs
@@ -131,6 +142,13 @@ let entry
   ~text
   ()
   =
+  if max_length < 0
+  then
+    invalid_argf
+      "Node.entry ~max_length:%d is negative (0 is GTK's own \"no limit\"; GTK clamps \
+       this into 0-65536, so a negative value silently becomes no limit at all)"
+      max_length
+      ();
   make
     ?key
     ?attrs
@@ -275,9 +293,14 @@ let spinner ?key ?attrs ~spinning () = make ?key ?attrs (Spinner { spinning }) N
    minimum, so the bar draws full and never moves again. No critical, no warning, nothing
    to find. Both numbers are in this call, so this is the only place that can name them.
 
-   [value] outside the range is {i not} rejected: GTK clamps it into [min, max], which is
-   what a caller rendering a ratio that occasionally exceeds 1 wants, and clamping is
-   visible in the widget rather than silent. *)
+   [value] outside the range is {i not} rejected, and -- correcting what this comment said
+   for the whole of M2 -- it is not clamped either. [gtk_level_bar_set_value] stores
+   whatever it is given; only the {i bound} setters clamp, dragging the live value into
+   the new range, which is the asymmetry [w_level_bar.ml] is built around and which
+   [test/live/live_text.ml] pins. So [~min:0. ~max:1. ~value:5.] leaves [get_value]
+   reading [5.] and the bar drawn full. That is still the right thing not to reject -- a
+   caller rendering a ratio that occasionally exceeds 1 gets a full bar rather than an
+   exception -- but the reason is tolerance, not clamping. [node.mli] states it correctly. *)
 let level_bar
   ?key
   ?attrs

@@ -21,9 +21,11 @@ let align : Align.t -> Gtk_enums.align = function
    is what [Unset Cursor_name] will restore. That is the intended reading of "put back
    what this widget had".
 
-   [widget_name] is the one field that cannot be restored exactly: ocgtk's [set_name]
-   takes a [string], so there is no NULL to write back and an unnamed widget is restored
-   to the class name [get_name] reported for it. *)
+   [widget_name] is the one field that is not restored exactly, and since the pin moved
+   that is a choice rather than a limitation: [set_name] takes a [string option] now, and
+   this file still writes [Some d.widget_name], so an unnamed widget is restored to the
+   class name [get_name] reported for it rather than to NULL. Taking the behavioural half
+   is a separate change with a golden attached -- see [Attr.widget_name] and the backlog. *)
 type defaults =
   { margin_start : int
   ; margin_end : int

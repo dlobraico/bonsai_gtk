@@ -53,9 +53,13 @@ end
 val controller_family : Attr.Name.t -> Family.t option
 
 (** [true] for the event attrs {!controller_family} gives a family, derived from it so the
-    two cannot disagree: {!Attr.on_click}, {!Attr.on_focus_enter}, {!Attr.on_focus_leave}.
-    No widget impl declares one -- [test/live/live_events.ml] asserts that, because an
-    impl that did would connect a second handler nobody removes. *)
+    two cannot disagree — which is why this doc does not list them: {!controller_family}
+    is the table, it is exhaustive over [Attr.Name.t] with no wildcard, and a list here
+    would be a second statement of it that a later milestone could leave behind. (It did:
+    this sentence named three attrs for the whole of M2, while five had a family, because
+    the task that added the key pair updated the table and not the prose.) No widget impl
+    declares one -- [test/live/live_events.ml] asserts that, because an impl that did
+    would connect a second handler nobody removes. *)
 val is_controller_attr : Attr.Name.t -> bool
 
 (** The attr names belonging to one family, in [Attr.Name] order. [Controllers] asks this

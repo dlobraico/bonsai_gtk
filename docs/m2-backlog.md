@@ -169,7 +169,9 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   `""`. Task 14 scoped itself to the fork and left these deliberately: they are behaviour
   changes to M2 code with goldens attached. The password-entry one has no visible effect
   (GTK normalises the NULL back to `""` once the internal `GtkText` exists, measured on
-  4.22); `Attr.widget_name`'s doc needs rewriting when the first one is taken.
+  4.22). `Attr.widget_name`'s doc no longer blames the binding — the fix wave corrected it
+  to say the caveat is now a deliberate choice — so what is left here is only the
+  behavioural change itself.
 - **`Patcher.require_slots` is not called on the patch path** (`src/patcher.ml`; the mount
   call is its only one, while `require_specs` has two). If a widget impl drifted so that
   `Events.for_kind` lists an attr the impl declares no spec for, and an app adds that attr
@@ -179,12 +181,14 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   one-line fix and the review named it "the one I would take before Task 4 lands the
   controller attrs". task-1 review Minor 8.
 - **`Bonsai_gtk_test.Action.Activate_row` fires on a row carrying `Attr.row_activatable
-  false`**, and `Activate_child`/`Set_page` follow it. It is the one place the headless
-  handle certifies something the runtime will not do, everywhere else in M2 considerable
-  trouble was taken so that it cannot, and the argument for it — the harness models no event
-  routing at all, and filtering this one case would be the only routing it implements — was
-  accepted. Recorded because the decision should be revisited once, deliberately, for all
-  three, and `bonsai_gtk_test.mli` should gain a sentence if it stands. task-6 review M5.
+  false`**, and `Activate_child`/`Set_page` follow it. It is one of six places where the
+  headless handle certifies something the runtime will not do — this entry used to call it
+  the only one, and `test_handle.ml` said the same of a different case; the six are now
+  listed once, on `Bonsai_gtk_test.create`. The argument for this one was accepted: the
+  harness models no event routing at all, and filtering this case would be the only routing
+  it implements. Recorded because the decision should be revisited once, deliberately, for
+  all three. `bonsai_gtk_test.mli` now carries the sentence. task-6 review M5; final review,
+  headless I4.
 
 ## API shape decisions before they become breaking
 
@@ -310,10 +314,10 @@ Behaviour:
 
 Consistency:
 
-- **`take_report` uses `state w` rather than `Cache.find_opt`** (`w_text_view.ml`), so it will
-  mint a `{ stale = true }` record for a widget whose entry was collected, once per frame,
-  purely to find `None` in it. Harmless and unreachable while `create` runs first.
-  task-9 re-review R3.
+- ~~**`take_report` uses `state w` rather than `Cache.find_opt`**~~ — closed by the final
+  review's fix wave. It was all four copies rather than only `w_text_view.ml`'s (final review,
+  core M6); the shared `Refusal` module does the lookup once, with `find_opt`, so no widget
+  mints an entry to find `None` in it. task-9 re-review R3.
 - **`enqueue_fixups`' `Text_view` arm enqueues nothing** — the placement is right and the name
   now covers two jobs. If a second caller arrives, a `notify_interests`/`enqueue` split is
   worth the rename. task-9 re-review R2.
@@ -329,7 +333,13 @@ Consistency:
   100 000 characters that is **1.22 ms per idle frame**, about 7% of a 60 fps budget for one
   widget (measured). It is `Node.entry`'s existing behaviour, not a regression. If a profile
   ever shows entries dominating an idle frame, the fix is `w_text_view.ml`'s cache generalised
-  over `GtkEditable`, in one place for all four kinds. task-11 carry 3 / re-review M5.
+  over `GtkEditable`, in one place for all four kinds — and it is a better trade than the
+  comparison alone suggests (final review, controls M5): reaching the interface goes through
+  `W.Editable.from_gobject`, whose stub does a `g_type_is_a` check, a `g_object_ref` and a
+  `caml_alloc_custom` of a finalised wrapper, so each of the four editable widgets allocates a
+  finalised custom block, takes a GObject reference and schedules an unref on every idle frame
+  on top of the `caml_copy_string`. Tens of nanoseconds per widget per frame, so not a defect
+  — but the cache would remove all of it, not just the compare. task-11 carry 3 / re-review M5.
 - **`apply_button_props` writes an empty label on the toggle-button create path** while its
   `Button` sibling deliberately does not. Carried from M1.
 - **A dropped placeholder builds the empty label `create` avoids.** Carried from M1.

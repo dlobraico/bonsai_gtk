@@ -181,6 +181,13 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     {!password_entry} and {!search_entry} do not have it -- neither is a [GtkEntry]
     subclass in GTK4 and [GtkEditable] has no [set_max_length].
 
+    GTK clamps it into [0, 65536] ([gtk_entry_buffer_set_max_length]), so a larger number
+    is accepted here and means 65536 in the widget — which the library's own comparison
+    accounts for, so an over-long text still costs one write rather than one per frame. A
+    {i negative} [max_length] is [Invalid_argument] from this constructor: GTK would clamp
+    it to [0], which means no limit at all, and [-1] is what the two [width_chars]
+    arguments above use to mean "unset".
+
     {b A [text] longer than [max_length] is an inconsistency in the application, and the
       library tolerates it silently.}
     GTK truncates the widget's contents to [max_length] characters, and nothing tells the
@@ -209,6 +216,14 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     them back unchanged (measured), so there is nothing to refuse. {!text_view} is the one
     that must refuse it, because a [GtkTextBuffer] empties itself and then declines the
     insert.
+
+    {b While a refused write is parked, the prop is not being enforced}: the remembered
+    refusal is consulted before the widget is read (which is what makes a parked frame
+    cost a pointer comparison), so whatever the user does to the widget meanwhile is left
+    standing rather than snapped back. There is nothing to snap back {i to} -- the model
+    asked for a state the widget cannot hold -- and the change attr still reports what the
+    user did. Control resumes on the first frame the model offers something the widget
+    will take. Stated at length on {!drop_down}, and true of every widget that refuses.
 
     Not exposed: [GtkEntry]'s icon API ([set_icon_from_icon_name] and friends), whose
     [icon-press]/[icon-release] signals carry a [GtkEntryIconPosition] and so make a
@@ -337,6 +352,14 @@ val search_entry
     the write: the view keeps what it was showing, and the runtime reports the node's path
     and the reason once — once per offending text, not once per frame. The model is not
     wedged; the next text GTK will take is written normally.
+
+    {b While a refused write is parked, the prop is not being enforced}: the remembered
+    refusal is consulted before the widget is read (which is what makes a parked frame
+    cost a pointer comparison), so whatever the user does to the widget meanwhile is left
+    standing rather than snapped back. There is nothing to snap back {i to} -- the model
+    asked for a state the widget cannot hold -- and the change attr still reports what the
+    user did. Control resumes on the first frame the model offers something the widget
+    will take. Stated at length on {!drop_down}, and true of every widget that refuses.
 
     That matters most where it is least visible. A read-only pane rendering bytes off disk
     — a log tail, a file preview — is both the likeliest source of such text and the one
@@ -1188,6 +1211,14 @@ val drop_down
     the patcher's channel with the node's path. A later frame offering a date GTK will
     hold writes it on {i that} frame.
 
+    {b While a refused write is parked, the prop is not being enforced}: the remembered
+    refusal is consulted before the widget is read (which is what makes a parked frame
+    cost a pointer comparison), so whatever the user does to the widget meanwhile is left
+    standing rather than snapped back. There is nothing to snap back {i to} -- the model
+    asked for a state the widget cannot hold -- and the change attr still reports what the
+    user did. Control resumes on the first frame the model offers something the widget
+    will take. Stated at length on {!drop_down}, and true of every widget that refuses.
+
     {b The three writes are not atomic, and the obvious order is wrong.} Each setter
     rebuilds the whole date and refuses the write outright if the result is not a real
     day: setting the month to February while the day is 31 fails with a critical and
@@ -1243,9 +1274,24 @@ val calendar
     {b Text a [GtkEditableLabel] cannot hold.} A string containing a NUL byte is stored up
     to the NUL and no further, silently — [gtk_editable_set_text] takes a NUL-terminated
     string. That write is refused before it is made, remembered so the frames after it
-    cost nothing, and reported once with the node's path, on {!text_view}'s rule. Text
-    that is not valid UTF-8 is {i not} refused: unlike a [GtkTextBuffer], an editable
-    label stores it and reads it back unchanged (measured), so there is nothing to report.
+    cost nothing, and reported once with the node's path, on {!text_view}'s rule — from
+    the same place {!entry}'s is, since every [GtkEditable] widget writes its text through
+    one function. Text that is not valid UTF-8 is {i not} refused: unlike a
+    [GtkTextBuffer], an editable label stores it and reads it back unchanged (measured),
+    so there is nothing to report.
+
+    {b While a refused write is parked, the prop is not being enforced}: the remembered
+    refusal is consulted before the widget is read (which is what makes a parked frame
+    cost a pointer comparison), so whatever the user does to the widget meanwhile is left
+    standing rather than snapped back. There is nothing to snap back {i to} -- the model
+    asked for a state the widget cannot hold -- and the change attr still reports what the
+    user did. Control resumes on the first frame the model offers something the widget
+    will take. Stated at length on {!drop_down}, and true of every widget that refuses.
+
+    This is the one {i half}-enforced node in the library, and deliberately: while a text
+    is parked, [~editing] goes on being enforced, because the two decisions are
+    independent and a label whose text the library will not write is still a label the
+    model says is or is not being edited.
 
     [~editing] is controlled too, and controlling a read-only property means two methods
     rather than a write: [start_editing] to enter, [stop_editing ~commit:true] to leave.
@@ -1261,6 +1307,19 @@ val calendar
     write after [start_editing] would collapse that selection; a text write before it is
     the state the user is then handed. On the way out the same order commits the model's
     text rather than whatever the widget was showing.
+
+    {b Pair [~editing] with {!Attr.on_editing_changed}, or the widget is broken rather
+      than merely uncontrolled.}
+    [?editing] is optional and defaults to [false], so
+    [Node.editable_label ~text:"Rehearsal" ()] compiles and reads like a drop-in {!label}
+    — and it is the shape a first user writes. What it does is worse than "the prop is
+    ignored": the user double-clicks, GTK enters editing mode and emits [notify::editing]
+    that no attr is listening for, and on the next frame — at most 16 ms later under the
+    tick — the controlled prop puts it back. The label flashes into an entry and out
+    again, forever, with nothing on stderr and nothing for [Signals.require_specs] to
+    complain about, since the attr is optional on every node. The same rule as
+    {!toggle_button}'s and {!spin_button}'s, and the worst place in the library to leave
+    it unsaid.
 
     There is no value of [~editing] a [GtkEditableLabel] refuses. It enters editing mode
     while insensitive, while hidden, while unrealized and while [GtkEditable]'s [editable]

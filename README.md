@@ -270,11 +270,16 @@ click that depends on the state the first click just set needs a `recompute_view
 them — see the doc comment on `Bonsai_gtk_test.create` for why.
 
 Two gaps remain, and both are why a headless suite is not a substitute for running the
-app. The first is the *structural* half, which needs the widget implementations or a live
-tree: a `grid` child with no `Attr.grid_cell`, a `stack` page with no `~key` or a
-`~visible_child` naming no page, two stacks under one `~name`, a `stack_switcher` naming no
-stack, duplicate sibling keys, a `Node.window` anywhere but the root. None of those stops a
-handle here.
+app. The first is *structural*, and the honest version of it is a table rather than a
+sentence: the doc comment on `Bonsai_gtk_test.create` lists, row by row, everything the
+runtime refuses against what this handle checks, which of it is decidable without GTK
+(most of it), and the six places where a green headless suite does not mean the runtime
+will hold the state. That table is the single copy; earlier versions of this paragraph
+gave a shorter list and explained it with a reason — "needs the widget implementations or
+a live tree" — that was false for every item on it. Since the M2 fix wave the root's kind,
+a `Node.window` below the root and duplicate sibling keys *are* checked here; a `grid`
+child with no `Attr.grid_cell`, a `~visible_child`/`~current_page` naming no page, two
+stacks under one `~name` and a `stack_switcher` naming no stack are not, and could be.
 
 The second is *routing*. Every action is delivered to one node, named by `test_id`; there
 is no widget hierarchy for an event to travel through. So a `Click_at` on a card does not
@@ -301,6 +306,19 @@ The two suites are split across the two packages on purpose: `dune build -p <pkg
 is what `opam install <pkg> --with-test` runs, and it hides every library belonging to the
 *other* package, so no test directory may depend on both. `scripts/ci.sh` runs both `-p`
 builds so that cannot regress.
+
+The consequence a downstream packager should know: **neither per-package `@runtest` runs
+both directories.** `dune build -p bonsai_gtk @runtest` masks `test/handle/`, so the sweeps
+that guarantee "a kind added to `Kind.t` fails until someone puts a node of it in the
+gallery", the same for `Attr.Name.t`, and "every event attr has an action" do *not* run when
+`bonsai_gtk` is installed with tests — even though `Kind.t` and `Attr.Name.t` are
+`bonsai_gtk`'s own types. The mirror holds too: `-p bonsai_gtk_test @runtest` masks `test/`,
+so the two shared tables (`test/test_events.ml`, `test/test_placement.ml`) that the handle
+depends on are unchecked when the handle package is tested. Both run under a bare
+`dune runtest` and under `scripts/ci.sh`. Moving the vtree-only sweeps into `test/` would
+close half of it, and was looked at in the M2 fix wave: they read `gallery_tree`, which the
+handle-based lifecycle sweep in the same file also reads, so it is a rewrite rather than a
+file move and was left alone.
 
 See `docs/superpowers/specs/2026-08-28-bonsai-gtk-design.md` for the design.
 
@@ -395,6 +413,19 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   - **`TextView` refuses that and invalid UTF-8 too**, because a `GtkTextBuffer` empties
     itself and *then* declines the insert. Its cached copy of the buffer text is left
     untouched along with the buffer.
+
+  **While a write is parked like that, the prop is not being enforced** — for all five text
+  widgets, and for `Calendar` and `DropDown`, which refuse a date and an index on the same
+  machinery. The remembered refusal is consulted *before* the widget is read, which is what
+  makes a parked frame cost a pointer comparison; the consequence is that whatever the user
+  does to the widget meanwhile is left standing rather than snapped back. That is the honest
+  behaviour rather than an oversight — the model asked for a state the widget cannot hold, so
+  there is nothing to snap back *to* — and the change attr still reports what the user did, so
+  a model that wants to take it can. Control resumes on the first frame the model offers
+  something the widget will take. `Node.drop_down`'s doc states it at length; the same
+  paragraph is true of the others. One widget is half-enforced and says so: an
+  `EditableLabel` parked on a text still has its `~editing` enforced, because the two
+  decisions are independent.
 - **`Calendar` has no date range and no "no date selected"** — `~date` is always a real
   `Core.Date.t`. GTK's own year range is 1–9999, so a `Date.t` in year 0 is refused,
   reported once, and written on the first later frame that offers a date GTK will hold.
@@ -449,15 +480,17 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   correct model passes through (a stale index, a key whose child has not arrived) is inert,
   applied on the frame it becomes meaningful, and reported once through the patcher's
   channel instead. `vtree/node.mli` opens with the full statement.
-- **Structural mistakes are caught at mount, not by `Bonsai_gtk_test`** — a non-window root
-  (or, under `Expert.embed`, a window root), a `Node.window` below the root, duplicate keys
-  among siblings, a `grid` child with no `Attr.grid_cell`, a `list_box`/`flow_box`/`notebook`
-  child with no key, a `stack` page with no key, a `~visible_child`/`~current_page` naming
-  no child, two `stack`s under one name, a `stack_switcher` naming a stack that does not
-  exist. All are `Invalid_argument` carrying the node path, raised on the frame that builds
-  or patches that node; none of them stops a headless test. Event attrs, placement attrs
-  and mismatched key phases *are* checked headlessly since M2 (see
-  [Headless testing](#headless-testing)).
+- **Some structural mistakes are caught only at mount** — a `grid` child with no
+  `Attr.grid_cell`, a `~visible_child`/`~current_page` naming no child, two `stack`s under
+  one name, a `stack_switcher` naming a stack that does not exist. All are
+  `Invalid_argument` carrying the node path, raised on the frame that builds or patches
+  that node, and none of them stops a headless test — though all of them could, since each
+  is decidable from `bonsai_gtk.vtree` alone. What *is* checked headlessly: event attrs,
+  placement attrs and mismatched key phases (since M2), and the root's kind, a
+  `Node.window` below the root and duplicate sibling keys (since the M2 fix wave). A
+  `list_box`/`flow_box`/`notebook`/`stack` child with no key is rejected earlier still, by
+  the constructor, so it stops a headless test too. The row-by-row version is the table on
+  `Bonsai_gtk_test.create`; see [Headless testing](#headless-testing).
 - **`Stack`, `Grid` and `Overlay` children are never reordered.** GTK exposes no reorder API
   for them, so their `list_ops.move` is `None` and `Reconcile.diff` emits no `Move` at all
   rather than emitting one that is ignored. Keys still preserve identity, so state is not

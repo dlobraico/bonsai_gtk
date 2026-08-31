@@ -46,6 +46,15 @@ let needs_text (e : W.Editable.t) text = not (String.equal (W.Editable.get_text 
    and re-place the caret. Comparing against what the widget can actually hold makes the
    over-long case cost one write rather than one per frame. [0] is GTK's "no limit". *)
 let capped ~max_length text =
+  (* GTK's own ceiling, and the reason this is not simply [p.max_length]:
+     [gtk_entry_buffer_set_max_length] clamps its argument into [0, 65536] (the GIR says
+     so and [gtk_entry_set_max_length] delegates straight to it). So a widget configured
+     with [~max_length:100_000] actually holds 65536 characters, and comparing against the
+     model's own number would leave [needs_text] true on every frame over a longer text --
+     the per-frame rewrite this function exists to prevent, arriving through the one input
+     it was not clamping. The constructor rejects a negative [~max_length] and lets a
+     large one through, since "effectively no limit" is a reasonable thing to mean. *)
+  let max_length = Int.min max_length 65_536 in
   if max_length <= 0 || String.length text <= max_length
   then text
   else (

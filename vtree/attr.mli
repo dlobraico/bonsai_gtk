@@ -231,13 +231,19 @@ val can_focus : bool -> t
 (** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]
     because {!name} already means "which attribute is this".
 
-    Dropping this attribute is the one [Unset] that is not exact: ocgtk's [set_name] takes
-    a [string], not a [string option], so there is no way to pass NULL and restore "this
-    widget has no name". Unset therefore writes back what [get_name] reported at creation,
-    which for an unnamed widget is its class name (["GtkLabel"]) — so the widget ends up
-    with an explicit CSS id it did not have before, and a [#GtkLabel] selector would match
-    it. Harmless unless a stylesheet uses class names as ids; a NULL-accepting [set_name]
-    in the ocgtk fork would remove the caveat. *)
+    Dropping this attribute is the one [Unset] that is not exact, and as of the pin this
+    repository tracks that is a {i choice} rather than a limit. Unset writes back what
+    [get_name] reported at creation, which for an unnamed widget is its class name
+    (["GtkLabel"]) — so the widget ends up with an explicit CSS id it did not have before,
+    and a [#GtkLabel] selector would match it. Harmless unless a stylesheet uses class
+    names as ids.
+
+    The reason used to be that ocgtk's [set_name] took a [string] with no way to pass
+    NULL. It takes a [string option] now (the fork landed it and the pin moved), and the
+    library passes options through it elsewhere — what it still writes here is
+    [Some d.widget_name]. Taking the behavioural half is a separate, deliberate change
+    with a golden attached; it is on the backlog under "the behavioural half of the fork's
+    three nullable bindings". *)
 val widget_name : string -> t
 
 (** A CSS cursor name — ["pointer"], ["text"], ["not-allowed"], ["default"]. An unknown
@@ -607,8 +613,16 @@ val on_day_selected : (Date.t -> unit Ui_effect.t) -> t
     no [set_editing], so the library enters with [start_editing] and leaves with
     [stop_editing ~commit:true]. See {!Bonsai_gtk_vtree.Node.editable_label} for why
     committing rather than discarding is the only defensible reading of a model that
-    renders [~editing:false]. Attaching this to a widget that emits no such signal raises
-    [Invalid_argument] when the node is mounted or patched. *)
+    renders [~editing:false].
+
+    {b A [~editing] with no [on_editing_changed] is not merely uncontrolled.} The prop is
+    optional and defaults to [false], so the attr is easy to leave off — and the widget is
+    then unusable rather than static: every double-click enters editing mode and the next
+    frame puts it back, at tick rate, silently. Pair the prop with this attr, exactly as
+    {!Bonsai_gtk_vtree.Node.toggle_button} pairs [~active] with {!on_toggled}.
+
+    Attaching this to a widget that emits no such signal raises [Invalid_argument] when
+    the node is mounted or patched. *)
 val on_editing_changed : (bool -> unit Ui_effect.t) -> t
 
 (** A [GtkGestureClick] on this widget.

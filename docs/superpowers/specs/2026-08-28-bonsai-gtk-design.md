@@ -602,8 +602,9 @@ always possible.
   cannot keep up with. All of them share one attr name and therefore one slot, so
   `update_slots` and `require_slots` are unchanged.
 - `Payload : ('p, 'r) payload -> spec` is for the signals whose arguments cannot be
-  recovered afterwards. Six exist, and they are two rules rather than a list of
-  exceptions. **Every signal whose argument is a child widget**, because the child is gone
+  recovered afterwards, and which ones those are is two rules rather than a list of
+  exceptions (stated as rules so that a milestone adding a signal need not update a
+  count). **Every signal whose argument is a child widget**, because the child is gone
   by the time anything could look for it: `GtkListBox::row-activated`,
   `GtkFlowBox::child-activated` and `GtkNotebook::switch-page`. And **every controller
   signal**, because a controller remembers nothing about the event it has just delivered:
