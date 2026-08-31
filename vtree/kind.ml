@@ -249,10 +249,12 @@ type center_box_props =
 
 (* [position] is [None] for "leave GTK's own split". It is deliberately *not* controlled
    -- see [Node.paned] -- which is why it is an option rather than a plain int: there is a
-   difference between "put it at 240" and "wherever it ended up". *)
+   difference between "put it at 240" and "wherever it ended up". No [@sexp_drop_if] on
+   it, deliberately: dropping the [None] made "no position computed" indistinguishable in
+   a golden from "no such field" (docs/m2-backlog.md, headless M3). *)
 type paned_props =
   { orientation : Orientation.t
-  ; position : int option [@sexp_drop_if Option.is_none]
+  ; position : int option
   ; wide_handle : bool [@sexp_drop_if Bool.equal Defaults.Paned.wide_handle]
   ; resize_start : bool [@sexp_drop_if Bool.equal Defaults.Paned.resize_start]
   ; resize_end : bool [@sexp_drop_if Bool.equal Defaults.Paned.resize_end]

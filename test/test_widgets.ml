@@ -262,6 +262,28 @@ let%expect_test "slot containers print their slots by name" =
          (Single
           (((kind (Label ((text content)))) (attrs ()) (children No_children)))))))))
     |}];
+  (* No [~position] prints [(position ())] rather than dropping the field: [None] means
+     "wherever GTK's own split ended up", which is a different claim from the field not
+     existing, and used to be erased by a [@sexp_drop_if] (docs/m2-backlog.md, headless
+     M3). *)
+  print_s
+    [%sexp
+      (Node.paned
+         ~orientation:Horizontal
+         ~start:(Node.label "s")
+         ~end_:(Node.label "e")
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Paned ((orientation Horizontal) (position ())))) (attrs ())
+     (children
+      (Slots
+       ((start
+         (Single (((kind (Label ((text s)))) (attrs ()) (children No_children)))))
+        (end
+         (Single (((kind (Label ((text e)))) (attrs ()) (children No_children)))))))))
+    |}];
   print_s
     [%sexp
       (Node.overlay
