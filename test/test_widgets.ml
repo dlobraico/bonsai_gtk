@@ -403,6 +403,23 @@ let%expect_test "a pack-area child with no key is rejected at the constructor" =
     |}]
 ;;
 
+(* Keys are scoped per pack area: the two lists are reconciled independently, so the same
+   key in [~start] and [~end_] is two distinct children and is accepted -- and a key
+   moving between areas is therefore a remove plus a fresh insert, as the constructor doc
+   says. Pinned because it is behaviour someone could reasonably expect to be rejected,
+   and nothing else says which way it goes. *)
+let%expect_test "the same key in both pack areas is accepted" =
+  print_s
+    [%sexp
+      ((Node.header_bar
+          ~start:[ Node.label ~key:"k" "s" ]
+          ~end_:[ Node.label ~key:"k" "e" ]
+          ())
+         .kind
+       : Kind.t)];
+  [%expect {| (Header_bar ()) |}]
+;;
+
 let%expect_test "find_by_test_id descends into slots" =
   let view =
     Node.overlay

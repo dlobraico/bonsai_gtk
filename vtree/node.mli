@@ -1448,12 +1448,16 @@ val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t
 
     {b Children keep insertion order within each pack area.} GTK offers no reorder inside
     a pack area — removal and re-packing is the only move — so the slot lists are
-    unordered on {!list_box}'s terms ([Widget_impl.list_ops.move] is [None]): keys
-    preserve {i identity} across edits, and a pure reorder in the node list leaves the
-    on-screen order alone. [~show_title_buttons] ([true], GTK's own) shows the standard
-    window buttons; [~decoration_layout] overrides the desktop's button layout string and
-    [None] means the default. Both areas' children require keys, rejected at the
-    constructor naming the child's index. *)
+    unordered on {!overlay}'s terms ([Widget_impl.list_ops.move] is [None]): keys preserve
+    {i identity} across edits within an area, and a pure reorder in the node list leaves
+    the on-screen order alone. Keys are scoped {b per area}: the two lists are reconciled
+    independently, so a child whose key moves from [~start] to [~end_] in one frame is a
+    {i remove plus a fresh insert} — a new widget, with whatever state the old one held
+    lost — and the same key appearing in both areas at once is legal (two distinct
+    children). [~show_title_buttons] ([true], GTK's own) shows the standard window
+    buttons; [~decoration_layout] overrides the desktop's button layout string and [None]
+    means the default. Both areas' children require keys, rejected at the constructor
+    naming the child's index. *)
 val header_bar
   :  ?key:Key.t
   -> ?attrs:Attr.t list

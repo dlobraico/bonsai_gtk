@@ -62,9 +62,11 @@ let () =
   P.run_fixups ctx;
   print_s (Live_tree.dump live.widget);
   (* One insertion and one removal per pack area, the title slot emptied, and the action
-     bar concealed -- every slot patched in one frame, each through its own ops. The
-     header's [back] and the bar's [del] keep their widgets across the edit (keys preserve
-     identity), which the dump shows as the surviving buttons. *)
+     bar concealed -- every slot patched in one frame, each through its own ops. The dump
+     shows [back] and [del] still present, which pins that the reconciler patched rather
+     than rebuilt the areas -- but a dump prints labels, not identity; that a keyed
+     [Update] reuses the widget is [test/test_reconcile.ml]'s claim, and the lifecycle
+     sweep's [1U] rows are where these two kinds exercise it. *)
   let live =
     Scheduler.with_patch_guard scheduler (fun () ->
       P.patch
