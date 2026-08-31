@@ -238,6 +238,82 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
 
 Each cites the review in `.superpowers/sdd/2026-08-30-bonsai-gtk-m2/`.
 
+### Left by the final review's fix wave
+
+The wave took every Critical and Important across the five lenses, and the Minors that were
+a sentence or a line. These are the ones it deliberately did not take, with the reason.
+
+- **`Events.family_attrs` rebuilds a 48-element filter on every call** (core M4), three times
+  per patched node per frame, through `Controllers.wanted` — unconditionally, including for
+  the great majority of nodes carrying no controller attr at all. That is ~144
+  `controller_family` matches plus three list allocations per node per frame that can never
+  answer anything but `false`. The identical derive-from-the-table idiom one file over,
+  `Placement.names`, is a top-level `let` computed once. Not taken because it is unmeasured
+  and the fix has two shapes worth choosing between with a number in hand (memoise over
+  `Family.all`, or have `wanted` walk the node's 0–5 attrs and ask `controller_family`); the
+  milestone's own lesson is that per-frame per-node walks are where the numbers have actually
+  been, so measure first.
+- **The placement seam has no drift check equivalent to the events seam's** (core M5). A new
+  container kind copy-pasting a `read_by` arm would be accepted by `is_read_by`, contradicted
+  by `reader`, missed by `test_placement.ml`'s hand-written six-element list, and its
+  children's `Attr.grid_cell` silently inert; and nothing checks that a container which
+  *declares* a placement attr actually applies it. A new *attr* is caught, because `reader` is
+  exhaustive. Wants the same treatment `live_events.ml` gives the events table, which is a
+  test to write rather than a line to change.
+- **`Signals.spec`'s two arms differ in connection arity with no stated reason** (core M8):
+  `Read_back.connect` returns a list (the calendar needs three connections for one attr) and
+  `Payload.connect` returns one, and the mli justifies the first and never mentions the
+  asymmetry. Nothing needs it today; it belongs beside the *API shape decisions* list, since
+  it is the shape a future `Payload` needing two emissions would have to break.
+- **`Controllers.update`'s `configure` raising leaves different states on its two paths**
+  (core M9). The attach branch runs `configure` before `add_controller`, so a rejected node
+  leaves nothing attached; the update branch runs it before `update_slots`, so a key-phase
+  rejection on a *patch* leaves the controller attached, connected and with empty slots.
+  Harmless — the frame is about to break the driver for good — and recorded because the
+  comment that documents the first path reads as if it covered both.
+- **`W_editable_label` is absent from `Bonsai_gtk.Private`** (core M10) while its three
+  `ctx.report` siblings are exported. Less of an asymmetry after the wave than before: the
+  label's refusal now lives in `W_entry`, which is not exported either, and no test needs
+  either of them. Export whichever a test first wants, rather than both on principle.
+- **A duplicate key in a `~selected` list** — see *Do first in M3*, where it sits with the
+  hidden-page divergence it should be decided alongside.
+- **`Kind.paned_props.position` is erased from every golden at its default** (headless M3):
+  `[@sexp_drop_if Option.is_none]`, where `None` means "GTK decides", so a model that never
+  computed a position and one that has no such field are indistinguishable in the sexp. Every
+  other controlled prop deliberately carries no `sexp_drop_if`. The fix wave closed the other
+  half of this — there is a `Set_position` action now, so the handler is reachable — and left
+  the erasure, because removing the `sexp_drop_if` moves every paned golden in the repository
+  for a gain that the action already largely delivers.
+- **"props take part in `equal_props`" varies one field** (headless M5). Every `equal_*_props`
+  is `[@@deriving equal]`, so per-field participation is the compiler's guarantee and those
+  tests pin only that `equal_props`'s arm dispatches to the right derived function — which is
+  worth having, but is not what the titles claim. Worth knowing because it is also what all
+  four sweeps miss together: a hand-written `equal_props` arm ignoring a field is caught by
+  nothing, and `Kind.t`'s `Native` arm (`phys_equal a.payload b.payload`) is exactly such an
+  arm.
+- **`bonsai_gtk_test.opam` over-declares `ppx_expect`** as a hard dependency while
+  `test_lib/dune` preprocesses with `ppx_jane` only (headless M7). Defensible — consumers of a
+  test handle write expect tests — and it is the one dependency in either opam file that no
+  stanza needs. A `dune-project` change, so it wants doing when something else moves there.
+- **The six-entry-point test exercises one of the three checks** (headless M9):
+  `test_gallery.ml`'s regression proves all six entry points reach the validation using an
+  `Events` violation only. Sound by construction today (all the checks share one call site),
+  but the test calls itself the regression for the whole guarantee, and a refactor that moved
+  one check out of that call site would not move this golden. A three-row table instead of six
+  lines closes it.
+- **`examples/gallery.ml` is a hand-maintained twin of `test/handle/test_gallery.ml`, and only
+  the twin in `test/` is under the sweeps** (live M2). Coverage is identical today (36
+  constructors in the example against 38 in the test, the extras being `Node.native` and the
+  type name), and the example is a real compile-time drift net — it is built by `dune build
+  @all` and by the smoke — but nothing keeps its *content* aligned, so a new M3 constructor
+  turns the test red and says nothing about the example. Closing shape: a shared module, or a
+  sweep over the example's own tree.
+- **The one-display-in-parallel shape lives in the pin's own check phase too** (live M3):
+  `flake.nix` runs `xvfb-run -a dune runtest -p ocgtk -j $NIX_BUILD_CORES` — one `xvfb-run`,
+  `NIX_BUILD_CORES` jobs, which is the exact arrangement this milestone diagnosed. Whether
+  ocgtk's own tests present toplevels is unchecked, so this is a pointer rather than a finding,
+  and `flake.nix` is the fork's side of the fence.
+
 Diagnostics and contracts:
 
 - **A `Node.notebook` page whose `~key` is missing raises with no node path** — the
@@ -415,13 +491,34 @@ Consistency:
   needed), then `mousemove X Y click 1|2|3|--repeat 2` and `key`/`type`, with ImageMagick
   `import -window root` between the steps. GTK reads those as ordinary events: the click
   readout produced the right button, press count, widget-local coordinates and modifiers, and
-  the key readout the right keyvals and modifiers. Two things a test still has to solve that
-  the by-hand run did not: **mapping a widget to screen coordinates** (the run read them off a
-  screenshot, and a click 14px outside a label's allocation silently does nothing — the misses
-  look exactly like a broken handler), and **a settling wait** that is not a `sleep`. The
-  packages are `xdotool` and `imagemagick`, neither of which is in the dev shell today. Task
-  13's review asked for this to become a numbered bead rather than a backlog line, "because the
-  backlog is where the same gap has already sat since M1"; the controller filed it.
+  the key readout the right keyvals and modifiers. Two things the by-hand run did not solve, of
+  which **one is already solved in the pinned binding** (final review, live lens):
+  **mapping a widget to screen coordinates** needs no fork patch —
+  `Widget.compute_bounds`, `Widget.compute_point` and `Widget.translate_coordinates` are all
+  bound in the pin — so the estimate here was too pessimistic by whatever a fork round costs.
+  What is left is **a settling wait that is not a `sleep`** (the pattern is
+  `live_embed.ml`'s bounded `drain`: pump the loop until the handler's counter moves, bounded
+  by an iteration count), and getting `xdotool` into the dev shell —
+  `task-16-clickthrough/clickthrough.sh` works around its absence with a hardcoded store path
+  that is one `nix-collect-garbage` from failing, and failing *misleadingly*, since the
+  `xdotool search` is guarded by `|| true` and a missing binary surfaces as "no window".
+  ImageMagick is needed for the human-facing screenshots, not for a test.
+
+  The shape a test should take, per the same review: not a shell driver against
+  `examples/gallery.exe` but a twelfth live executable, `test/live/live_input.ml`, which is
+  both the application and the driver. It builds a small tree of its own, presents it, computes
+  its own target coordinates with `Widget.compute_bounds` relative to the toplevel (which is at
+  (0,0) under Xvfb with no window manager), spawns `xdotool` with `Unix.create_process`, pumps
+  its own main loop until the handler's counter moves, and diffs a readout against a golden
+  like every other rule in the directory — with `(locks x-display)` and the existing
+  `enabled_if`, plus a dep on the binary so it is skipped rather than red where `xdotool` is
+  absent. One thing that must be XTEST and not `XSendEvent`, and should be written down in the
+  test because it is the first thing someone will try to simplify: GTK ignores `send_event`
+  records, so `xdotool key --window $WID` does not work and `windowfocus` + plain `key` does.
+
+  Task 13's review asked for this to become a numbered bead rather than a backlog line,
+  "because the backlog is where the same gap has already sat since M1"; the controller filed
+  it.
 - Focus is the exception and *is* covered end to end: `Widget.grab_focus` on a presented window
   really drives `GtkEventControllerFocus`, and `live_controllers.ml` asserts the handler fires,
   that the reentrancy guard drops a focus change made during a patch, and that a removed

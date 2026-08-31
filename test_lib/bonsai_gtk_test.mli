@@ -349,9 +349,13 @@ end
 
     {b Event attrs and container-placement attrs are validated here; the rest of the
       structural checking still is not.}
-    This library depends on [bonsai_gtk.vtree] alone -- that is what keeps it, and the
+    This {i library} depends on [bonsai_gtk.vtree] alone -- that is what keeps it, and the
     view functions written against it, free of ocgtk -- so it cannot see the widget
-    implementations. It can, however, see the two pure tables the runtime consults:
+    implementations. (The {i package} is another matter: [bonsai_gtk_test] depends on
+    [bonsai_gtk], which depends on [ocgtk], because [vtree] is a sub-library rather than a
+    package of its own. So installing this handle still installs GTK4 and the pinned fork;
+    only the code is light. Closing that means a third package, which M2 did not do.) It
+    can, however, see the two pure tables the runtime consults:
 
     - [Bonsai_gtk_vtree.Events], so an event attr the kind cannot emit ([Attr.on_toggled]
       on a [Node.label], any event attr on a [Node.native]) raises [Invalid_argument] here
@@ -378,12 +382,17 @@ end
     [Handle.show], [Handle.show_into_string], [Handle.show_diff], [Handle.store_view],
     [Handle.recompute_view] and [Handle.recompute_view_until_stable] -- on the first call
     and on every later one. So there is no way to advance a handle {i through this module}
-    past a tree without checking it, and no idiom a test has to avoid. The scope matters:
-    {!Handle.t} is [Bonsai_test.Handle.t], deliberately (it is what lets the four values
-    named below be used unchanged), so [Bonsai_test.Handle.recompute_view handle] still
-    typechecks and still skips the check. Nothing in [test/], [src/] or [examples/] calls
-    it that way, and making [t] abstract to close the hole would cost the interop the
-    omissions depend on.
+    past a tree without checking it, and no idiom a test has to avoid. [Handle.do_actions]
+    is the one entry point that neither advances nor checks: it dispatches against the
+    tree the last entry point computed, so
+    [create app |> fun h -> Handle.do_actions h [...]], with nothing in between, acts on a
+    tree nothing has validated. Benign -- the next entry point raises -- and no test in
+    this repository does it, since every [do_actions] follows a [show] or a
+    [recompute_view]. The scope matters: {!Handle.t} is [Bonsai_test.Handle.t],
+    deliberately (it is what lets the four values named below be used unchanged), so
+    [Bonsai_test.Handle.recompute_view handle] still typechecks and still skips the check.
+    Nothing in [test/], [src/] or [examples/] calls it that way, and making [t] abstract
+    to close the hole would cost the interop the omissions depend on.
 
     That took work, and the history is worth a sentence because it is the reason {!Handle}
     is a hand-written signature rather than an alias for [Bonsai_test.Handle]. The checks

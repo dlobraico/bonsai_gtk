@@ -194,12 +194,21 @@ module Result_spec = struct
   type t = Node.t
   type incoming = Action.t
 
-  let view node =
-    (* First, because it is first at mount too: [Driver.frame] checks the root before the
-       patcher walks anything, so a tree with both mistakes reports the same one here and
-       there. *)
+  (* Everything this library checks about a tree, and nothing about printing it. Separate
+     from [view] because the three shadowed entry points below want the checks without the
+     string: [with_check] used to call [view] and discard its result, which rendered the
+     whole tree's sexp -- up to [max_computes] (default 100) times per
+     [recompute_view_until_stable] -- for an exception. *)
+  let check node =
+    (* Root first, because it is first at mount too: [Driver.frame] checks the root before
+       the patcher walks anything, so a tree with both mistakes reports the same one here
+       and there. *)
     check_root node;
-    require_supported ~path:"root" ~parent:None node;
+    require_supported ~path:"root" ~parent:None node
+  ;;
+
+  let view node =
+    check node;
     Sexp.to_string_hum (Node.sexp_of_t node)
   ;;
 
@@ -476,17 +485,17 @@ module Handle = struct
   include Bonsai_test.Handle
 
   let with_check ~f (simulate_diff_patch : (Node.t -> unit) option) node =
-    (* The exception is the product; the string is discarded, as [run_row] in
-       [test/handle/test_gallery.ml] discards [show_into_string]'s and for the same
-       reason. *)
-    ignore (f node : string);
+    (* The exception is the product, and [f] is [Result_spec.check] rather than
+       [Result_spec.view]: the checks are what these entry points were missing, and
+       rendering the tree to a string to throw it away was the rest of what [view] does. *)
+    f node;
     Option.iter simulate_diff_patch ~f:(fun g -> g node)
   ;;
 
   let recompute_view ?simulate_diff_patch (handle : (Node.t, _) t) =
     Bonsai_test.Handle.recompute_view
       handle
-      ~simulate_diff_patch:(with_check ~f:Result_spec.view simulate_diff_patch)
+      ~simulate_diff_patch:(with_check ~f:Result_spec.check simulate_diff_patch)
   ;;
 
   let recompute_view_until_stable
@@ -497,7 +506,7 @@ module Handle = struct
     Bonsai_test.Handle.recompute_view_until_stable
       ?max_computes
       handle
-      ~simulate_diff_patch:(with_check ~f:Result_spec.view simulate_diff_patch)
+      ~simulate_diff_patch:(with_check ~f:Result_spec.check simulate_diff_patch)
   ;;
 
   (* The third one, and the surprise: [store_view] {i does} build a view -- it is [show]
@@ -511,7 +520,7 @@ module Handle = struct
      tree, same frame, no second stabilization. *)
   let store_view (handle : (Node.t, _) t) =
     Bonsai_test.Handle.store_view handle;
-    ignore (Result_spec.view (Bonsai_test.Handle.last_result handle) : string)
+    Result_spec.check (Bonsai_test.Handle.last_result handle)
   ;;
 end
 
