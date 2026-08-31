@@ -70,7 +70,14 @@
         # OxCaml shell: opam owns the compiler and libraries (./_opam).
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
-            opam pkg-config gnumake gcc autoconf git jq xvfb-run
+            # xdotool drives real X input events (XTEST) at the X server that
+            # `xvfb-run` starts, which is what `test/live/live_input.ml` uses to
+            # deliver a button press and a keystroke GTK cannot tell from a
+            # human's. It has to be here rather than found on the host: the
+            # by-hand Task 16 script reached it through a hardcoded /nix/store
+            # path that is not a GC root, and a missing binary surfaced there as
+            # "no window" rather than as "no xdotool".
+            opam pkg-config gnumake gcc autoconf git jq xvfb-run xdotool
           ];
           # gmp: conf-gmp (a dependency of zarith, pulled in transitively by
           # js_of_ocaml <- bonsai) probes via `pkg-config --exists gmp`
