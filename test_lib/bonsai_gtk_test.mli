@@ -241,6 +241,12 @@ module Action : sig
         click elsewhere takes the focus away), so a test says which happened. The {i text}
         of the edit arrives through {!Set_text}, because live it arrives through
         [Attr.on_changed] — per keystroke, on the [GtkEditable] the label implements. *)
+    | Move_cursor of string * int
+    (** test_id of a [text_view] carrying [Attr.on_cursor_moved], and the character offset
+        the user put the caret at. Fires that handler with exactly that offset; nothing is
+        derived from the node, and there is no headless buffer to clamp against, so an
+        offset past the text's end reaches the handler as written where live GTK would
+        clamp it — the same deliberate weakness as [Set_value]'s min/max. *)
   [@@deriving sexp_of]
 end
 

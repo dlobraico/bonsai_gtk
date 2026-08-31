@@ -2735,6 +2735,56 @@ let%expect_test "an editable label's text and its editing mode" =
     |}]
 ;;
 
+(* The text view's caret as an event: [Move_cursor] delivers the offset the user put the
+   caret at, and the model owns it from there. Headless there is no buffer to clamp
+   against -- the mli says so -- and what a test can show is the handler's decision. *)
+let%expect_test "a Move_cursor action fires on_cursor_moved" =
+  let app (graph @ local) =
+    let caret, set_caret = Bonsai.state 0 graph in
+    let%arr caret and set_caret in
+    Node.window
+      ~title:"caret"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.text_view
+             ~attrs:[ Attr.test_id "note"; Attr.on_cursor_moved set_caret ]
+             ~text:"hello world"
+             ()
+         ; Node.label ~attrs:[ Attr.test_id "at" ] (sprintf "caret at %d" caret)
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.store_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Move_cursor ("note", 5) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (caret))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Text_view ((text "hello world"))))
+               (attrs ((Test_id note) (On_cursor_moved <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text "caret at 0")))) (attrs ((Test_id at)))
+    +|        ((kind (Label ((text "caret at 5")))) (attrs ((Test_id at)))
+               (children No_children))))))))))
+    |}];
+  (* Aimed at anything that is not a text view, it names what it found. *)
+  let wrong (_graph @ local) =
+    Bonsai.return
+      (Node.window ~title:"caret" (Node.label ~attrs:[ Attr.test_id "plain" ] "plain"))
+  in
+  let handle = Bonsai_gtk_test.create wrong in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  (match Bonsai_gtk_test.Handle.do_actions handle [ Move_cursor ("plain", 3) ] with
+   | () -> print_s [%sexp "fired"]
+   | exception e -> printf "%s\n" (Exn.to_string e));
+  [%expect {| (Failure "Bonsai_gtk_test: node plain is a Label, not a TextView") |}]
+;;
+
 (* The negatives for the two new kinds, both directions, on the rule the drop-down block
    above follows: an attr copied onto a widget that does not emit it is rejected rather
    than accepted and never firing.

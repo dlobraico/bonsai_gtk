@@ -94,7 +94,10 @@ let gallery_tree ~n ~set_n =
                        ~text:""
                        ()
                    ; Node.text_view
-                       ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+                       ~attrs:
+                         [ Attr.on_changed (fun _ -> Ui_effect.Ignore)
+                         ; Attr.on_cursor_moved (fun _ -> Ui_effect.Ignore)
+                         ]
                        ~wrap:Word_char
                        ~monospace:true
                        ~accepts_tab:false

@@ -83,7 +83,7 @@ let%expect_test "every kind's event attrs" =
     (Entry (On_changed On_activate))
     (PasswordEntry (On_changed On_activate))
     (SearchEntry (On_changed On_activate On_search_changed))
-    (TextView (On_changed))
+    (TextView (On_changed On_cursor_moved))
     (SpinButton (On_value_changed))
     (Scale (On_value_changed))
     (ProgressBar ())
@@ -183,9 +183,9 @@ let%expect_test "is_event over every name" =
       On_value_changed On_expanded_changed On_revealed On_position_changed
       On_visible_child_changed On_row_activated On_selected_rows_changed
       On_child_activated On_selected_children_changed On_page_changed
-      On_selected_changed On_day_selected On_editing_changed On_click
-      On_focus_enter On_focus_leave On_contains_focus_changed On_key_pressed
-      On_key_released))
+      On_selected_changed On_day_selected On_editing_changed On_cursor_moved
+      On_click On_focus_enter On_focus_leave On_contains_focus_changed
+      On_key_pressed On_key_released))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect

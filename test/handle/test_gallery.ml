@@ -78,7 +78,9 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                           (Text_view
                            ((text note) (wrap Word_char) (monospace true)
                             (accepts_tab false) (left_margin 6))))
-                         (attrs ((On_changed <handler>))) (children No_children))
+                         (attrs
+                          ((On_changed <handler>) (On_cursor_moved <handler>)))
+                         (children No_children))
                         ((kind
                           (Spin_button ((value 0) (min 0) (max 10) (digits 2))))
                          (attrs ((On_value_changed <handler>)))

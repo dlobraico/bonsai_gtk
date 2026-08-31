@@ -26,6 +26,7 @@ module Action = struct
     | Set_selected of string * int
     | Select_day of string * Date.t
     | Set_editing of string * bool
+    | Move_cursor of string * int
   [@@deriving sexp_of]
 end
 
@@ -520,6 +521,19 @@ module Result_spec = struct
       (match (Attrs.find n.attrs On_editing_changed :> Attr.Private.t option) with
        | Some (On_editing_changed h) -> h editing
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_editing_changed handler" id ())
+    (* The text view's caret, and like [Set_position] the offset is the action's to say:
+       "the user put the caret here" is what a real click or arrow produces, and there is
+       no headless buffer to clamp it -- an offset past the text's end reaches the handler
+       as written, which live GTK would clamp. The {i kind} is checked so a [Move_cursor]
+       aimed elsewhere names what it found. *)
+    | Move_cursor (id, offset) ->
+      let n = node_exn node id in
+      of_kind_exn n id ~expected:"TextView" ~is_expected:(function
+        | Kind.Text_view _ -> true
+        | _ -> false);
+      (match (Attrs.find n.attrs On_cursor_moved :> Attr.Private.t option) with
+       | Some (On_cursor_moved h) -> h offset
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_cursor_moved handler" id ())
   ;;
 end
 

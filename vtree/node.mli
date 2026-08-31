@@ -327,8 +327,9 @@ val search_entry
     the new would be a general text diff inside a widget implementation, for a guess that
     is still a guess; preserving nothing would put the caret at the end of the document on
     every write, which makes a note field that echoes as you type unusable. An application
-    that needs better owns the caret itself, which M2 does not expose --
-    [notify::cursor-position] is the hook, and it is on the backlog.
+    that needs better owns the caret itself, through {!Attr.on_cursor_moved} -- the
+    [notify::cursor-position] hook this paragraph used to leave on the backlog: track the
+    offset the user's caret really has, and rewrite text in a way that accounts for it.
 
     {b The selection is not preserved.} Writing the buffer collapses it, and restoring it
     would mean restoring an anchor the model may have invalidated. An application that

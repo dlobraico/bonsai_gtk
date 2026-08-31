@@ -2386,3 +2386,64 @@ let () =
     entry_refused
     (entry_refused /. entry_settled)
 ;;
+
+(* [Attr.on_cursor_moved], end to end (M3 Task 3 step 4): the [notify::cursor-position]
+   connection names the {i buffer}, the offset is read back with [get_cursor_position],
+   and the [in_patch] guard keeps the library's own caret motion -- a controlled [~text]
+   write's delete/insert/restore -- out of the handler. [place_cursor] outside the guard
+   is the caret moving the way a click or an arrow moves it: the notify is GTK's own,
+   emitted synchronously on the C stack, through the same trampoline a user's would take. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let moves = ref [] in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let view text =
+    Node.window
+      ~title:"caret"
+      (Node.text_view
+         ~attrs:
+           [ Attr.on_cursor_moved (fun offset ->
+               Ui_effect.of_sync_fun (fun () -> moves := offset :: !moves) ())
+           ]
+         ~text
+         ())
+  in
+  let drain label =
+    printf
+      "%s: (%s)\n"
+      label
+      (String.concat ~sep:" " (List.rev_map !moves ~f:Int.to_string));
+    moves := []
+  in
+  let live = P.mount ctx ~path:"caret" ~is_root:true (view "hello world") in
+  P.run_fixups ctx;
+  (* The mount's own writes moved the caret inside the patch guard: nothing arrived. *)
+  drain "caret after mount";
+  place_cursor live 5;
+  place_cursor live 0;
+  place_cursor live 11;
+  drain "caret after three user moves";
+  (* A controlled rewrite moves the caret twice (delete, insert) and restores it, all
+     inside the guard: the model hears nothing it did itself. *)
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"caret" ~is_root:true live (view "HELLO WORLD"))
+  in
+  P.run_fixups ctx;
+  drain "caret after a controlled rewrite";
+  printf
+    "caret offset survived the rewrite: %d\n"
+    (W.Text_buffer.get_cursor_position (buffer live));
+  P.destroy ctx live;
+  printf "cursor-moved done\n"
+;;

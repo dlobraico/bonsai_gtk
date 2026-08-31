@@ -182,8 +182,8 @@ let unwritable text =
    That is a policy, not an accident, and the honest alternative is worse: preserving the
    cursor by diffing old against new text would be a general text-diff in a widget impl,
    and preserving nothing would put the caret at the end of the document on every write.
-   Applications that need better own the cursor themselves, which M2 does not expose --
-   [notify::cursor-position] is the hook, and it is on the backlog.
+   Applications that need better own the cursor themselves, through [Attr.on_cursor_moved]
+   ({!cursor_moved} below) -- the [notify::cursor-position] hook the M2 backlog asked for.
 
    The selection is *not* preserved: [set_text] collapses it, and restoring it would mean
    restoring an anchor the model may have invalidated. An application that
@@ -284,6 +284,34 @@ let changed : Signals.spec =
     }
 ;;
 
+(* The caret, as an event: [notify::cursor-position] on the {i buffer} -- the property
+   lives there, not on the view -- so the connection names the buffer exactly as
+   {!changed}'s does, and for the same teardown reason. The offset is read back with
+   [get_cursor_position] because the generic marshaller carries nothing.
+
+   Like every [notify::], it fires for the library's own writes too -- [set_text]'s
+   delete/insert pair moves the caret, and the restore in [set_text_if_needed] moves it
+   back -- and all of those run inside the patch, where the [in_patch] guard drops them.
+   What reaches the handler is the user's clicks, arrows and drags.
+
+   [buffer w] in [fire] allocates one wrapper per {i user cursor move}, not per frame --
+   the rationing [state] exists for is about idle frames, and this path never runs on one. *)
+let cursor_moved : Signals.spec =
+  Read_back
+    { attr = Attr.Name.On_cursor_moved
+    ; connect =
+        (fun w ~callback ->
+          let b = buffer w in
+          [ Signals.notify_connection ~prop:"cursor-position" b ~callback ])
+    ; fire =
+        (fun w attr ->
+          match (attr :> Attr.Private.t) with
+          | On_cursor_moved handler ->
+            Some (handler (W.Text_buffer.get_cursor_position (buffer w)))
+          | _ -> None)
+    }
+;;
+
 let impl : Widget_impl.t =
   { name = "TextView"
   ; create =
@@ -374,7 +402,7 @@ let impl : Widget_impl.t =
             Widget_impl.batch_if writes w (fun () ->
               if writes then ignore (set_text_if_needed w p.text : bool))
           | k -> Widget_impl.wrong_kind "TextView" k)
-  ; signals = [ changed ]
+  ; signals = [ changed; cursor_moved ]
   ; children = Widget_impl.No_children
   }
 ;;

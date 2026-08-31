@@ -111,6 +111,7 @@ let%expect_test "every event attr has an action that fires it" =
     | On_selected_changed -> Some "Set_selected"
     | On_day_selected -> Some "Select_day"
     | On_editing_changed -> Some "Set_editing"
+    | On_cursor_moved -> Some "Move_cursor"
     | On_click -> Some "Click_at"
     | On_focus_enter -> Some "Focus_enter"
     | On_focus_leave -> Some "Focus_leave"

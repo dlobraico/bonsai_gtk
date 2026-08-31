@@ -56,6 +56,7 @@ module Name : sig
     | On_selected_changed
     | On_day_selected
     | On_editing_changed
+    | On_cursor_moved
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -157,6 +158,7 @@ module Private : sig
     | On_selected_changed of int Handler.t
     | On_day_selected of Date.t Handler.t
     | On_editing_changed of bool Handler.t
+    | On_cursor_moved of int Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -661,6 +663,25 @@ val on_day_selected : (Date.t -> unit Ui_effect.t) -> t
     Attaching this to a widget that emits no such signal raises [Invalid_argument] when
     the node is mounted or patched. *)
 val on_editing_changed : (bool -> unit Ui_effect.t) -> t
+
+(** The caret of a {!Node.text_view}, as a {b character offset} into the buffer, whenever
+    it moves — a click, an arrow key, the insertion point of a selection drag. This is
+    [notify::cursor-position] on the view's {i buffer} (the widget has no such property),
+    read back with [gtk_text_buffer_get_cursor_position]; like every [notify::] it fires
+    for the library's own writes too — including the caret restore after a controlled
+    [~text] write — and the reentrancy guard drops those, so a handler sees the user's
+    moves and nothing else.
+
+    This is the attr that closes {!Node.text_view}'s "approximate caret" caveat: the
+    controlled write preserves the caret as an offset, which drifts when the model changes
+    the text's length before it, and an application that needs better can now own the
+    caret — track it here, and rewrite text in a way that accounts for it. (Writing the
+    caret {i back} is still not exposed; what this provides is the read the model needs to
+    stop being surprised.)
+
+    Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
+    node is mounted or patched. *)
+val on_cursor_moved : (int -> unit Ui_effect.t) -> t
 
 (** A [GtkGestureClick] on this widget.
 

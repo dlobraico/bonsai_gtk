@@ -32,7 +32,7 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      rejected here rather than accepted and never firing. [On_changed] is the buffer's
      signal rather than the view's, which is invisible from this table and is
      [w_text_view.ml]'s business. *)
-  | Text_view _ -> [ On_changed ]
+  | Text_view _ -> [ On_changed; On_cursor_moved ]
   | Spin_button _ | Scale _ -> [ On_value_changed ]
   | Expander _ -> [ On_expanded_changed ]
   | Revealer _ -> [ On_revealed ]
@@ -151,6 +151,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_selected_changed
   | On_day_selected
   | On_editing_changed
+  | On_cursor_moved
   | Row_selectable
   | Row_activatable
   | Tab_label -> None
@@ -242,6 +243,7 @@ let attr_phase (attr : Attr.t) =
   | On_selected_changed _
   | On_day_selected _
   | On_editing_changed _
+  | On_cursor_moved _
   | On_contains_focus_changed _
   | Many _ -> None
 ;;

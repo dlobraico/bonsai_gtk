@@ -280,3 +280,8 @@ bench: refusals reported across every frame above: 3
 bench: 20000 idle frames over a settled calendar and one parked on a refused date, ratio under 5: true
 bench: the same for an editable label, ratio under 5: true
 bench: an entry parked on a refused 100 000-character write, against a settled short one, ratio under 5: true
+caret after mount: ()
+caret after three user moves: (5 0 11)
+caret after a controlled rewrite: ()
+caret offset survived the rewrite: 11
+cursor-moved done
