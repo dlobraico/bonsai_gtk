@@ -22,6 +22,16 @@ type ctx =
   ; (* Work deferred to the end of a mount/patch pass, so that a node may refer to another
        node regardless of which of them the walk reaches first. *)
     fixups : (unit -> unit) Queue.t
+  ; (* The [Attr.autofocus] grabs this pass decided to fire -- a mount carrying [true], or
+       a patch flipping false-to-true -- applied by [run_fixups] after the generic queue.
+       A queue of its own rather than closures in [fixups], because the
+       once-per-frame-per-toplevel check has to see all of them together. *)
+    autofocus_claims : autofocus_claim Queue.t
+  }
+
+and autofocus_claim =
+  { autofocus_path : string
+  ; autofocus_widget : Widget.t
   }
 
 and stack_claim =
@@ -40,7 +50,53 @@ let create_ctx ?(report = default_report) ~signals ~on_window_created () =
   ; stacks = Hashtbl.create (module String)
   ; stack_claims = Queue.create ()
   ; fixups = Queue.create ()
+  ; autofocus_claims = Queue.create ()
   }
+;;
+
+let claim_autofocus ctx ~path widget =
+  Queue.enqueue ctx.autofocus_claims { autofocus_path = path; autofocus_widget = widget }
+;;
+
+(* The grabs of one pass, checked together and then fired. Two grabs aimed at one toplevel
+   is the single-referent rule broken -- neither could win except by walk order, which is
+   not a thing a model should be able to depend on -- so it raises, naming both paths,
+   with the string [Bonsai_gtk_test] renders for the same tree. Grabs aimed at
+   {i different} toplevels are independent and all fire ([Node.windows] is Task 8, and
+   this is written for it); the toplevel is read with [get_root] now that the tree exists,
+   and claims whose widget has no root yet -- an [Embed.create] pass, whose tree is
+   parented by the caller after the frame -- are grouped together, as the one tree they
+   are.
+
+   The [bool] answer of [grab_focus] is dropped: a widget that refuses the grab (not
+   focusable, or its focus vfunc declined) is GTK's answer at grab time, and there is
+   nothing to do about it on this frame. Fire-once means exactly that.
+
+   Emptied even when the duplicate check raises, on [run_fixups]'s reasoning: the queue
+   describes one pass. *)
+let apply_autofocus ctx =
+  Exn.protect
+    ~f:(fun () ->
+      let claims = Queue.to_list ctx.autofocus_claims in
+      let root_of c = Widget.get_root c.autofocus_widget in
+      let same_toplevel a b =
+        match root_of a, root_of b with
+        | Some ra, Some rb -> Gobject.same ra rb
+        | None, None -> true
+        | Some _, None | None, Some _ -> false
+      in
+      List.iteri claims ~f:(fun i c ->
+        match
+          List.find (List.take claims i) ~f:(fun earlier -> same_toplevel earlier c)
+        with
+        | Some earlier ->
+          invalid_arg
+            (Events.autofocus_rejection
+               ~first:earlier.autofocus_path
+               ~second:c.autofocus_path)
+        | None -> ());
+      List.iter claims ~f:(fun c -> ignore (Widget.grab_focus c.autofocus_widget : bool)))
+    ~finally:(fun () -> Queue.clear ctx.autofocus_claims)
 ;;
 
 let register_stack ctx ~path ~name widget =
@@ -109,7 +165,11 @@ let apply_stack_claims ctx =
 let run_fixups ctx =
   Exn.protect
     ~f:(fun () -> Queue.iter ctx.fixups ~f:(fun f -> f ()))
-    ~finally:(fun () -> Queue.clear ctx.fixups)
+    ~finally:(fun () -> Queue.clear ctx.fixups);
+  (* After the generic queue, so a selection the same frame set has settled before focus
+     moves; a raise in the queue above abandons these (the [finally] runs, [apply] does
+     not), which matches the all-or-nothing a raising frame already has. *)
+  apply_autofocus ctx
 ;;
 
 (* The same emptying, for a pass that never reached [run_fixups] because [mount] or
@@ -123,7 +183,8 @@ let run_fixups ctx =
    and emptied its own claims.) *)
 let abandon_fixups ctx =
   Queue.clear ctx.fixups;
-  Queue.clear ctx.stack_claims
+  Queue.clear ctx.stack_claims;
+  Queue.clear ctx.autofocus_claims
 ;;
 
 (* Every kind whose mount, patch or teardown the patcher itself has something to do about,

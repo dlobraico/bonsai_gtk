@@ -120,6 +120,7 @@ let%expect_test "every event attr has an action that fires it" =
     (* Not event attrs; [is_event] filters them out before this is reached, and they are
        spelled out rather than wildcarded so that a name added to [Attr.Name.t] is a
        compile error here and its author has to say which half it is in. *)
+    | Autofocus
     | Margin_start
     | Margin_end
     | Margin_top

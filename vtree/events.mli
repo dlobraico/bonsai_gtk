@@ -102,3 +102,14 @@ val is_supported : Kind.t -> Attr.Name.t -> bool
 (** The first event attr in [attrs] that [kind] cannot emit, in [Attr.Name] order. [None]
     when every event attr present is one this kind emits. *)
 val unsupported : Kind.t -> Attrs.t -> Attr.Name.t option
+
+(** [true] when [attrs] carries [Attr.autofocus true]. Which of those {i fire} -- at
+    mount, or on a false-to-true flip -- is the patcher's decision (and, headlessly,
+    [Bonsai_gtk_test]'s, tracked per frame); this only reads the attr. *)
+val autofocus_requested : Attrs.t -> bool
+
+(** The [Invalid_argument] message for two autofocus grabs firing in one frame in one
+    toplevel -- the single-referent rule. Rendered here so the patcher's fixup-time raise
+    and [Bonsai_gtk_test]'s headless one are identical by construction. [first] and
+    [second] are the two node paths. *)
+val autofocus_rejection : first:string -> second:string -> string

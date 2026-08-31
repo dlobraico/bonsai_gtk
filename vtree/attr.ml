@@ -19,6 +19,7 @@ module Name = struct
       | Opacity
       | Focusable
       | Can_focus
+      | Autofocus
       | Widget_name
       | Cursor_name
       | Test_id
@@ -108,6 +109,7 @@ module Name = struct
       | Opacity
       | Focusable
       | Can_focus
+      | Autofocus
       | Widget_name
       | Cursor_name
       | Test_id
@@ -159,6 +161,11 @@ module Private = struct
     | Opacity of float
     | Focusable of bool
     | Can_focus of bool
+    (* Fire-once, not a controlled prop, and applied by the {i patcher} rather than
+       [Attr_apply]: the grab needs the whole tree to exist, so it runs from the fixup
+       queue -- on the frame this widget mounts carrying [true], or the frame the attr
+       flips false-to-true -- and never afterwards. See [Attr.autofocus]'s doc. *)
+    | Autofocus of bool
     | Widget_name of string
     | Cursor_name of string
     | Test_id of string
@@ -311,6 +318,7 @@ let name = function
   | Opacity _ -> Some Opacity
   | Focusable _ -> Some Focusable
   | Can_focus _ -> Some Can_focus
+  | Autofocus _ -> Some Autofocus
   | Widget_name _ -> Some Widget_name
   | Cursor_name _ -> Some Cursor_name
   | Test_id _ -> Some Test_id
@@ -368,6 +376,7 @@ let rec equal a b =
   | Visible a, Visible b
   | Focusable a, Focusable b
   | Can_focus a, Can_focus b
+  | Autofocus a, Autofocus b
   | Measure_overlay a, Measure_overlay b
   | Row_selectable a, Row_selectable b
   | Row_activatable a, Row_activatable b -> Bool.equal a b
@@ -436,6 +445,7 @@ let height_request n = Height_request n
 let opacity f = Opacity f
 let focusable b = Focusable b
 let can_focus b = Can_focus b
+let autofocus b = Autofocus b
 let widget_name s = Widget_name s
 let cursor_name s = Cursor_name s
 let test_id s = Test_id s

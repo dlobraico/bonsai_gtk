@@ -17,6 +17,12 @@ type ctx =
   ; stacks : (string, Widget.t) Hashtbl.t
   ; stack_claims : stack_claim Queue.t
   ; fixups : (unit -> unit) Queue.t
+  ; autofocus_claims : autofocus_claim Queue.t
+  }
+
+and autofocus_claim =
+  { autofocus_path : string
+  ; autofocus_widget : Widget.t
   }
 
 and stack_claim =
@@ -43,6 +49,13 @@ val unregister_stack : ctx -> name:string -> Widget.t -> unit
     queue, raising [Invalid_argument] on a genuine collision. Called by
     {!Patcher.mount}/{!Patcher.patch} once their walk is over. *)
 val apply_stack_claims : ctx -> unit
+
+(** Records one [Attr.autofocus] grab the pass decided to fire -- the patcher calls it at
+    mount for a node carrying [true] and at patch for a false-to-true flip. Fired by
+    {!run_fixups} after the generic queue: all of a pass's grabs are checked together (at
+    most one per toplevel per frame; two is [Invalid_argument] naming both paths, via
+    [Events.autofocus_rejection]) and then applied with [Widget.grab_focus]. *)
+val claim_autofocus : ctx -> path:string -> Widget.t -> unit
 
 (** See {!Patcher.run_fixups}. *)
 val run_fixups : ctx -> unit

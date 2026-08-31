@@ -129,6 +129,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | Widget_name
   | Cursor_name
   | Test_id
+  | Autofocus
   | Measure_overlay
   | Grid_cell
   | Page_title
@@ -258,4 +259,22 @@ let unsupported kind attrs =
     match Attr.name attr with
     | Some name when not (is_supported kind name) -> Some name
     | Some _ | None -> None)
+;;
+
+(* The [Attr.autofocus] helpers, in [vtree] for the reason the phase rejection is: the
+   patcher decides which grabs fire (mount, or a false-to-true flip) and raises on two in
+   one frame, and [Bonsai_gtk_test] makes the same decision over the same attrs headlessly
+   -- both render [autofocus_rejection], so the two messages are identical outright. *)
+let autofocus_requested attrs =
+  match (Attrs.find attrs Attr.Name.Autofocus :> Attr.Private.t option) with
+  | Some (Autofocus b) -> b
+  | Some _ | None -> false
+;;
+
+let autofocus_rejection ~first ~second =
+  sprintf
+    "%s and %s both ask Attr.autofocus to grab focus in this frame, but at most one \
+     autofocus may fire per frame per toplevel"
+    first
+    second
 ;;

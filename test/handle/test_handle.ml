@@ -1136,6 +1136,57 @@ let%expect_test "two focus attrs with different phases are rejected by the handl
   [%expect {| accepted |}]
 ;;
 
+(* [Attr.autofocus] is fire-once -- a grab at mount, or on a false-to-true flip -- and at
+   most one may fire per frame per toplevel. The handle tracks the same edges the patcher
+   does and renders the same [Events.autofocus_rejection] string, so a headless suite
+   cannot certify the tree the runtime's fixup queue refuses. *)
+let%expect_test "two autofocus grabs in one frame are rejected; one per frame is fine" =
+  let both (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"af"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+            ; Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+            ]))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create both in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0 and root/0/1 both ask Attr.autofocus to grab focus in this frame, but at most one autofocus may fire per frame per toplevel")
+    |}];
+  (* The fire-once half: a widget that keeps rendering [true] has already fired, so a
+     second widget flipping false-to-true on a later frame is the only grab of that frame
+     -- accepted, though the tree then carries two [true]s. This is exactly the ported
+     palette shape: the dialog's entry autofocused on open, and a later panel's entry
+     autofocused when it appears. *)
+  let staged (graph @ local) =
+    let second, set_second = Bonsai.state false graph in
+    let%arr second and set_second in
+    Node.window
+      ~title:"af"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+         ; Node.entry ~attrs:[ Attr.autofocus second ] ~text:"" ()
+         ; Node.button
+             ~attrs:[ Attr.test_id "later"; Attr.on_clicked (set_second true) ]
+             ~label:"later"
+             ()
+         ])
+  in
+  let handle = Bonsai_gtk_test.create staged in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Click "later" ];
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  print_s [%sexp "accepted"];
+  [%expect {| accepted |}]
+;;
+
 (* Same rule as every other action: a node that carries no such handler fails rather than
    quietly doing nothing. *)
 let%expect_test "a key action on a node with no key handler fails" =

@@ -53,3 +53,8 @@ contains focus moved away: contains=false
 contains focus back: contains=true,enter
 contains re-phased: phase=BUBBLE
 contains-focus done
+autofocus at mount: e1=true e2=false
+autofocus after the flip: e1=false e2=true
+autofocus re-rendered with no flip: e1=true e2=false
+duplicate rejected: af2/0/0 and af2/0/1 both ask Attr.autofocus to grab focus in this frame, but at most one autofocus may fire per frame per toplevel
+autofocus done

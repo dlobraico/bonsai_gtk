@@ -193,8 +193,9 @@ let%expect_test "is_event over every name" =
     (plain
      (Margin_start Margin_end Margin_top Margin_bottom Halign Valign Hexpand
       Vexpand Sensitive Visible Tooltip Width_request Height_request Opacity
-      Focusable Can_focus Widget_name Cursor_name Test_id Measure_overlay
-      Grid_cell Page_title Row_selectable Row_activatable Tab_label))
+      Focusable Can_focus Autofocus Widget_name Cursor_name Test_id
+      Measure_overlay Grid_cell Page_title Row_selectable Row_activatable
+      Tab_label))
     |}]
 ;;
 

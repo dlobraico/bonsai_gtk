@@ -28,6 +28,7 @@ module Name : sig
     | Opacity
     | Focusable
     | Can_focus
+    | Autofocus
     | Widget_name
     | Cursor_name
     | Test_id
@@ -128,6 +129,7 @@ module Private : sig
     | Opacity of float
     | Focusable of bool
     | Can_focus of bool
+    | Autofocus of bool
     | Widget_name of string
     | Cursor_name of string
     | Test_id of string
@@ -235,6 +237,26 @@ val focusable : bool -> t
 (** Whether focus may travel {i into} this widget or its children. As with {!focusable},
     the default is per widget class and unsetting restores that class's own. *)
 val can_focus : bool -> t
+
+(** Grab the keyboard focus once: on the frame this widget mounts carrying
+    [autofocus true], or on the frame the attr flips false-to-true. The grab runs from the
+    patcher's fixup queue, after the whole tree exists, which is what makes "the entry a
+    dialog opens with focus in" one attr rather than an imperative call after present
+    ([palette.ml:368], [edit_dialog.ml:807-812], [pieces_dialog.ml:736-740] in stavekeeper
+    are the ports this exists for).
+
+    {b Fire-once, not a controlled prop}: it never fights the user moving focus
+    afterwards, and re-rendering [true] on an already-mounted widget writes nothing --
+    including on the reassert-only frames a declined edit produces. At most one autofocus
+    may fire per frame per toplevel; two in one frame is [Invalid_argument] naming both
+    paths (the single-referent rule, §5.4's singular arity), at fixup time and headlessly
+    from [Bonsai_gtk_test].
+
+    This is a deliberately narrow interim primitive. Who holds focus is state the model
+    should own -- a full focus-is-state design (focus following the model,
+    [select_region], default widgets) is on the backlog, and this attr will be re-examined
+    against it. *)
+val autofocus : bool -> t
 
 (** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]
     because {!name} already means "which attribute is this".

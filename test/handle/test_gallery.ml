@@ -64,7 +64,9 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                         ((kind (Switch ((active true))))
                          (attrs ((On_toggled <handler>))) (children No_children))
                         ((kind (Entry ((text "") (placeholder (entry)))))
-                         (attrs ((On_changed <handler>) (On_activate <handler>)))
+                         (attrs
+                          ((Autofocus true) (On_changed <handler>)
+                           (On_activate <handler>)))
                          (children No_children))
                         ((kind
                           (Password_entry ((text "") (show_peek_icon false))))

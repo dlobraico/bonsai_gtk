@@ -80,7 +80,8 @@ let gallery_tree ~n ~set_n =
                        ()
                    ; Node.entry
                        ~attrs:
-                         [ Attr.on_changed (fun _ -> Ui_effect.Ignore)
+                         [ Attr.autofocus true
+                         ; Attr.on_changed (fun _ -> Ui_effect.Ignore)
                          ; Attr.on_activate Ui_effect.Ignore
                          ]
                        ~placeholder:"entry"

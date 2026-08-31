@@ -172,6 +172,44 @@ let rec require_supported ~path ~parent (node : Node.t) =
    the same executable. *)
 let current_root_kind = ref `Window
 
+(* Which nodes' [Attr.autofocus true] had already fired as of the last checked frame, by
+   path, for the fire-once half of that attr's contract: a grab fires at mount or on a
+   false-to-true flip, and the runtime rejects two firing in one frame per toplevel. The
+   handle tracks the same edges over the same attrs -- a path is "firing" exactly when it
+   carries [true] and did not in the previous frame (the first frame is a mount, so
+   everything [true] in it fires) -- and raises the same [Events.autofocus_rejection]
+   string, so a headless suite cannot certify the tree the runtime refuses.
+
+   By {i path} rather than by widget, which is the one place the approximation shows: a
+   keyed child that moves keeps its widget (no re-fire live) but changes its path, so the
+   handle would count it as firing again. No tree in this repository moves an autofocused
+   node; if one ever does, this is the comment to revisit. Per toplevel is per {i tree}
+   here, because a handle's tree has one root -- [Node.windows] (Task 8) is where that
+   widens.
+
+   A global beside [current_root_kind], for its reasons and with its caveat: the state is
+   the most recently created handle's, and interleaving two handles would confuse them.
+   Nothing in this repository interleaves two handles at all. *)
+let autofocus_fired = ref String.Set.empty
+
+let autofocus_paths (node : Node.t) =
+  let acc = ref [] in
+  let rec go ~path (node : Node.t) =
+    if Events.autofocus_requested node.attrs then acc := path :: !acc;
+    Children.iteri node.children ~path ~f:(fun path child -> go ~path child)
+  in
+  go ~path:"root" node;
+  List.rev !acc
+;;
+
+let check_autofocus node =
+  let requested = autofocus_paths node in
+  (match List.filter requested ~f:(fun path -> not (Set.mem !autofocus_fired path)) with
+   | [] | [ _ ] -> ()
+   | first :: second :: _ -> invalid_arg (Events.autofocus_rejection ~first ~second));
+  autofocus_fired := String.Set.of_list requested
+;;
+
 (* [Driver.check_root]'s match, and its messages, copied because the runtime lives in the
    package this library cannot link. The goldens in [test/handle/test_handle.ml] are what
    keeps the two spellings the same. *)
@@ -206,9 +244,11 @@ module Result_spec = struct
   let check node =
     (* Root first, because it is first at mount too: [Driver.frame] checks the root before
        the patcher walks anything, so a tree with both mistakes reports the same one here
-       and there. *)
+       and there. The autofocus check is last, as its runtime twin is -- the patcher
+       raises it from the fixup queue, after the whole walk. *)
     check_root node;
-    require_supported ~path:"root" ~parent:None node
+    require_supported ~path:"root" ~parent:None node;
+    check_autofocus node
   ;;
 
   let view node =
@@ -550,7 +590,9 @@ end
 
 let create ~(here : [%call_pos]) ?start_time ?optimize ?(root_kind = `Window) app =
   (* Set before the handle exists, so the first frame is checked against it like every
-     later one. See {!current_root_kind}. *)
+     later one. See {!current_root_kind}; the autofocus memo starts empty for the same
+     reason -- the new handle's first frame is a mount, and everything [true] in it fires. *)
   current_root_kind := root_kind;
+  autofocus_fired := String.Set.empty;
   Handle.create ~here ?start_time ?optimize result_spec app
 ;;

@@ -115,6 +115,11 @@ let set (w : Widget.t) (attr : Attr.t) =
      to. The parent's impl reads it off the child node through [Widget_impl.list_ops], so
      it is inert here by construction rather than by omission -- and inert, rather than an
      error, on a widget whose parent is not the container that reads it. *)
+  (* [Autofocus] is the patcher's, not a property write: the grab needs the whole tree to
+     exist and fires once, from the fixup queue -- see [Patcher_fixups]. Inert here like
+     the placement attrs, and inert on {i unset} too, deliberately: dropping the attr
+     un-grabs nothing, because a grab is an event rather than a state. *)
+  | Autofocus _
   | Test_id _
   | Measure_overlay _
   | Grid_cell _
@@ -170,6 +175,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Can_focus -> Widget.set_can_focus w d.can_focus
   | Widget_name -> Widget.set_name w (Some d.widget_name)
   | Cursor_name -> Widget.set_cursor w d.cursor
+  | Autofocus
   | Test_id
   | Measure_overlay
   | Grid_cell

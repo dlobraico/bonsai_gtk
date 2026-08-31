@@ -383,3 +383,82 @@ let () =
   P.destroy ctx live;
   printf "contains-focus done\n"
 ;;
+
+(* [Attr.autofocus], end to end, on the pre-flight's terms: the grab runs from the fixup
+   queue -- after [on_window_created] has presented, before the window maps -- and has to
+   stick across the map (pre-flight correction 5); the probe is [Window.get_focus] plus a
+   descendant check, never [has_focus] on the entry, because an entry's focus widget is
+   its internal [GtkText]. The four facts pinned here are the attr's whole contract: the
+   mount grab sticks, a false-to-true flip moves it, re-rendering [true] writes nothing
+   (the fire-once half -- the user's focus stays where the user put it), and two grabs in
+   one frame are rejected from [run_fixups] with the headless suite's string. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx = presenting_ctx scheduler in
+  let view ~second =
+    Node.window
+      ~title:"autofocus"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+         ; Node.entry ~attrs:[ Attr.autofocus second ] ~text:"" ()
+         ])
+  in
+  let patch live v =
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"af" ~is_root:true live v)
+    in
+    P.run_fixups ctx;
+    live
+  in
+  let live = P.mount ctx ~path:"af" ~is_root:true (view ~second:false) in
+  P.run_fixups ctx;
+  pump ();
+  let focus_in live i =
+    let target = (nth live i).widget in
+    W.Widget.has_focus target
+    ||
+    match W.Window.get_focus (cast live.P.widget) with
+    | None -> false
+    | Some f -> W.Widget.is_ancestor f target
+  in
+  printf "autofocus at mount: e1=%b e2=%b\n" (focus_in live 0) (focus_in live 1);
+  (* The false-to-true flip moves the focus -- while the first entry still renders [true],
+     which is exactly the two-trues tree the fire-once rule makes legal. *)
+  let live = patch live (view ~second:true) in
+  pump ();
+  printf "autofocus after the flip: e1=%b e2=%b\n" (focus_in live 0) (focus_in live 1);
+  (* The parked frame: the user moves focus to the first entry, and a re-render with no
+     edge writes nothing -- the focus stays where the user put it. *)
+  ignore (W.Widget.grab_focus (nth live 0).widget : bool);
+  pump ();
+  let live = patch live (view ~second:true) in
+  pump ();
+  printf
+    "autofocus re-rendered with no flip: e1=%b e2=%b\n"
+    (focus_in live 0)
+    (focus_in live 1);
+  P.destroy ctx live;
+  (* Two grabs in one frame, rejected from the fixup queue with the string
+     [Bonsai_gtk_test] renders headlessly. The tree is fully mounted and presented by
+     then, so it is destroyed like any rejected mount's would be. *)
+  let live =
+    P.mount
+      ctx
+      ~path:"af2"
+      ~is_root:true
+      (Node.window
+         ~title:"autofocus2"
+         (Node.box
+            ~orientation:Vertical
+            [ Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+            ; Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+            ]))
+  in
+  (match P.run_fixups ctx with
+   | () -> printf "NOT REJECTED\n"
+   | exception Invalid_argument msg -> printf "duplicate rejected: %s\n" msg);
+  P.destroy ctx live;
+  printf "autofocus done\n"
+;;

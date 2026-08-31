@@ -42,6 +42,18 @@ type ctx = private
       another node regardless of which of them the walk reaches first, and so that a
       container may act on children that do not exist until the pass is over. Drained by
       {!run_fixups}. *)
+  ; autofocus_claims : autofocus_claim Queue.t
+  (** The {!Bonsai_gtk_vtree.Attr.autofocus} grabs this pass decided to fire -- a mount
+      carrying [true], or a patch flipping false-to-true. Fired by {!run_fixups} after the
+      generic queue: checked together (at most one per toplevel per frame; two is
+      [Invalid_argument] naming both paths) and then applied with [Widget.grab_focus],
+      whose refusal -- a widget that is not focusable -- is GTK's answer and is not
+      retried. Empty between passes. *)
+  }
+
+and autofocus_claim = private
+  { autofocus_path : string
+  ; autofocus_widget : Widget.t
   }
 
 and stack_claim = private

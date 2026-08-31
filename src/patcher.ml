@@ -15,6 +15,12 @@ type ctx = Patcher_fixups.ctx =
   ; stacks : (string, Widget.t) Hashtbl.t
   ; stack_claims : stack_claim Queue.t
   ; fixups : (unit -> unit) Queue.t
+  ; autofocus_claims : autofocus_claim Queue.t
+  }
+
+and autofocus_claim = Patcher_fixups.autofocus_claim =
+  { autofocus_path : string
+  ; autofocus_widget : Widget.t
   }
 
 and stack_claim = Patcher_fixups.stack_claim =
@@ -185,6 +191,10 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
         impl.children
     in
     built_children := Some children;
+    (* A mount carrying the attr fires the grab -- including the remount a kind change
+       produces, which is a fresh widget and so a fresh "frame this widget mounts". *)
+    if Events.autofocus_requested node.attrs
+    then Patcher_fixups.claim_autofocus ctx ~path widget;
     Patcher_fixups.note_interest
       ctx
       ~path
@@ -441,9 +451,9 @@ and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
     then (
       Signals.require_specs ~node_path:path node.kind node.attrs;
       (* Beside it on the same terms, closing the mount/patch asymmetry the M2 review
-         named (docs/m2-backlog.md:175-182): [require_specs] asks the [Events] table,
-         this asks the slots that were actually built at mount. The two can only disagree
-         if the table and the impl's [signals] have drifted -- a drift [live_events.ml]
+         named (docs/m2-backlog.md:175-182): [require_specs] asks the [Events] table, this
+         asks the slots that were actually built at mount. The two can only disagree if
+         the table and the impl's [signals] have drifted -- a drift [live_events.ml]
          catches in CI -- but an attr a frame {i adds} onto a widget whose impl declared
          no spec for it would otherwise pass the table check and silently never fire. *)
       Signals.require_slots
@@ -465,6 +475,14 @@ and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
        frame *added* and removed for one it dropped. *)
     Controllers.update live.controllers node.attrs;
     live.children <- patch_children ctx ~path live node;
+    (* The false-to-true edge, read against the {i old} node's attrs -- which is why it
+       sits before [live.node <- node] like the stack claim below. [true] rendered again
+       on a widget that already carried it fires nothing, which is the fire-once half of
+       [Attr.autofocus]'s contract; so does a reassert-only frame, which never reaches
+       this function at all. *)
+    if Events.autofocus_requested node.attrs
+       && not (Events.autofocus_requested live.node.attrs)
+    then Patcher_fixups.claim_autofocus ctx ~path live.widget;
     (* Before [live.node <- node]: a renamed stack has to drop the name it was registered
        under, and that name is only on the *old* node. *)
     Patcher_fixups.note_interest
