@@ -266,6 +266,24 @@ type paned_props =
 (* A [GtkOverlay] has no properties of its own: it is entirely its children. *)
 type overlay_props = unit [@@deriving sexp_of, equal]
 
+(* The header bar's {i title} is a slot child, not a prop: GTK4's [GtkHeaderBar] has no
+   title-string setter, only [set_title_widget], and with no title widget it shows the
+   window's title. [decoration_layout] is [None] for "GTK's default layout" -- the setter
+   is nullable, so the unset path is honest. *)
+type header_bar_props =
+  { show_title_buttons : bool
+       [@sexp_drop_if Bool.equal Defaults.Header_bar.show_title_buttons]
+  ; decoration_layout : string option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
+(* [revealed] is a plain prop, not controlled: GTK's [revealed] moves only
+   programmatically (the user cannot conceal an action bar), so there is nothing for a
+   [reassert] to put back. *)
+type action_bar_props =
+  { revealed : bool [@sexp_drop_if Bool.equal Defaults.Action_bar.revealed] }
+[@@deriving sexp_of, equal]
+
 (* [Grid] holds no per-child anything: a child's cell is on the child node's attrs
    ([Attr.grid_cell]), because [gtk_grid_attach] is a call on the grid rather than a
    property of either widget. *)
@@ -477,6 +495,8 @@ type t =
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
+  | Header_bar of header_bar_props
+  | Action_bar of action_bar_props
   | Window of window_props
   | Native of Native.t
 [@@deriving sexp_of, variants]
@@ -517,6 +537,8 @@ let name = function
   | Center_box _ -> "CenterBox"
   | Paned _ -> "Paned"
   | Overlay _ -> "Overlay"
+  | Header_bar _ -> "HeaderBar"
+  | Action_bar _ -> "ActionBar"
   | Window _ -> "Window"
   | Native n -> "Native:" ^ n.name
 ;;
@@ -587,6 +609,8 @@ let equal_props a b =
   | Center_box a, Center_box b -> equal_center_box_props a b
   | Paned a, Paned b -> equal_paned_props a b
   | Overlay a, Overlay b -> equal_overlay_props a b
+  | Header_bar a, Header_bar b -> equal_header_bar_props a b
+  | Action_bar a, Action_bar b -> equal_action_bar_props a b
   | Window a, Window b -> equal_window_props a b
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload
   (* The one wildcard left in this file, and it is guarded rather than silent.

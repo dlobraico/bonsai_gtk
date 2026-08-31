@@ -1,0 +1,67 @@
+(GtkWindow (title (chrome)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkHeaderBar no-title-buttons (decoration_layout :close)
+     (children
+      (GtkWindowHandle
+       (children
+        (GtkCenterBox
+         (children
+          (GtkBox (spacing 0) (css (horizontal start))
+           (children
+            (GtkButton (label (back)) (css (text-button))
+             (children (GtkLabel (text back))))))
+          (GtkLabel (text "the title"))
+          (GtkBox (spacing 0) (css (horizontal end))
+           (children
+            (GtkButton (label (menu)) (css (text-button))
+             (children (GtkLabel (text menu))))))))))))
+    (GtkActionBar
+     (children
+      (GtkRevealer reveal revealed
+       (children
+        (GtkCenterBox
+         (children
+          (GtkBox (spacing 0) (css (horizontal start))
+           (children
+            (GtkButton (label (add)) (css (text-button))
+             (children (GtkLabel (text add))))))
+          (GtkLabel (text status))
+          (GtkBox (spacing 0) (css (horizontal end))
+           (children
+            (GtkButton (label (del)) (css (text-button))
+             (children (GtkLabel (text del))))))))))))))))
+(GtkWindow (title (chrome)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkHeaderBar no-title-buttons (decoration_layout :close)
+     (children
+      (GtkWindowHandle
+       (children
+        (GtkCenterBox
+         (children
+          (GtkBox (spacing 0) (css (horizontal start))
+           (children
+            (GtkButton (label (back)) (css (text-button))
+             (children (GtkLabel (text back))))
+            (GtkButton (label (forward)) (css (text-button))
+             (children (GtkLabel (text forward))))))
+          (GtkLabel (text chrome) (ellipsize end) (width-chars 5)
+           (css (title)) (valign center))
+          (GtkBox (spacing 0) (css (horizontal end)))))))))
+    (GtkActionBar concealed
+     (children
+      (GtkRevealer
+       (children
+        (GtkCenterBox
+         (children (GtkBox (spacing 0) (css (horizontal start)))
+          (GtkLabel (text status))
+          (GtkBox (spacing 0) (css (horizontal end))
+           (children
+            (GtkButton (label (archive)) (css (text-button))
+             (children (GtkLabel (text archive))))
+            (GtkButton (label (del)) (css (text-button))
+             (children (GtkLabel (text del))))))))))))))))
+chrome done

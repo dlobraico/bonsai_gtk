@@ -1432,6 +1432,59 @@ val paned
     [gtk_overlay_set_clip_overlay] is not exposed; see {!Attr.measure_overlay}. *)
 val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t
 
+(** A [GtkHeaderBar]: the title-bar-shaped chrome row, with keyed [~start] and [~end_]
+    pack areas and a [~title] {b slot}.
+
+    {b The title is a widget, not a string} — GTK4's header bar has no title-string
+    setter, only [gtk_header_bar_set_title_widget] — and with no title widget the bar
+    shows the {i window's} title, so a plain titled header is [Node.header_bar () ] under
+    a [Node.window ~title]. A custom title (a subtitle box, a stack switcher, an entry) is
+    the slot's business; give it the ["title"] CSS class to match the builtin look.
+
+    {b Where the bar goes is the application's choice in M3.} [Window.set_titlebar] wiring
+    lands with the window props (Task 8); until then a header bar is an ordinary first
+    child of the window's box — which is exactly what stavekeeper's hand-rolled header row
+    is ([viewer_window.ml:678-817]), so that port is true either way.
+
+    {b Children keep insertion order within each pack area.} GTK offers no reorder inside
+    a pack area — removal and re-packing is the only move — so the slot lists are
+    unordered on {!list_box}'s terms ([Widget_impl.list_ops.move] is [None]): keys
+    preserve {i identity} across edits, and a pure reorder in the node list leaves the
+    on-screen order alone. [~show_title_buttons] ([true], GTK's own) shows the standard
+    window buttons; [~decoration_layout] overrides the desktop's button layout string and
+    [None] means the default. Both areas' children require keys, rejected at the
+    constructor naming the child's index. *)
+val header_bar
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?title:t
+  -> ?show_title_buttons:bool
+  -> ?decoration_layout:string
+  -> ?start:t list
+  -> ?end_:t list
+  -> unit
+  -> t
+
+(** A [GtkActionBar]: the bottom action strip, with keyed [~start] and [~end_] pack areas
+    and a [~center] slot.
+
+    [~revealed] ([true], GTK's own) slides the content in and out with an animation — a
+    {b plain prop, not controlled}: the user cannot move it, so there is nothing to put
+    back and no event to hear. Note GTK's own caveat: revealing is not visibility — a bar
+    carrying [Attr.visible false] stays hidden however [~revealed] is set.
+
+    The pack areas are {!header_bar}'s in every respect: keyed (rejected at the
+    constructor), insertion-ordered, no reorder primitive. *)
+val action_bar
+  :  ?key:Key.t
+  -> ?attrs:Attr.t list
+  -> ?revealed:bool
+  -> ?center:t
+  -> ?start:t list
+  -> ?end_:t list
+  -> unit
+  -> t
+
 val window
   :  ?key:Key.t
   -> ?attrs:Attr.t list

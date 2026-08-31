@@ -255,6 +255,21 @@ type paned_props =
 (* A [GtkOverlay] has no properties of its own: it is entirely its children. *)
 type overlay_props = unit [@@deriving sexp_of, equal]
 
+(* The header bar's {i title} is a slot child, not a prop: GTK4's [GtkHeaderBar] has no
+   title-string setter, only [set_title_widget], and with no title widget it shows the
+   window's title. [decoration_layout] is [None] for "GTK's default layout". *)
+type header_bar_props =
+  { show_title_buttons : bool
+       [@sexp_drop_if Bool.equal Defaults.Header_bar.show_title_buttons]
+  ; decoration_layout : string option [@sexp_drop_if Option.is_none]
+  }
+[@@deriving sexp_of, equal]
+
+(* [revealed] is a plain prop, not controlled: the user cannot move it. *)
+type action_bar_props =
+  { revealed : bool [@sexp_drop_if Bool.equal Defaults.Action_bar.revealed] }
+[@@deriving sexp_of, equal]
+
 (* [Grid] holds no per-child anything: a child's cell is on the child node's attrs
    ([Attr.grid_cell]), because [gtk_grid_attach] is a call on the grid rather than a
    property of either widget. *)
@@ -440,6 +455,8 @@ type t =
   | Center_box of center_box_props
   | Paned of paned_props
   | Overlay of overlay_props
+  | Header_bar of header_bar_props
+  | Action_bar of action_bar_props
   | Window of window_props
   | Native of Native.t
 (* [variants] is here for exactly one thing: [Kind.Variants.descriptions] is a

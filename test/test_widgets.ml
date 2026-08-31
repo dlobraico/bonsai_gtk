@@ -307,6 +307,102 @@ let%expect_test "slot containers print their slots by name" =
     |}]
 ;;
 
+(* The two M3 chrome bars: defaults erased from the sexp, values visible, and the slot
+   shape -- a Single title/center beside two keyed pack lists -- pinned. *)
+let%expect_test "header bar and action bar sexp their props and slots" =
+  print_s [%sexp (Node.header_bar () : Node.t)];
+  [%expect
+    {|
+    ((kind (Header_bar ())) (attrs ())
+     (children (Slots ((title (Single ())) (start (List ())) (end (List ()))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.header_bar
+         ~title:(Node.label "doc")
+         ~show_title_buttons:false
+         ~decoration_layout:":close"
+         ~start:[ Node.button ~key:"back" ~label:"Back" () ]
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Header_bar ((show_title_buttons false) (decoration_layout (:close)))))
+     (attrs ())
+     (children
+      (Slots
+       ((title
+         (Single
+          (((kind (Label ((text doc)))) (attrs ()) (children No_children)))))
+        (start
+         (List
+          (((kind (Button ((label (Back))))) (key back) (attrs ())
+            (children (Single ()))))))
+        (end (List ()))))))
+    |}];
+  print_s [%sexp (Node.action_bar () : Node.t)];
+  [%expect
+    {|
+    ((kind (Action_bar ())) (attrs ())
+     (children (Slots ((center (Single ())) (start (List ())) (end (List ()))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.action_bar
+         ~revealed:false
+         ~center:(Node.label "c")
+         ~end_:[ Node.button ~key:"go" ~label:"Go" () ]
+         ()
+       : Node.t)];
+  [%expect
+    {|
+    ((kind (Action_bar ((revealed false)))) (attrs ())
+     (children
+      (Slots
+       ((center
+         (Single (((kind (Label ((text c)))) (attrs ()) (children No_children)))))
+        (start (List ()))
+        (end
+         (List
+          (((kind (Button ((label (Go))))) (key go) (attrs ())
+            (children (Single ()))))))))))
+    |}]
+;;
+
+(* Both pack areas of both bars require keys, rejected at the constructor naming the
+   child's index -- the keyed-children rule, on the list_box/stack precedent. *)
+let%expect_test "a pack-area child with no key is rejected at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.header_bar ~start:[ Node.label "x" ] ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.header_bar ~start: child 0 has no ~key (a pack area has no reorder primitive, so a child's key is what keeps its widget across a list edit)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.header_bar ~end_:[ Node.label "x" ] ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.header_bar ~end_: child 0 has no ~key (a pack area has no reorder primitive, so a child's key is what keeps its widget across a list edit)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.action_bar ~start:[ Node.label "x" ] ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.action_bar ~start: child 0 has no ~key (a pack area has no reorder primitive, so a child's key is what keeps its widget across a list edit)")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.action_bar ~end_:[ Node.label "x" ] ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.action_bar ~end_: child 0 has no ~key (a pack area has no reorder primitive, so a child's key is what keeps its widget across a list edit)")
+    |}]
+;;
+
 let%expect_test "find_by_test_id descends into slots" =
   let view =
     Node.overlay

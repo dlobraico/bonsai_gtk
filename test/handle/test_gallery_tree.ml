@@ -253,6 +253,19 @@ let gallery_tree ~n ~set_n =
                        ~center:(Node.label "center")
                        ~end_:(Node.label "end")
                        ()
+                   ; Node.header_bar
+                       ~title:(Node.label "title widget")
+                       ~show_title_buttons:false
+                       ~decoration_layout:":close"
+                       ~start:[ Node.button ~key:"back" ~label:"Back" () ]
+                       ~end_:[ Node.button ~key:"menu" ~label:"Menu" () ]
+                       ()
+                   ; Node.action_bar
+                       ~revealed:true
+                       ~center:(Node.label "status")
+                       ~start:[ Node.button ~key:"add" ~label:"Add" () ]
+                       ~end_:[ Node.button ~key:"del" ~label:"Delete" () ]
+                       ()
                    ; Node.paned
                        ~attrs:[ Attr.on_position_changed (fun _ -> Ui_effect.Ignore) ]
                        ~orientation:Vertical

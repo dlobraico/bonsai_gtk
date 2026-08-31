@@ -466,6 +466,23 @@ let rec dump (w : Widget.t) : Sexp.t =
      | "GtkRevealer" ->
        flag_prop "reveal" (W.Revealer.get_reveal_child (cast w))
        @ flag_prop "revealed" (W.Revealer.get_child_revealed (cast w))
+     | "GtkHeaderBar" ->
+       (* Which slot each child is in is visible in the children (the title widget and the
+          two pack areas parent under internal boxes GTK owns), so the dump adds only the
+          non-default props. *)
+       let hb : W.Header_bar.t = cast w in
+       (if W.Header_bar.get_show_title_buttons hb
+        then []
+        else [ Sexp.Atom "no-title-buttons" ])
+       @
+         (match W.Header_bar.get_decoration_layout hb with
+         | None -> []
+         | Some l -> [ [%sexp `decoration_layout (l : string)] ])
+     | "GtkActionBar" ->
+       (* Both halves would be ideal, but GTK exposes only [revealed] (there is no
+          [child-revealed] read-back on an action bar); the flag is the input the model
+          set. *)
+       if W.Action_bar.get_revealed (cast w) then [] else [ Sexp.Atom "concealed" ]
      | "GtkCenterBox" ->
        (* Only the non-GTK value: which of the three slots are filled is visible in the
           children, and an empty slot parents nothing at all. *)

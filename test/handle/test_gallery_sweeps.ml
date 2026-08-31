@@ -471,6 +471,12 @@ let sweep_rows : (placement * Node.t * Node.t) list =
   ; ( Child
     , Node.overlay ~overlays:[ keyed "a" ] (child ())
     , Node.overlay ~overlays:[ keyed "a"; keyed "b" ] (child ()) )
+  ; ( Child
+    , Node.header_bar ~show_title_buttons:false ~start:[ keyed "a" ] ()
+    , Node.header_bar ~title:(child ()) ~start:[ keyed "a"; keyed "b" ] () )
+  ; ( Child
+    , Node.action_bar ~revealed:false ~center:(child ()) ~start:[ keyed "a" ] ()
+    , Node.action_bar ~center:(child ()) ~start:[ keyed "a"; keyed "b" ] () )
   ; Root, Node.window ~title:"a" (child ()), Node.window ~title:"b" (child ())
   ; ( Child
     , Node.native { Native.name = "thing"; payload = Payload "a" }
@@ -546,6 +552,8 @@ let%expect_test "every kind is diffed, and no kind is skipped" =
     Center_box      mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     Paned           mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     Overlay         mount=ok patch=ok unmount=ok        same_kind=true  props_changed=false child_ops=overlays=1I/0M/0R/1U
+    Header_bar      mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=start=1I/0M/0R/1U end=0I/0M/0R/0U
+    Action_bar      mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=start=1I/0M/0R/1U end=0I/0M/0R/0U
     Window          mount=ok patch=ok unmount=n/a(root) same_kind=true  props_changed=true  child_ops=-
     Native          mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     ("kinds with no row" (missing ()))

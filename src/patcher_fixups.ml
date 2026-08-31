@@ -249,6 +249,8 @@ let interest_of_kind (kind : Kind.t) =
   | Center_box _
   | Paned _
   | Overlay _
+  | Header_bar _
+  | Action_bar _
   | Grid _
   | Box _
   | Native _ -> Nothing

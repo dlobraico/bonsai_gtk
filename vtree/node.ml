@@ -792,6 +792,63 @@ let paned
     (Slots [ "start", Single (Some start); "end", Single (Some end_) ])
 ;;
 
+let header_bar
+  ?key
+  ?attrs
+  ?title
+  ?(show_title_buttons = Defaults.Header_bar.show_title_buttons)
+  ?decoration_layout
+  ?(start = [])
+  ?(end_ = [])
+  ()
+  =
+  require_child_keys
+    ~which:"Node.header_bar ~start"
+    ~why:
+      "a pack area has no reorder primitive, so a child's key is what keeps its widget \
+       across a list edit"
+    start;
+  require_child_keys
+    ~which:"Node.header_bar ~end_"
+    ~why:
+      "a pack area has no reorder primitive, so a child's key is what keeps its widget \
+       across a list edit"
+    end_;
+  make
+    ?key
+    ?attrs
+    (Header_bar { show_title_buttons; decoration_layout })
+    (Slots [ "title", Single title; "start", List start; "end", List end_ ])
+;;
+
+let action_bar
+  ?key
+  ?attrs
+  ?(revealed = Defaults.Action_bar.revealed)
+  ?center
+  ?(start = [])
+  ?(end_ = [])
+  ()
+  =
+  require_child_keys
+    ~which:"Node.action_bar ~start"
+    ~why:
+      "a pack area has no reorder primitive, so a child's key is what keeps its widget \
+       across a list edit"
+    start;
+  require_child_keys
+    ~which:"Node.action_bar ~end_"
+    ~why:
+      "a pack area has no reorder primitive, so a child's key is what keeps its widget \
+       across a list edit"
+    end_;
+  make
+    ?key
+    ?attrs
+    (Action_bar { revealed })
+    (Slots [ "center", Single center; "start", List start; "end", List end_ ])
+;;
+
 let overlay ?key ?attrs ?(overlays = []) child =
   make
     ?key

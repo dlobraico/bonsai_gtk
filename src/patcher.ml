@@ -99,6 +99,8 @@ let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
   | Center_box _
   | Paned _
   | Overlay _
+  | Header_bar _
+  | Action_bar _
   | Grid _
   | Stack_switcher _
   | Stack_sidebar _

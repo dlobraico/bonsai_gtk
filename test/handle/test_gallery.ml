@@ -226,6 +226,40 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                              (Single
                               (((kind (Label ((text end)))) (attrs ())
                                 (children No_children)))))))))
+                        ((kind
+                          (Header_bar
+                           ((show_title_buttons false)
+                            (decoration_layout (:close)))))
+                         (attrs ())
+                         (children
+                          (Slots
+                           ((title
+                             (Single
+                              (((kind (Label ((text "title widget")))) (attrs ())
+                                (children No_children)))))
+                            (start
+                             (List
+                              (((kind (Button ((label (Back))))) (key back)
+                                (attrs ()) (children (Single ()))))))
+                            (end
+                             (List
+                              (((kind (Button ((label (Menu))))) (key menu)
+                                (attrs ()) (children (Single ()))))))))))
+                        ((kind (Action_bar ())) (attrs ())
+                         (children
+                          (Slots
+                           ((center
+                             (Single
+                              (((kind (Label ((text status)))) (attrs ())
+                                (children No_children)))))
+                            (start
+                             (List
+                              (((kind (Button ((label (Add))))) (key add)
+                                (attrs ()) (children (Single ()))))))
+                            (end
+                             (List
+                              (((kind (Button ((label (Delete))))) (key del)
+                                (attrs ()) (children (Single ()))))))))))
                         ((kind (Paned ((orientation Vertical) (position (120)))))
                          (attrs ((On_position_changed <handler>)))
                          (children

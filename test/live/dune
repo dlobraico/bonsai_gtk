@@ -4,6 +4,7 @@
   live_driver
   live_signals
   live_controls
+  live_chrome
   live_containers
   live_events
   live_controllers_click
@@ -111,6 +112,19 @@
     output_controls.txt
     (run %{exe:live_controls.exe}))
    (diff expected_controls.txt output_controls.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_chrome.exe)
+ (locks x-display)
+ (action
+  (progn
+   (with-stdout-to
+    output_chrome.txt
+    (run %{exe:live_chrome.exe}))
+   (diff expected_chrome.txt output_chrome.txt))))
 
 (rule
  (alias runtest)

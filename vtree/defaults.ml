@@ -193,6 +193,14 @@ module Center_box = struct
   let shrink_center_last = true
 end
 
+module Header_bar = struct
+  let show_title_buttons = true
+end
+
+module Action_bar = struct
+  let revealed = true
+end
+
 module Paned = struct
   let wide_handle = false
   let resize_start = true

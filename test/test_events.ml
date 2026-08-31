@@ -47,6 +47,8 @@ let all_kinds : Kind.t list =
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind
+  ; (Node.header_bar ()).kind
+  ; (Node.action_bar ()).kind
   ; (Node.window (child ())).kind
   ; (Node.native { Native.name = "thing"; payload = Native.Unit }).kind
   ]
@@ -110,6 +112,8 @@ let%expect_test "every kind's event attrs" =
     (CenterBox ())
     (Paned (On_position_changed))
     (Overlay ())
+    (HeaderBar ())
+    (ActionBar ())
     (Window ())
     (Native:thing ())
     |}]

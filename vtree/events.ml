@@ -73,8 +73,16 @@ let for_kind : Kind.t -> Attr.Name.t list = function
      [On_editing_changed] is the other half, and it is a [notify::editing] -- the class
      binds no signals at all. *)
   | Editable_label _ -> [ On_changed; On_editing_changed ]
-  | Window _ | Box _ | Grid _ | Center_box _ | Overlay _ | Frame _ | Scrolled_window _ ->
-    []
+  (* [GtkHeaderBar] and [GtkActionBar] declare no signals at all -- pure structure. *)
+  | Window _
+  | Box _
+  | Grid _
+  | Center_box _
+  | Overlay _
+  | Header_bar _
+  | Action_bar _
+  | Frame _
+  | Scrolled_window _ -> []
 ;;
 
 (* The controller families, and which attr names belong to each.

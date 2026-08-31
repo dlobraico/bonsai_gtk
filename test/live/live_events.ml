@@ -61,6 +61,8 @@ let all_kinds : Kind.t list =
   ; (Node.center_box ()).kind
   ; (Node.paned ~orientation:Horizontal ~start:(child ()) ~end_:(child ()) ()).kind
   ; (Node.overlay (child ())).kind
+  ; (Node.header_bar ()).kind
+  ; (Node.action_bar ()).kind
   ; (Node.window (child ())).kind
   ; (Native_gtk.node thing_impl ()).kind
   ]
