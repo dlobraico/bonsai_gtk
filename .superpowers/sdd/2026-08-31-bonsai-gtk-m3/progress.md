@@ -34,3 +34,14 @@ no existing golden had a droppable None; one new `(position ())` golden pins the
 removal. Carry for Task 13: docs/m2-backlog.md's five live_controllers.ml refs translate
 in the rewrite (review Out-of-scope note). Update kind-change comment still in
 patcher.ml's patch_list, awaiting Task 8.
+
+### Task 2 — claimable click, focus family, autofocus: APPROVED (after fix round 1)
+b7484cc..919f77d (5 commits) + fix round `6869497`. Review settled the ordering
+question: present happens during the mount walk, the grab in fixups after it; pre-flight
+5 proved sufficiency of the weaker ordering, not the implementation. Important 1: the
+mount-frame autofocus grab is a rootless silent no-op under Expert.embed — RULED doc-only
+for M3, real fix filed as bead `bonsai_gtk-vdy` (map/notify::root retry candidate).
+key_phase_rejection deleted (no external caller). require_slots untestability accepted
+with reasoning. Carries: gallery tree vs examples/gallery.ml drifted by one attr —
+Task 12 reconciles (review Minor 5); Events.attr_phase now exhaustive so Task 7's
+phased attr must add its row explicitly.
