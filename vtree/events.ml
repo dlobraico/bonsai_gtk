@@ -186,6 +186,10 @@ let family_attrs family =
    certify a view that raises the moment it is shown -- which is the whole point of
    putting these tables in [vtree]. Both callers render {!family_phase_rejection}'s
    string, so the two messages are identical outright rather than by convention. *)
+(* Exhaustive with no wildcard, on the neighbouring tables' rule: a future phase-carrying
+   controller attr (Task 7's shortcut family is already planned) must be classified here
+   or nothing compiles -- a wildcard would silently drop its phase from the family's vote
+   instead. *)
 let attr_phase (attr : Attr.t) =
   match (attr :> Attr.Private.t) with
   | On_click { phase; _ }
@@ -193,7 +197,53 @@ let attr_phase (attr : Attr.t) =
   | On_focus_leave { phase; _ }
   | On_key_pressed { phase; _ }
   | On_key_released { phase; _ } -> Some phase
-  | _ -> None
+  | Css_class _
+  | Margin_start _
+  | Margin_end _
+  | Margin_top _
+  | Margin_bottom _
+  | Halign _
+  | Valign _
+  | Hexpand _
+  | Vexpand _
+  | Sensitive _
+  | Visible _
+  | Tooltip _
+  | Width_request _
+  | Height_request _
+  | Opacity _
+  | Focusable _
+  | Can_focus _
+  | Autofocus _
+  | Widget_name _
+  | Cursor_name _
+  | Test_id _
+  | Measure_overlay _
+  | Grid_cell _
+  | Page_title _
+  | Row_selectable _
+  | Row_activatable _
+  | Tab_label _
+  | On_clicked _
+  | On_toggled _
+  | On_changed _
+  | On_activate _
+  | On_search_changed _
+  | On_value_changed _
+  | On_expanded_changed _
+  | On_revealed _
+  | On_position_changed _
+  | On_visible_child_changed _
+  | On_row_activated _
+  | On_selected_rows_changed _
+  | On_child_activated _
+  | On_selected_children_changed _
+  | On_page_changed _
+  | On_selected_changed _
+  | On_day_selected _
+  | On_editing_changed _
+  | On_contains_focus_changed _
+  | Many _ -> None
 ;;
 
 (* The phased attrs of [family] that are present, in [Attr.Name] order -- which is what

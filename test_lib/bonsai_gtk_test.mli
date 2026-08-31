@@ -381,10 +381,10 @@ end
       rather than by convention. This one matters more than it looks: a misplaced
       placement attr is applied by nobody and read by nobody, so without this check a
       headless suite is the {i only} place it could ever have been caught, and it passed.
-    - [Bonsai_gtk_vtree.Events.key_phase_rejection], so a node whose [Attr.on_key_pressed]
-      and [Attr.on_key_released] ask for different propagation phases raises here too.
-      They share one [GtkEventControllerKey] and therefore one phase, so there is nothing
-      the runtime could mount; both sides call the same function for the string.
+    - [Bonsai_gtk_vtree.Events.family_phase_rejection], so a node whose attrs of one
+      controller family ask for different propagation phases raises here too. A family's
+      attrs share one controller and therefore one phase, so there is nothing the runtime
+      could mount; both sides call the same function for the string, over every family.
 
     {b All three are checked by every entry point that advances a handle} --
     [Handle.show], [Handle.show_into_string], [Handle.show_diff], [Handle.store_view],
@@ -473,10 +473,14 @@ end
     false-to-true flip — so the handle remembers, per frame and by node path, which paths
     carried [autofocus true] last frame (reset by each {!create}, with [?root_kind]'s
     most-recent-handle caveat). A widget that keeps rendering [true] beside one that flips
-    is therefore accepted, exactly as the runtime accepts it; a keyed child that {i moves}
-    while carrying [true] is the approximation's edge — its path changes, so the handle
-    would count it as firing again where the live widget would not. Per toplevel is per
-    tree here, until [Node.windows] widens it.
+    is therefore accepted, exactly as the runtime accepts it. The path-keyed approximation
+    diverges from the live rule in both directions: a keyed child that {i moves} while
+    carrying [true] changes path, so the handle counts it as firing again where the live
+    widget (same widget, no edge) would not — and a {i kind change} at the same path with
+    a steady [true] is a remount that re-fires live but is no edge to the path, so a frame
+    pairing such a remount with a second widget's flip raises live and is certified here.
+    No tree in this repository does either. Per toplevel is per tree here, until
+    [Node.windows] widens it.
 
     Rows 8-12 are the ones that could still be closed cheaply: they are tree walks over
     data this library already has. Rows 14 and 15 are {i refusals} rather than rejections

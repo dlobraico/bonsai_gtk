@@ -280,8 +280,8 @@ let gallery_tree ~n ~set_n =
                     that might be read as owning them -- a box, a frame and a label. The
                     two key attrs share one [GtkEventControllerKey] and therefore one
                     phase, so they are both left at the default [Bubble]; asking for two
-                    phases on one node is what [Events.key_phase_rejection] refuses, and
-                    [test/handle/test_handle.ml] is where that is pinned.
+                    phases on one node is what [Events.family_phase_rejection] refuses,
+                    and [test/handle/test_handle.ml] is where that is pinned.
 
                     What this page is coverage {i for} is narrow and worth saying: that
                     the attrs exist, are accepted on these kinds, and survive into the

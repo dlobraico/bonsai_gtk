@@ -180,12 +180,13 @@ let current_root_kind = ref `Window
    everything [true] in it fires) -- and raises the same [Events.autofocus_rejection]
    string, so a headless suite cannot certify the tree the runtime refuses.
 
-   By {i path} rather than by widget, which is the one place the approximation shows: a
+   By {i path} rather than by widget, and the approximation shows in both directions: a
    keyed child that moves keeps its widget (no re-fire live) but changes its path, so the
-   handle would count it as firing again. No tree in this repository moves an autofocused
-   node; if one ever does, this is the comment to revisit. Per toplevel is per {i tree}
-   here, because a handle's tree has one root -- [Node.windows] (Task 8) is where that
-   widens.
+   handle counts it as firing again; a kind change at the same path with a steady [true]
+   is a remount that re-fires live but is no edge to the path, so it goes uncounted here.
+   No tree in this repository does either; if one ever does, this is the comment to
+   revisit. Per toplevel is per {i tree} here, because a handle's tree has one root --
+   [Node.windows] (Task 8) is where that widens.
 
    A global beside [current_root_kind], for its reasons and with its caveat: the state is
    the most recently created handle's, and interleaving two handles would confuse them.

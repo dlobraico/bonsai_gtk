@@ -252,6 +252,13 @@ val can_focus : bool -> t
     paths (the single-referent rule, §5.4's singular arity), at fixup time and headlessly
     from [Bonsai_gtk_test].
 
+    {b Under [Bonsai_gtk.Expert.embed], the mount-frame grab does nothing.} At fixup time
+    an embedded tree has no [GtkRoot] yet -- the caller parents the wrapper only after
+    [create] returns -- and [gtk_widget_grab_focus] on a rootless widget returns FALSE
+    outright; fire-once means it is not retried. A later false-to-true flip, after the
+    host has rooted the wrapper, works. Deferring the lost mount-frame grab to a
+    root-change is tracked as bead [bonsai_gtk-vdy].
+
     This is a deliberately narrow interim primitive. Who holds focus is state the model
     should own -- a full focus-is-state design (focus following the model,
     [select_region], default widgets) is on the backlog, and this attr will be re-examined
@@ -729,7 +736,7 @@ val on_contains_focus_changed : (bool -> unit Ui_effect.t) -> t
     for one; giving them different phases is [Invalid_argument], because there is only one
     phase to write. Raised at mount, at patch (a conditionally-added [~phase] reaching a
     widget mounted without one), and by [Bonsai_gtk_test]'s handle -- all three from
-    [Events.key_phase_rejection], so a headless suite cannot certify a view the runtime
+    [Events.family_phase_rejection], so a headless suite cannot certify a view the runtime
     refuses.
 
     Like {!on_click}, legal on {i any} node: it is not a signal of some widget class but a
