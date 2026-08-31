@@ -45,3 +45,17 @@ key_phase_rejection deleted (no external caller). require_slots untestability ac
 with reasoning. Carries: gallery tree vs examples/gallery.ml drifted by one attr —
 Task 12 reconciles (review Minor 5); Events.attr_phase now exhaustive so Task 7's
 phased attr must add its row explicitly.
+
+### Task 3 — report-once memos, Child_keys.length, caret: APPROVED
+028d150..accd8d9 (4 commits) + comment-minors folded into the Task 4 start. Review
+verified one memo shape serving both twins (Refusal functor), dedup safe by construction
+(duplicate sibling keys already raise), the Flow_box mutation now caught by golden
+(reviewer re-applied it), and the controlled-write caret restore suppressed by the patch
+guard with the golden's numbers each mapped to a cause. Bench correction of record: the
+report's ~13x parked-frame figure did not reproduce (reviewer: ~1.1x, noise-bound);
+conclusion (negligible, scales with page count, nothing accumulates) stands — do not
+quote 13x. RULING (standing trigger): the ~selected dedup is the confirmed third copy of
+the list-pair shape; functorise as an early-M4 motion-only task, promoted from declined
+to scheduled in Task 13's backlog rewrite — not in the fix wave (no churn under the
+lenses' feet), not in Task 13 itself. The new both-copy goldens are the safety net that
+makes that motion cheap.
