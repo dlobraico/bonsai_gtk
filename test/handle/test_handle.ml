@@ -1785,16 +1785,29 @@ let%expect_test "switching a notebook page hands the model the page's key" =
    node is unchanged -- which headless is the whole of the claim, and live is the frame on
    which the notebook is put back. *)
 let%expect_test "a declined page change leaves the node where it was" =
+  (* The model has a real setter and refuses exactly one page, so the empty diff below is
+     bracketed by two non-empty ones -- which is what tells "the model declined" apart
+     from "the action never ran". Before the fix wave this model had no setter and a
+     constant [Ui_effect.Ignore] handler, so replacing [Set_page]'s implementation with a
+     no-op left the test green: the empty golden recorded only that the tree did not move.
+     [test_handle.ml]'s date picker and text view were already written this way. *)
   let declining (graph @ local) =
-    let page, _set_page = Bonsai.state "score" graph in
-    let%arr page in
+    let page, set_page = Bonsai.state "score" graph in
+    let%arr page and set_page in
     Node.window
       ~title:"Editor"
       (Node.notebook
-         ~attrs:[ Attr.test_id "tabs"; Attr.on_page_changed (fun _ -> Ui_effect.Ignore) ]
+         ~attrs:
+           [ Attr.test_id "tabs"
+             (* A tab the model will not leave the editor for -- the shape of a page with
+                unsaved work, or one a licence gates. *)
+           ; Attr.on_page_changed (fun key ->
+               if String.equal key "settings" then Ui_effect.Ignore else set_page key)
+           ]
          ~current_page:page
          [ Node.label ~key:"score" ~attrs:[ Attr.tab_label "Score" ] "S"
          ; Node.label ~key:"parts" ~attrs:[ Attr.tab_label "Parts" ] "P"
+         ; Node.label ~key:"settings" ~attrs:[ Attr.tab_label "Settings" ] "C"
          ])
   in
   let handle = Bonsai_gtk_test.create declining in
@@ -1811,11 +1824,56 @@ let%expect_test "a declined page change leaves the node where it was" =
            (((kind (Label ((text S)))) (key score) (attrs ((Tab_label Score)))
              (children No_children))
             ((kind (Label ((text P)))) (key parts) (attrs ((Tab_label Parts)))
-             (children No_children))))))))))
+             (children No_children))
+            ((kind (Label ((text C)))) (key settings)
+             (attrs ((Tab_label Settings))) (children No_children))))))))))
     |}];
+  (* Accepted. *)
   Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("tabs", "parts") ];
   Bonsai_gtk_test.Handle.show_diff handle;
-  [%expect {| |}]
+  [%expect
+    {|
+      ((kind (Window ((title (Editor))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Notebook ((current_page score))))
+    +|   (((kind (Notebook ((current_page parts))))
+           (attrs ((Test_id tabs) (On_page_changed <handler>)))
+           (children
+            (List
+             (((kind (Label ((text S)))) (key score) (attrs ((Tab_label Score)))
+               (children No_children))
+              ((kind (Label ((text P)))) (key parts) (attrs ((Tab_label Parts)))
+               (children No_children))
+              ((kind (Label ((text C)))) (key settings)
+               (attrs ((Tab_label Settings))) (children No_children))))))))))
+    |}];
+  (* Declined: the handler ran, the model kept the page it had, and the node it renders is
+     the one it rendered last frame. Live, this is the frame on which the notebook is
+     showing the tab the user clicked and only the fixup pass puts it back. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("tabs", "settings") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect {| |}];
+  (* And the model is still live afterwards: a decline is not a wedge. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_page ("tabs", "score") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Editor))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Notebook ((current_page parts))))
+    +|   (((kind (Notebook ((current_page score))))
+           (attrs ((Test_id tabs) (On_page_changed <handler>)))
+           (children
+            (List
+             (((kind (Label ((text S)))) (key score) (attrs ((Tab_label Score)))
+               (children No_children))
+              ((kind (Label ((text P)))) (key parts) (attrs ((Tab_label Parts)))
+               (children No_children))
+              ((kind (Label ((text C)))) (key settings)
+               (attrs ((Tab_label Settings))) (children No_children))))))))))
+    |}]
 ;;
 
 (* [Set_page] names a kind, like the two activate actions and unlike [Set_selection]: a
@@ -2123,14 +2181,22 @@ let%expect_test "choosing a drop-down item hands the model the index" =
    is the one where nothing is diffed at all and [Widget_impl.reassert] is the only thing
    left to put the widget back; [test/live/live_text.ml] makes that half. *)
 let%expect_test "a declined drop-down choice leaves the node where it was" =
+  (* A real setter that refuses one index, so the empty diff is bracketed by two non-empty
+     ones. Written this way for the reason the notebook's twin above is: with a constant
+     [Ui_effect.Ignore] handler and no setter, an empty golden says only that the tree did
+     not move, which a [Set_selected] that never ran would satisfy too. *)
   let declining (graph @ local) =
-    let selected, _set = Bonsai.state 1 graph in
-    let%arr selected in
+    let selected, set_selected = Bonsai.state 1 graph in
+    let%arr selected and set_selected in
     Node.window
       ~title:"Tempo"
       (Node.drop_down
          ~attrs:
-           [ Attr.test_id "tempo"; Attr.on_selected_changed (fun _ -> Ui_effect.Ignore) ]
+           [ Attr.test_id "tempo"
+             (* 144 is the tempo this model will not take -- a limit the score imposes. *)
+           ; Attr.on_selected_changed (fun i ->
+               if i = 3 then Ui_effect.Ignore else set_selected i)
+           ]
          ~items:tempos
          ~selected
          ())
@@ -2146,9 +2212,36 @@ let%expect_test "a declined drop-down choice leaves the node where it was" =
          (attrs ((Test_id tempo) (On_selected_changed <handler>)))
          (children No_children))))))
     |}];
+  (* Accepted. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("tempo", 2) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Tempo))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Drop_down ((items (60 90 120 144)) (selected 1))))
+    +|   (((kind (Drop_down ((items (60 90 120 144)) (selected 2))))
+           (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+           (children No_children))))))
+    |}];
+  (* Declined: the handler ran and chose to keep the index it had. *)
   Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("tempo", 3) ];
   Bonsai_gtk_test.Handle.show_diff handle;
-  [%expect {| |}]
+  [%expect {| |}];
+  (* Still live. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Set_selected ("tempo", 0) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Tempo))))) (attrs ())
+       (children
+        (Single
+    -|   (((kind (Drop_down ((items (60 90 120 144)) (selected 2))))
+    +|   (((kind (Drop_down ((items (60 90 120 144)) (selected 0))))
+           (attrs ((Test_id tempo) (On_selected_changed <handler>)))
+           (children No_children))))))
+    |}]
 ;;
 
 (* A model may render [-1] over a non-empty list and the constructor accepts it: it is a
@@ -2549,5 +2642,240 @@ let%expect_test "the calendar's and the editable label's event attrs, and other 
        (((kind (Editable_label ((text t) (editing false))))
          (attrs ((On_changed <handler>) (On_editing_changed <handler>)))
          (children No_children))))))
+    |}]
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* The three structural rules the fix wave taught the handle, all decidable from pure
+   vtree data and all previously listed in the mli as things only a mount could catch.
+
+   Each is checked against the runtime's own message: the patcher's and the driver's
+   strings are copied into [Bonsai_gtk_test] rather than shared (the test library cannot
+   link [bonsai_gtk], which is what keeps it and the view functions written against it
+   free of ocgtk), so these goldens are what keeps the two spellings the same. *)
+
+let%expect_test "the root must be the kind the entry point requires" =
+  let box_root (_graph @ local) =
+    Bonsai.return (Node.box ~orientation:Vertical [ Node.label "x" ])
+  in
+  let window_root (_graph @ local) =
+    Bonsai.return (Node.window ~title:"W" (Node.label "x"))
+  in
+  (* The default is [`Window], mirroring [Driver.create]'s, because that is what
+     [Bonsai_gtk.start] requires. This is the mistake the report called the most likely to
+     reach a running app: the window forgotten, or lost in a refactor that hoisted the
+     root into a component. Headless it renders a complete and correct-looking tree; live
+     it raises out of the first frame and marks the driver broken for good. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create box_root in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "Bonsai_gtk: the root node must be a Node.window, got Box. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own. Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.")
+    |}];
+  (* And the mirror image, which is the rule for a component destined for [Expert.embed]:
+     a [GtkWindow] is a toplevel that cannot be parented at all. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create ~root_kind:`Not_window window_root in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make the root a container.")
+    |}];
+  (* An embedded component with a container root is exactly what [embed] wants. *)
+  let handle = Bonsai_gtk_test.create ~root_kind:`Not_window box_root in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Box ((orientation Vertical)))) (attrs ())
+     (children
+      (List (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}];
+  (* The check reaches the entry points that print nothing, which is the property the
+     shadowed [Handle] exists for: this one advances without ever building a view. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create box_root in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "Bonsai_gtk: the root node must be a Node.window, got Box. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own. Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.")
+    |}]
+;;
+
+let%expect_test "two siblings with one key, and a window below the root" =
+  let show node =
+    Expect_test_helpers_core.require_does_raise (fun () ->
+      let handle = Bonsai_gtk_test.create (fun (_graph @ local) -> Bonsai.return node) in
+      Bonsai_gtk_test.Handle.show handle)
+  in
+  (* [Reconcile.check_unique_keys], the same function [Patcher.mount_list] calls, under
+     the container's path. Live this is caught at mount -- and for a [Node.stack] it
+     matters more than it looks, since GTK would have been handed two pages with one name
+     and [get_child_by_name] would already be ambiguous. *)
+  show
+    (Node.window
+       ~title:"W"
+       (Node.box
+          ~orientation:Vertical
+          [ Node.label ~key:"a" "one"; Node.label ~key:"a" "two" ]));
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: duplicate key a among one container's children (a key identifies a child among its siblings, so no two of them may share one)")
+    |}];
+  (* Through a slot, where the path is the slot's rather than the container's. *)
+  show
+    (Node.window
+       ~title:"W"
+       (Node.overlay
+          ~overlays:[ Node.label ~key:"o" "one"; Node.label ~key:"o" "two" ]
+          (Node.label "main")));
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/overlays: duplicate key o among one container's children (a key identifies a child among its siblings, so no two of them may share one)")
+    |}];
+  (* A [GtkWindow] is a toplevel: parenting one makes GTK log a critical and leaves a
+     silently broken tree, so the patcher refuses it and now so does the handle. *)
+  show
+    (Node.window
+       ~title:"outer"
+       (Node.box ~orientation:Vertical [ Node.window ~title:"inner" (Node.label "x") ]));
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: a Node.window may only be the root node, not a child of another node")
+    |}]
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* The three actions M2 shipped without. Each one fires a handler that no headless test
+   could reach before -- the attrs sweep is satisfied by the attr appearing in a tree, and
+   every handler sexps as [<handler>], so for these three there was no headless evidence
+   of any kind that the right closure was behind the right name. *)
+
+let%expect_test "Set_revealed, Set_position and Set_visible_child reach their handlers" =
+  let app (graph @ local) =
+    let revealed, set_revealed = Bonsai.state true graph in
+    let position, set_position = Bonsai.state 120 graph in
+    let page, set_page = Bonsai.state "score" graph in
+    let%arr revealed
+    and set_revealed
+    and position
+    and set_position
+    and page
+    and set_page in
+    Node.window
+      ~title:"Panels"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.revealer
+             ~attrs:[ Attr.test_id "rev"; Attr.on_revealed set_revealed ]
+             ~reveal:revealed
+             (Node.label "hidden things")
+         ; Node.paned
+             ~attrs:[ Attr.test_id "split"; Attr.on_position_changed set_position ]
+             ~position
+             ~orientation:Horizontal
+             ~start:(Node.label "left")
+             ~end_:(Node.label "right")
+             ()
+         ; Node.stack
+             ~attrs:[ Attr.test_id "pages"; Attr.on_visible_child_changed set_page ]
+             ~name:"main"
+             ~transition:None_
+             ~visible_child:page
+             [ Node.label ~key:"score" "S"; Node.label ~key:"parts" "P" ]
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind (Window ((title (Panels))))) (attrs ())
+     (children
+      (Single
+       (((kind (Box ((orientation Vertical)))) (attrs ())
+         (children
+          (List
+           (((kind (Revealer ((reveal true))))
+             (attrs ((Test_id rev) (On_revealed <handler>)))
+             (children
+              (Single
+               (((kind (Label ((text "hidden things")))) (attrs ())
+                 (children No_children))))))
+            ((kind (Paned ((orientation Horizontal) (position (120)))))
+             (attrs ((Test_id split) (On_position_changed <handler>)))
+             (children
+              (Slots
+               ((start
+                 (Single
+                  (((kind (Label ((text left)))) (attrs ())
+                    (children No_children)))))
+                (end
+                 (Single
+                  (((kind (Label ((text right)))) (attrs ())
+                    (children No_children)))))))))
+            ((kind (Stack ((name main) (visible_child score))))
+             (attrs ((Test_id pages) (On_visible_child_changed <handler>)))
+             (children
+              (List
+               (((kind (Label ((text S)))) (key score) (attrs ())
+                 (children No_children))
+                ((kind (Label ((text P)))) (key parts) (attrs ())
+                 (children No_children))))))))))))))
+    |}];
+  (* All three at once, and the diff is the whole claim: each handler ran, each was handed
+     the value the action carried, and each model moved. Before these actions existed
+     there was no way to make any of that happen headlessly. *)
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Set_revealed ("rev", false)
+    ; Set_position ("split", 240)
+    ; Set_visible_child ("pages", "parts")
+    ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (Panels))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+    -|       (((kind (Revealer ((reveal true))))
+    +|       (((kind (Revealer ((reveal false))))
+               (attrs ((Test_id rev) (On_revealed <handler>)))
+               (children
+                (Single
+                 (((kind (Label ((text "hidden things")))) (attrs ())
+                   (children No_children))))))
+    -|        ((kind (Paned ((orientation Horizontal) (position (120)))))
+    +|        ((kind (Paned ((orientation Horizontal) (position (240)))))
+               (attrs ((Test_id split) (On_position_changed <handler>)))
+               (children
+                (Slots
+                 ((start
+                   (Single
+                    (((kind (Label ((text left)))) (attrs ())
+                      (children No_children)))))
+                  (end
+                   (Single
+                    (((kind (Label ((text right)))) (attrs ())
+                      (children No_children)))))))))
+    -|        ((kind (Stack ((name main) (visible_child score))))
+    +|        ((kind (Stack ((name main) (visible_child parts))))
+               (attrs ((Test_id pages) (On_visible_child_changed <handler>)))
+               (children
+                (List
+                 (((kind (Label ((text S)))) (key score) (attrs ())
+                   (children No_children))
+                  ((kind (Label ((text P)))) (key parts) (attrs ())
+                   (children No_children))))))))))))))
     |}]
 ;;

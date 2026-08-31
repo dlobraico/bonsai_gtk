@@ -10,6 +10,9 @@ module Action = struct
     | Set_value of string * float
     | Search_changed of string * string
     | Set_expanded of string * bool
+    | Set_revealed of string * bool
+    | Set_position of string * int
+    | Set_visible_child of string * Key.t
     | Click_at of string * Click_event.t
     | Focus_enter of string
     | Focus_leave of string
@@ -79,7 +82,42 @@ let current_active (node : Node.t) id =
 
    [~parent] is the kind of the node above, [None] at the root: a placement attr is read
    by the container, so it is the parent that decides. The event half does not need it. *)
+(* The container's path prefixed onto a rejection its own child list produced, which is
+   what [Patcher.child_op] does at mount and for the same reason: the check knows nothing
+   about where in the tree it is. *)
+let child_op ~path f =
+  try f () with
+  | Invalid_argument msg -> invalid_argf "%s: %s" path msg ()
+;;
+
+(* Two siblings with one key, from the same function the patcher calls at mount
+   ([Patcher.mount_list] -> [Reconcile.check_unique_keys]) and with the same path
+   prefixing, so the two messages are identical by construction. A [Slots] container is
+   walked into rather than through: each slot has a child list of its own, and the path a
+   slot's list is checked under is the one the patcher spells for it. *)
+let rec require_unique_keys ~path (children : Node.t Children.t) =
+  match children with
+  | No_children | Single _ -> ()
+  | List cs ->
+    child_op ~path (fun () ->
+      Reconcile.check_unique_keys ~key:(fun (n : Node.t) -> n.key) cs)
+  | Slots slots ->
+    List.iter slots ~f:(fun (name, slot) ->
+      require_unique_keys ~path:(sprintf "%s/%s" path name) slot)
+;;
+
 let rec require_supported ~path ~parent (node : Node.t) =
+  (* A [GtkWindow] is a toplevel and cannot be parented, so the patcher refuses one below
+     the root -- with this message, which is copied rather than shared because [Patcher]
+     is in the package this library cannot link. [~parent] is [None] at the root only,
+     which is exactly the distinction the rule needs. *)
+  (match node.kind, parent with
+   | Window _, Some _ ->
+     invalid_argf
+       "%s: a Node.window may only be the root node, not a child of another node"
+       path
+       ()
+   | (Window _ | _), _ -> ());
   (* Unlike the event message below, this one is built by [Placement] itself and not
      rebuilt here: it has two shapes and names three things, which is more than two
      consumers can be trusted to spell the same way twice. *)
@@ -100,8 +138,56 @@ let rec require_supported ~path ~parent (node : Node.t) =
      is last at mount too -- [Controllers.update] runs after [Signals.require_specs] -- so
      a node carrying more than one mistake reports the same one here and there. *)
   Option.iter (Events.key_phase_rejection ~path node.attrs) ~f:invalid_arg;
+  require_unique_keys ~path node.children;
   Children.iteri node.children ~path ~f:(fun path child ->
     require_supported ~path ~parent:(Some node.kind) child)
+;;
+
+(* Which entry point the tree under test is destined for, set by {!create}.
+
+   The root rule is the {i runtime's} rather than the tree's, and the two halves are
+   opposites: [Bonsai_gtk.start] shows the root itself and a [GtkWindow] is the only thing
+   GTK can show on its own, while [Bonsai_gtk.Expert.embed] parents the root into a
+   container the caller owns and a [GtkWindow] is a toplevel that cannot be parented. So
+   the check needs to know something no [Node.t] carries, and [create] is the only place
+   that is told.
+
+   A mutable global rather than a field of the handle, and the reason is that [Handle.t]
+   {i is} [Bonsai_test.Handle.t] -- deliberately, so that the four values this library
+   re-exports unchanged still work -- and there is nowhere on it to put one. Two
+   consequences, both worth stating: the rule checked is the most recently created
+   handle's, so a test that creates two handles with {i different} root kinds and then
+   advances the older one is checked against the wrong rule; and because the two rules are
+   opposites rather than one being weaker, getting it wrong always produces a loud
+   rejection of a legal tree and never a silent acceptance of an illegal one. Nothing in
+   this repository interleaves two handles at all.
+
+   Wrapping the computation instead was tried and is worse: raising from inside a
+   [Bonsai.map] poisons Incremental for the rest of the process ("cannot stabilize --
+   stabilize previously raised"), so one root-kind failure would break every later test in
+   the same executable. *)
+let current_root_kind = ref `Window
+
+(* [Driver.check_root]'s match, and its messages, copied because the runtime lives in the
+   package this library cannot link. The goldens in [test/handle/test_handle.ml] are what
+   keeps the two spellings the same. *)
+let check_root (node : Node.t) =
+  match !current_root_kind, node.kind with
+  | `Window, Window _ -> ()
+  | `Window, k ->
+    invalid_argf
+      "Bonsai_gtk: the root node must be a Node.window, got %s. A tree started this way \
+       shows its own root, and a GtkWindow is the only thing GTK can show on its own. \
+       Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own."
+      (Kind.name k)
+      ()
+  | `Not_window, Window _ ->
+    invalid_arg
+      "Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is \
+       parented into a container the caller owns and a GtkWindow is a toplevel that \
+       cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make \
+       the root a container."
+  | `Not_window, _ -> ()
 ;;
 
 module Result_spec = struct
@@ -109,6 +195,10 @@ module Result_spec = struct
   type incoming = Action.t
 
   let view node =
+    (* First, because it is first at mount too: [Driver.frame] checks the root before the
+       patcher walks anything, so a tree with both mistakes reports the same one here and
+       there. *)
+    check_root node;
     require_supported ~path:"root" ~parent:None node;
     Sexp.to_string_hum (Node.sexp_of_t node)
   ;;
@@ -165,6 +255,34 @@ module Result_spec = struct
        | Some (On_expanded_changed h) -> h expanded
        | _ ->
          failwithf "Bonsai_gtk_test: node %s has no on_expanded_changed handler" id ())
+    (* The three actions the milestone shipped without, each on the shape above: a value
+       the user's action produced, handed to the attr that reports it, with the node's own
+       prop deliberately not consulted. Until they existed, a handler attached with
+       [Attr.on_revealed], [Attr.on_position_changed] or [Attr.on_visible_child_changed]
+       could not be fired by any headless test at all -- and no sweep could see that,
+       because the attrs sweep is satisfied by the attr being present in a tree. The
+       coverage sweep in [test/handle/test_gallery.ml] is what makes the next omission a
+       failure. *)
+    | Set_revealed (id, revealed) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_revealed :> Attr.Private.t option) with
+       | Some (On_revealed h) -> h revealed
+       | _ -> failwithf "Bonsai_gtk_test: node %s has no on_revealed handler" id ())
+    | Set_position (id, position) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_position_changed :> Attr.Private.t option) with
+       | Some (On_position_changed h) -> h position
+       | _ ->
+         failwithf "Bonsai_gtk_test: node %s has no on_position_changed handler" id ())
+    | Set_visible_child (id, key) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_visible_child_changed :> Attr.Private.t option) with
+       | Some (On_visible_child_changed h) -> h key
+       | _ ->
+         failwithf
+           "Bonsai_gtk_test: node %s has no on_visible_child_changed handler"
+           id
+           ())
     (* Nothing is derived from the node, and in particular the [button] the attr was
        constructed with is *not* consulted: a headless test that delivers button 3 to a
        [~button:1] gesture is testing its own handler, not GTK's filtering, and pretending
@@ -397,6 +515,9 @@ module Handle = struct
   ;;
 end
 
-let create ~(here : [%call_pos]) ?start_time ?optimize app =
+let create ~(here : [%call_pos]) ?start_time ?optimize ?(root_kind = `Window) app =
+  (* Set before the handle exists, so the first frame is checked against it like every
+     later one. See {!current_root_kind}. *)
+  current_root_kind := root_kind;
   Handle.create ~here ?start_time ?optimize result_spec app
 ;;

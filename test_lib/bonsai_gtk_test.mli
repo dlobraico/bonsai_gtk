@@ -41,6 +41,22 @@ module Action : sig
         user dragged it to. Fires that handler with exactly that bool; the node's own
         [expanded] prop is not consulted, so a test can show a model that declines to
         open. *)
+    | Set_revealed of string * bool
+    (** test_id of a [revealer] carrying [Attr.on_revealed], and the state GTK reports at
+        the end of its transition. Same shape as [Set_expanded], including that the node's
+        own [reveal_child] is not consulted. *)
+    | Set_position of string * int
+    (** test_id of a [paned] carrying [Attr.on_position_changed], and the divider position
+        the user dragged it to, in pixels. The node's own [position] is not consulted --
+        which matters here more than elsewhere, since it is the one controlled prop that
+        is erased from the sexp at its default ([None], "GTK decides"), so an action is
+        the only way a headless test can see this handler at all. *)
+    | Set_visible_child of string * Key.t
+    (** test_id of a [stack] carrying [Attr.on_visible_child_changed], and the key of the
+        page the user switched to -- through a [stack_switcher] or a [stack_sidebar],
+        since a stack has no controls of its own. The node's own [visible_child] is not
+        consulted, so a model that declines the navigation is testable; the key need not
+        name a page, for the reason [Set_page] gives. *)
     | Click_at of string * Click_event.t
     (** test_id of a node carrying [Attr.on_click], and the click to deliver. Fires that
         handler with exactly that event; nothing is derived from the node, and in
@@ -365,13 +381,34 @@ end
     ([test/handle/test_handle.ml]'s "Toggle needs a handler"). All three are shadowed here
     now. [test/handle/test_gallery.ml] pins all six.
 
-    What is still only checked at mount is the structural half that needs the widget
-    implementations or the live tree: a [Node.grid] child with no [Attr.grid_cell], a
-    [Node.stack] page with no [~key] or a [~visible_child] naming no page, two stacks
-    under one [~name], a [stack_switcher] naming no stack, duplicate keys among siblings,
-    a [Node.window] anywhere but the root. None of those stops a handle here, so a suite
-    that is entirely headless can still certify a tree that raises the moment it is shown.
-    The escape from that is a live test, or running the app.
+    Three more structural rules are checked here as of the M2 fix wave, all of them from
+    pure vtree data and none of them needing a widget:
+
+    - {b duplicate keys among siblings}, through the same
+      [Bonsai_gtk_vtree.Reconcile.check_unique_keys] the patcher calls at mount, with the
+      container's path prefixed the same way;
+    - {b a [Node.window] below the root}, which the patcher refuses because a [GtkWindow]
+      is a toplevel that cannot be parented;
+    - {b the root's own kind}, against {!create}'s [?root_kind] — [`Window] by default,
+      mirroring [Bonsai_gtk.Expert.Driver.create], because [Bonsai_gtk.start] requires a
+      [Node.window] root and this is the mistake most likely to reach a running app: a
+      view function that lost its window in a refactor renders a complete and
+      correct-looking tree headlessly and breaks the driver permanently on frame 1. Pass
+      [~root_kind:`Not_window] for a component destined for [Bonsai_gtk.Expert.embed],
+      which refuses a window root for the mirror-image reason. Unlike the others this rule
+      is not a property of the tree at all -- it is a property of the entry point the tree
+      is destined for -- so it is remembered from the most recent {!create} rather than
+      carried on the handle, which has nowhere to put it. A test that interleaves two
+      handles with {i different} root kinds therefore checks the older one against the
+      newer one's rule; because the two rules are opposites rather than one being weaker,
+      the cost of that is a loud rejection of a legal tree and never a silent acceptance
+      of an illegal one.
+
+    What is still only checked at mount is listed in the gap table below, and the reason
+    is not that those rules need a widget — most of them do not — but that nobody has
+    written them yet. So a suite that is entirely headless can still certify a tree that
+    raises the moment it is shown; the escape from that is a live test, or running the
+    app.
 
     The second known gap is {i routing}. Every action here is delivered to one node, named
     by [Attr.test_id]; there is no widget hierarchy for an event to travel through. So a
@@ -398,5 +435,6 @@ val create
   :  here:[%call_pos]
   -> ?start_time:Time_ns.t
   -> ?optimize:bool
+  -> ?root_kind:[ `Window | `Not_window ]
   -> (local_ Bonsai.graph -> Node.t Bonsai.t)
   -> (Node.t, Action.t) Handle.t

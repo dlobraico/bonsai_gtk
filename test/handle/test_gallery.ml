@@ -677,6 +677,87 @@ let%expect_test "the gallery names every attr" =
   [%expect {| () |}]
 ;;
 
+(* Every event attr can be fired by some [Action].
+
+   The gap this closes is the one none of the other three sweeps can see. The attrs sweep
+   above is satisfied by an attr {i appearing} in the tree, and every handler sexps as
+   [<handler>], so for an attr with no action there is no headless evidence of any kind
+   that the right closure is behind the right name -- not the sweeps, not the goldens, not
+   the actions. Three attrs were in exactly that state for the whole of M2 ([On_revealed],
+   [On_position_changed], [On_visible_child_changed]) and nothing noticed.
+
+   The mapping below is hand-maintained, and that is the point: the
+   {i list of event names} is [Attr.Name.all] filtered by [Attr.Name.is_event], which the
+   compiler writes, so a new event attr fails here until someone either gives it an action
+   or exempts it with a reason. Naming the action per attr rather than counting them also
+   documents which action fires what, which the [Action.t] doc gives from the other side.
+
+   [Action.t] itself is not walked -- it has no [enumerate], and an action carries
+   arguments -- so this is a check on the attrs, not on the actions: an [Action] with no
+   attr would be a constructor nobody can dispatch, which the compiler catches at its own
+   [match]. *)
+let%expect_test "every event attr has an action that fires it" =
+  let action_for : Attr.Name.t -> string option = function
+    | On_clicked -> Some "Click"
+    | On_toggled -> Some "Toggle"
+    | On_changed -> Some "Set_text"
+    | On_activate -> Some "Activate"
+    | On_search_changed -> Some "Search_changed"
+    | On_value_changed -> Some "Set_value"
+    | On_expanded_changed -> Some "Set_expanded"
+    | On_revealed -> Some "Set_revealed"
+    | On_position_changed -> Some "Set_position"
+    | On_visible_child_changed -> Some "Set_visible_child"
+    | On_row_activated -> Some "Activate_row"
+    | On_selected_rows_changed -> Some "Set_selection"
+    | On_child_activated -> Some "Activate_child"
+    | On_selected_children_changed -> Some "Set_selection"
+    | On_page_changed -> Some "Set_page"
+    | On_selected_changed -> Some "Set_selected"
+    | On_day_selected -> Some "Select_day"
+    | On_editing_changed -> Some "Set_editing"
+    | On_click -> Some "Click_at"
+    | On_focus_enter -> Some "Focus_enter"
+    | On_focus_leave -> Some "Focus_leave"
+    | On_key_pressed -> Some "Key_press"
+    | On_key_released -> Some "Key_release"
+    (* Not event attrs; [is_event] filters them out before this is reached, and they are
+       spelled out rather than wildcarded so that a name added to [Attr.Name.t] is a
+       compile error here and its author has to say which half it is in. *)
+    | Margin_start
+    | Margin_end
+    | Margin_top
+    | Margin_bottom
+    | Halign
+    | Valign
+    | Hexpand
+    | Vexpand
+    | Sensitive
+    | Visible
+    | Tooltip
+    | Width_request
+    | Height_request
+    | Opacity
+    | Focusable
+    | Can_focus
+    | Widget_name
+    | Cursor_name
+    | Test_id
+    | Measure_overlay
+    | Grid_cell
+    | Page_title
+    | Row_selectable
+    | Row_activatable
+    | Tab_label -> None
+  in
+  let unfireable =
+    List.filter Attr.Name.all ~f:(fun name ->
+      Attr.Name.is_event name && Option.is_none (action_for name))
+  in
+  print_s [%sexp (unfireable : Attr.Name.t list)];
+  [%expect {| () |}]
+;;
+
 (* The half of the attr surface [Attr.Name.all] cannot reach.
 
    [Attr.name] answers [None] for two constructors, [Css_class] and [Many] -- but [Many]
