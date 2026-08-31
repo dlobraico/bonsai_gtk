@@ -1,0 +1,124 @@
+diff --git a/src/attr_apply.ml b/src/attr_apply.ml
+index bb43044..57bb8c7 100644
+--- a/src/attr_apply.ml
++++ b/src/attr_apply.ml
+@@ -96,7 +96,7 @@ let set (w : Widget.t) (attr : Attr.t) =
+   | Opacity f -> Widget.set_opacity w f
+   | Focusable b -> Widget.set_focusable w b
+   | Can_focus b -> Widget.set_can_focus w b
+-  | Widget_name s -> Widget.set_name w s
++  | Widget_name s -> Widget.set_name w (Some s)
+   | Cursor_name s -> Widget.set_cursor_from_name w (Some s)
+   (* [Test_id] is inert at runtime; the [On_*] attrs are handled by [Signals]. [Many] is
+      flattened away by [Attrs.of_list] and never reaches here.
+@@ -165,7 +165,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
+   | Opacity -> Widget.set_opacity w d.opacity
+   | Focusable -> Widget.set_focusable w d.focusable
+   | Can_focus -> Widget.set_can_focus w d.can_focus
+-  | Widget_name -> Widget.set_name w d.widget_name
++  | Widget_name -> Widget.set_name w (Some d.widget_name)
+   | Cursor_name -> Widget.set_cursor w d.cursor
+   | Test_id
+   | Measure_overlay
+diff --git a/src/widgets/w_password_entry.ml b/src/widgets/w_password_entry.ml
+index 7aa2a5c..6ae9cb5 100644
+--- a/src/widgets/w_password_entry.ml
++++ b/src/widgets/w_password_entry.ml
+@@ -11,10 +11,15 @@ let impl : Widget_impl.t =
+           let e = W.Password_entry.new_ () in
+           let w = (e :> Widget.t) in
+           Widget_impl.batch w (fun () ->
+-            (* Unlike [GtkEntry]'s and [GtkSearchEntry]'s, this setter is not nullable —
+-               hence the [""] on the update path below. As there, an absent placeholder is
+-               simply not written. *)
+-            Option.iter p.placeholder ~f:(W.Password_entry.set_placeholder_text e);
++            (* The setter is nullable as of the pin this repository now tracks, the same
++               as [GtkEntry]'s and [GtkSearchEntry]'s — but both paths here keep writing
++               [Some _], and the update path below keeps writing [Some ""]. Taking the
++               actual benefit is a separate, deliberate change, and it would have no
++               visible effect on this widget in any case: GTK normalises the NULL back to
++               [""] once the internal [GtkText] exists (measured on 4.22). As before, an
++               absent placeholder is simply not written. *)
++            Option.iter p.placeholder ~f:(fun t ->
++              W.Password_entry.set_placeholder_text e (Some t));
+             if not p.show_peek_icon then W.Password_entry.set_show_peek_icon e false;
+             if p.activates_default then W.Password_entry.set_activates_default e true;
+             ignore (W_entry.set_text_if_needed (W_entry.editable w) p.text : bool));
+@@ -30,7 +35,7 @@ let impl : Widget_impl.t =
+             then
+               W.Password_entry.set_placeholder_text
+                 e
+-                (Option.value new_.placeholder ~default:"");
++                (Some (Option.value new_.placeholder ~default:""));
+             if not (Bool.equal old.show_peek_icon new_.show_peek_icon)
+             then W.Password_entry.set_show_peek_icon e new_.show_peek_icon;
+             if not (Bool.equal old.activates_default new_.activates_default)
+diff --git a/src/widgets/w_stack.ml b/src/widgets/w_stack.ml
+index 0d03531..fe6b126 100644
+--- a/src/widgets/w_stack.ml
++++ b/src/widgets/w_stack.ml
+@@ -189,7 +189,9 @@ let impl : Widget_impl.t =
+               if not (Option.equal String.equal (page_title old) (page_title node))
+               then (
+                 let page = W.Stack.get_page (cast parent) child in
+-                W.Stack_page.set_title page (Option.value (page_title node) ~default:"")))
++                W.Stack_page.set_title
++                  page
++                  (Some (Option.value (page_title node) ~default:""))))
+         }
+   }
+ ;;
+diff --git a/test/live/expected_text.txt b/test/live/expected_text.txt
+index f2cfcae..9a67eb8 100644
+--- a/test/live/expected_text.txt
++++ b/test/live/expected_text.txt
+@@ -103,7 +103,7 @@ wrong differently: selected=0 (reports ((none/0"~selected:7 names no item: the l
+ wrong differently, five idle frames later: selected=0 (reports ())
+ an index into an empty list: selected=-1 (reports ((none/0"~selected:0 names no item: the list holds 0. GTK ignores a position outside its model, so nothing is selected -- and 0 will be selected on the frame the list grows to include it. If the index and the items come from different state, clamp the index where the view builds the node.")))
+ an index into an empty list, five idle frames later: selected=-1 (reports ())
+-a fresh GtkStringList holds 2 references (1 is correct; 2 is the stub's extra ref_sink, which nothing on a reachable path pays any more)
++a fresh GtkStringList holds 1 references (1 is correct; 2 would mean the pinned binding still ref_sinks a constructor that already transferred)
+ after 500 get_model wrappers and a full major: items=(a b c) selected=0
+ four items changes later: same model object throughout: true, references 4 -> 4, items=(a b c)
+ (GtkWindow (title (levels)) (css (background)) hidden
+diff --git a/test/live/live_text.ml b/test/live/live_text.ml
+index 40c5f7e..9541a2c 100644
+--- a/test/live/live_text.ml
++++ b/test/live/live_text.ml
+@@ -1025,24 +1025,25 @@ let () =
+    holds. That is the shape that was {i wrong} for [GtkListBox.get_selected_rows] in Task
+    6 and cost a segfault, so it is checked here rather than assumed.
+ 
+-   [String_list.new_] is a constructor -- transfer-full -- and its stub reference-sinks
+-   too, which is one ref too many: [GtkStringList] descends from [GObject] rather than
+-   [GInitiallyUnowned], so it is not floating and the sink is a plain extra reference that
+-   the finaliser does not balance. A fresh model therefore reads a reference count of 2
+-   where it should read 1. **Nothing in this library calls it on a reachable path any
+-   more** -- [create] goes through [new_from_strings] and items changes splice into the
++   [String_list.new_] is a constructor -- transfer-full -- and its stub used to
++   reference-sink too, which was one ref too many: [GtkStringList] descends from [GObject]
++   rather than [GInitiallyUnowned], so it is not floating and the sink was a plain extra
++   reference that the finaliser did not balance. A fresh model read a reference count of 2
++   where it should read 1. The fork fixed that for all 279 non-widget constructors, so the
++   number below is now 1; it is still measured here because it is the cheapest standing
++   check that the pinned binding has the fix, and because nothing else in this suite would
++   notice if a future pin lost it. **Nothing in this library calls [new_] on a reachable
++   path** -- [create] goes through [new_from_strings] and items changes splice into the
+    model that already exists, so the only caller left is [w_drop_down.ml]'s defensive
+-   fallback for a model this library did not install. The count is still measured here,
+-   because it is the evidence behind [docs/m1-backlog.md]'s generator entry and because
+-   the entry covers every non-widget [*_new] in the binding, not just this one. *)
++   fallback for a model this library did not install. *)
+ let () =
+   let scheduled = ref 0 in
+   let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+   let ctx = ctx_of scheduler ~scheduled in
+   let fresh = W.String_list.new_ (Some [| "x"; "y" |]) in
+   printf
+-    "a fresh GtkStringList holds %d references (1 is correct; 2 is the stub's extra \
+-     ref_sink, which nothing on a reachable path pays any more)\n"
++    "a fresh GtkStringList holds %d references (1 is correct; 2 would mean the pinned \
++     binding still ref_sinks a constructor that already transferred)\n"
+     (Gobject.get_ref_count fresh);
+   let live =
+     P.mount ctx ~path:"gc" ~is_root:true (picker ~items:[ "a"; "b"; "c" ] ~selected:0 ())

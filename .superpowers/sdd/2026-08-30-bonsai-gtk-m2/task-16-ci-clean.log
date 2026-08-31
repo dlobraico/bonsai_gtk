@@ -1,0 +1,59 @@
+START 2026-08-30T18:02:55-04:00
+== nix: ocgtk pin builds and passes its tests
+== format
+== build
+== generated opam files are committed
+== pure + headless tests
+== per-package builds, the way opam --with-test runs them
+== live tests (xvfb)
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+bonsai_gtk: exception in frame, stopping the driver: (Invalid_argument
+  "root/0/1: a Node.window may only be the root node, not a child of another node")
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+bench: 0.362 ms at sel=1, 0.396 ms at sel=200, ratio 1.10 (bound 5)
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+bench: 0.00021 ms at 16 chars, 0.00013 ms at 1 MB, ratio 0.62 (bound 5)
+bench: 0.00015 ms parked on a refused 1 MB write, ratio 1.15 (bound 5)
+bench: 0.00015 ms at 4 items, 0.00013 ms at 1000 items, ratio 0.87 (bound 5)
+bench: 0.00012 ms parked on a refused selection, ratio 0.96 (bound 5)
+live_text: the four Gtk-CRITICALs that follow are expected -- they are the naive write order below being refused by GTK, which is what this block measures
+
+(process:825060): Gtk-CRITICAL **: 18:03:35.491: gtk_calendar_set_month: assertion 'date != NULL' failed
+
+(process:825060): Gtk-CRITICAL **: 18:03:35.491: gtk_calendar_set_year: assertion 'date != NULL' failed
+
+(process:825060): Gtk-CRITICAL **: 18:03:35.491: gtk_calendar_set_month: assertion 'date != NULL' failed
+
+(process:825060): Gtk-CRITICAL **: 18:03:35.492: gtk_calendar_set_month: assertion 'date != NULL' failed
+bench: calendar 0.00016 ms settled, 0.00012 ms parked on a refused date, ratio 0.74
+bench: editable label 0.00020 ms at 16 chars, 0.00015 ms parked on a refused write, 1.22975 ms at 100 000 chars (the compare is O(len), as every entry's already is)
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+live_embed: the bonsai_gtk frame exception that follows is expected
+bonsai_gtk: exception in frame, stopping the driver: (Invalid_argument
+  "root/1: a Node.window may only be the root node, not a child of another node")
+bench: 0.0103 ms embedded, 0.0115 ms windowed, ratio 0.90 (bound 1.2)
+== example smoke
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+all green
+CI_EXIT=0
+ELAPSED_SECONDS=84
+END 2026-08-30T18:04:19-04:00
