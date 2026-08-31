@@ -77,17 +77,25 @@ let page_names (s : W.Stack.t) =
    page this frame renders is already added and an absent name is absent from the rendered
    tree. The patcher prefixes the stack's node path.
 
-   What this does {i not} catch, and cannot from here: a page that exists but carries
-   [Attr.visible false]. [gtk_stack_set_visible_child_full] ends with
+   The one refusal GTK makes silently -- a page that exists but carries
+   [Attr.visible false] -- is caught by read-back and reported {i once}.
+   [gtk_stack_set_visible_child_full] ends with
    [if (gtk_widget_get_visible (child_info->widget)) set_visible_child (...)] --
    gtkstack.c:2308-2310, no [else] and no warning -- so the lookup below succeeds, the
-   setter runs, nothing moves, [get_visible_child_name] keeps answering with the page that
-   really is showing, and this writes again on every frame forever with nothing on stderr.
-   It is the twin of [w_notebook.ml]'s hidden-[~current_page] divergence; both are
-   documented on their constructors and both are on the backlog for the
-   [Patcher.ctx.report] hook. Not closed here because saying it {i once} rather than every
-   frame needs the refusal memo the four reporting widgets have, which is what that
-   backlog item is for. *)
+   setter runs, nothing moves, and [get_visible_child_name] keeps answering with the page
+   that really is showing. The fixup still {i tries} on every frame, deliberately: the
+   page may become visible, and the frame on which it does is the frame the model's choice
+   finally lands (and [landed] clears the memo, so a page re-hidden later is a new
+   report). What the memo stops is the noise: the divergence used to be silent forever,
+   and saying it per frame would be the other failure. The memo is [Refusal]'s machinery,
+   keyed on the offending page name -- a model that parks on one hidden page reports once;
+   one that moves to a different hidden page is a new datum. The twin lives in
+   [w_notebook.ml], same shape, and the patcher polls [take_report] right after the fixup,
+   which is the one place holding both the widget and the node's path. *)
+module Select_memo = Refusal.Make (String) (Refusal.No_extra)
+
+let take_report = Select_memo.take_report
+
 let select (w : Widget.t) ~visible_child =
   let s : W.Stack.t = cast w in
   match W.Stack.get_child_by_name s visible_child with
@@ -108,12 +116,28 @@ let select (w : Widget.t) ~visible_child =
          (String.concat ~sep:", " names)
          ())
   | Some _ ->
-    if not
-         (Option.equal
-            String.equal
-            (W.Stack.get_visible_child_name s)
-            (Some visible_child))
-    then W.Stack.set_visible_child_name s visible_child
+    let showing () =
+      Option.equal String.equal (W.Stack.get_visible_child_name s) (Some visible_child)
+    in
+    let st = Select_memo.state w in
+    if showing ()
+    then Select_memo.landed st
+    else (
+      W.Stack.set_visible_child_name s visible_child;
+      (* Read back rather than pre-checked: "did GTK take it" is the question, and the
+         visibility guard above is GTK's only refusal path, so a write that did not land
+         is a hidden page. *)
+      if showing ()
+      then Select_memo.landed st
+      else if not (Select_memo.already_refused st visible_child)
+      then
+        Select_memo.refuse
+          st
+          visible_child
+          ~reason:
+            (sprintf
+               "~visible_child names the hidden page %S; GTK will not switch to it"
+               visible_child))
 ;;
 
 (* ocgtk generates no [on_notify_visible_child_name]; the detailed name goes through the

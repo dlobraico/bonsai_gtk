@@ -812,21 +812,21 @@ val grid
     selects it.
 
     {b A page carrying [Attr.visible false] cannot be shown}, which is the other way to
-    make [~visible_child] unable to land — and unlike a name that resolves to nothing,
-    this one is silent. [gtk_stack_set_visible_child_full] ends with
+    make [~visible_child] unable to land — and in GTK's own terms it is silent.
+    [gtk_stack_set_visible_child_full] ends with
     [if (gtk_widget_get_visible (child_info->widget)) set_visible_child (...)]: no [else],
-    no warning. So the name resolves and nothing is raised, the write is made and nothing
-    happens, [get_visible_child_name] goes on answering with the page that really is
-    showing, the comparison is unequal again next frame, and the write is repeated forever
-    with no diagnostic. The stack shows the previous page while the model believes it
-    navigated. A wizard step or a detail pane hidden behind [Attr.visible] while it loads,
-    and named as [~visible_child] on the same frame, is the shape that reaches it: make
-    the page visible on the frame that selects it.
+    no warning. So the name resolves, the write is made and nothing happens, and the stack
+    shows the previous page while the model believes it navigated. The runtime
+    {b reports the divergence once} through the same channel {!text_view} and {!drop_down}
+    use ("names the hidden page …; GTK will not switch to it"), keyed on the offending
+    name — and keeps trying on every frame, so the frame that makes the page visible is
+    the frame the selection finally lands (and a later re-hide is a new report). A wizard
+    step or a detail pane hidden behind [Attr.visible] while it loads, and named as
+    [~visible_child] on the same frame, is the shape that reaches it: make the page
+    visible on the frame that selects it.
 
-    {!notebook}'s [~current_page] has the identical divergence for a different GTK reason
-    and says so. Both are on the backlog for the [Patcher.ctx.report] hook {!text_view}
-    and {!drop_down} already use: a write that can never land ought to say so once rather
-    than be repeated in silence.
+    {!notebook}'s [~current_page] has the identical divergence for a different GTK reason,
+    the identical report, and says so.
 
     [~transition] ([None_]) and [~transition_duration] (200 ms, GTK's own) describe the
     animation between pages; a test that dumps the tree straight after a selection change
@@ -1069,9 +1069,11 @@ val flow_box
     A page carrying [Attr.visible false] is the other way to make [~current_page] unable
     to land: {b GTK refuses to switch to a page whose child is hidden} (measured -- it
     emits [switch-page] and then leaves [get_current_page] where it was). Nothing is
-    clamped here, so the comparison differs on every frame and the write is repeated on
-    every frame; it is not a loop and not an error, but it is a model to bring into line
-    the way a [~selected] that its {!list_box}'s mode cannot hold is.
+    clamped, and the runtime {b reports the divergence once} ("names the hidden page …;
+    GTK will not switch to it", {!stack}'s report over the twin case) while still trying
+    on every frame, so the frame that shows the page is the frame the choice lands. It is
+    not a loop and not an error, but it is a model to bring into line the way a
+    [~selected] that its {!list_box}'s mode cannot hold is.
 
     [~scrollable] ([false]), [~show_tabs] ([true]), [~show_border] ([true]) and [~tab_pos]
     ([Top]) are GTK's own, and unlike the other keyed containers' none of them is a value

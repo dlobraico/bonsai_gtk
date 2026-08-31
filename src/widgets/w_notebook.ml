@@ -195,12 +195,36 @@ let current_key (nb : W.Notebook.t) =
    leaves [get_current_page] where it was (measured) -- so the comparison stays unequal
    and the write is repeated on every frame. Nothing is clamped, which is the same bargain
    [W_list_box.apply_selection] strikes with a mode that cannot hold the selection it is
-   given. Both are documented on their constructors. *)
+   given. Both are documented on their constructors.
+
+   That divergence is {i reported once} rather than left silent or said per frame:
+   [w_stack.ml]'s [Select_memo] shape exactly, keyed on the offending page key, cleared by
+   the write that finally lands (the fixup still tries on every frame -- the page may
+   become visible). The patcher polls [take_report] right after the fixup. *)
+module Select_memo = Refusal.Make (String) (Refusal.No_extra)
+
+let take_report = Select_memo.take_report
+
 let select (w : Widget.t) ~current_page =
   let nb : W.Notebook.t = cast w in
   match page_index_by_key nb current_page with
   | Some index ->
-    if W.Notebook.get_current_page nb <> index then W.Notebook.set_current_page nb index
+    let st = Select_memo.state w in
+    if W.Notebook.get_current_page nb = index
+    then Select_memo.landed st
+    else (
+      W.Notebook.set_current_page nb index;
+      if W.Notebook.get_current_page nb = index
+      then Select_memo.landed st
+      else if not (Select_memo.already_refused st current_page)
+      then
+        Select_memo.refuse
+          st
+          current_page
+          ~reason:
+            (sprintf
+               "~current_page names the hidden page %S; GTK will not switch to it"
+               current_page))
   | None ->
     (match page_key_list nb with
      | [] -> ()

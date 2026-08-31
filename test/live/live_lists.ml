@@ -1892,3 +1892,167 @@ let () =
     ~container:(fun ~selected -> Node.list_box ~selection_mode:Multiple ~selected cards)
     ~selected_keys:(fun live -> W_list_box.selected_keys (list_box live))
 ;;
+
+(* --------------------------------------------------------------------------- Task 3 *)
+
+(* The hidden-page divergence, reported once (M3 Task 3 step 1). A [~visible_child] naming
+   a page that carries [Attr.visible false] resolves, writes, and moves nothing -- GTK's
+   own silent refusal -- and used to repeat that in silence on every frame. Now the select
+   fixup still tries on every frame (the frame that shows the page is the frame the choice
+   lands) but reports the divergence once, keyed on the offending name: parked frames add
+   nothing, the landing clears the memo, and a later re-hide is a new report. The golden
+   pins the count at each stage; the parked-frame cost goes to stderr for the task report. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let reports = ref 0 in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path msg ->
+        incr reports;
+        printf "report %s: %s\n" node_path msg)
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let view ~hidden ~target =
+    Node.window
+      ~title:"hp"
+      (Node.stack
+         ~name:"hp"
+         ~visible_child:target
+         [ Node.label ~key:"a" ~attrs:[ Attr.page_title "A" ] "a"
+         ; Node.label
+             ~key:"b"
+             ~attrs:
+               (Attr.page_title "B" :: (if hidden then [ Attr.visible false ] else []))
+             "b"
+         ])
+  in
+  let stack_of (live : P.live) =
+    match live.children with
+    | Single (Some st) -> st.P.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let showing live =
+    Option.value (W.Stack.get_visible_child_name (cast (stack_of live))) ~default:"<none>"
+  in
+  let patch live v =
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"hp" ~is_root:true live v)
+    in
+    P.run_fixups ctx;
+    live
+  in
+  let idle live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"hp" live;
+      P.run_fixups ctx)
+  in
+  let live = P.mount ctx ~path:"hp" ~is_root:true (view ~hidden:true ~target:"b") in
+  P.run_fixups ctx;
+  printf "stack shows %s after the hidden select (reports=%d)\n" (showing live) !reports;
+  for _ = 1 to 5 do
+    idle live
+  done;
+  printf "stack reports after 5 parked frames: %d\n" !reports;
+  (* The frame that makes the page visible is the frame the choice lands. *)
+  let live = patch live (view ~hidden:false ~target:"b") in
+  printf "stack shows %s once the page is visible (reports=%d)\n" (showing live) !reports;
+  (* The landing cleared the memo, so re-hiding the selected page is a new report --
+     hiding [b] makes GTK fall back to a visible page, and the fixup's re-select of the
+     now-hidden [b] is refused again. *)
+  let live = patch live (view ~hidden:true ~target:"b") in
+  printf "stack shows %s after re-hiding (reports=%d)\n" (showing live) !reports;
+  (* Parked-frame cost, for the task report: stderr only, no golden line. *)
+  let frames = 200 in
+  let time f =
+    let start = Time_ns.now () in
+    for _ = 1 to frames do
+      f ()
+    done;
+    Time_ns.Span.to_ms (Time_ns.diff (Time_ns.now ()) start) /. Int.to_float frames
+  in
+  let parked = time (fun () -> idle live) in
+  let live = patch live (view ~hidden:false ~target:"b") in
+  let settled = time (fun () -> idle live) in
+  eprintf
+    "bench: stack %.5f ms per idle frame parked on a hidden page, %.5f ms settled\n%!"
+    parked
+    settled;
+  printf "stack reports at the end: %d\n" !reports;
+  P.destroy ctx live;
+  printf "stack hidden-page memo done\n"
+;;
+
+(* The notebook's twin, same shape over [~current_page] and [get_current_page]. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let reports = ref 0 in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path msg ->
+        incr reports;
+        printf "report %s: %s\n" node_path msg)
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let view ~hidden ~target =
+    Node.window
+      ~title:"hpn"
+      (Node.notebook
+         ~current_page:target
+         [ Node.label ~key:"a" ~attrs:[ Attr.tab_label "A" ] "a"
+         ; Node.label
+             ~key:"b"
+             ~attrs:(Attr.tab_label "B" :: (if hidden then [ Attr.visible false ] else []))
+             "b"
+         ])
+  in
+  let notebook_of (live : P.live) =
+    match live.children with
+    | Single (Some nb) -> nb.P.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  let page live = W.Notebook.get_current_page (cast (notebook_of live)) in
+  let patch live v =
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"hpn" ~is_root:true live v)
+    in
+    P.run_fixups ctx;
+    live
+  in
+  let idle live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"hpn" live;
+      P.run_fixups ctx)
+  in
+  let live = P.mount ctx ~path:"hpn" ~is_root:true (view ~hidden:true ~target:"b") in
+  P.run_fixups ctx;
+  printf "notebook on page %d after the hidden select (reports=%d)\n" (page live) !reports;
+  for _ = 1 to 5 do
+    idle live
+  done;
+  printf "notebook reports after 5 parked frames: %d\n" !reports;
+  let live = patch live (view ~hidden:false ~target:"b") in
+  printf
+    "notebook on page %d once the page is visible (reports=%d)\n"
+    (page live)
+    !reports;
+  let live = patch live (view ~hidden:true ~target:"b") in
+  printf "notebook on page %d after re-hiding (reports=%d)\n" (page live) !reports;
+  P.destroy ctx live;
+  printf "notebook hidden-page memo done\n"
+;;

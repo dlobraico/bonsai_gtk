@@ -302,3 +302,18 @@ bench: flow box, 200 idle frames at 1 and at 200 selected, cost ratio under 5: t
 bench: list box n=1000, selected 1 of 1
 bench: list box n=1000, selected 200 of 200
 bench: list box, 200 idle frames at 1 and at 200 selected, cost ratio under 5: true
+report hp/0: ~visible_child names the hidden page "b"; GTK will not switch to it
+stack shows a after the hidden select (reports=1)
+stack reports after 5 parked frames: 1
+stack shows b once the page is visible (reports=1)
+report hp/0: ~visible_child names the hidden page "b"; GTK will not switch to it
+stack shows a after re-hiding (reports=2)
+stack reports at the end: 2
+stack hidden-page memo done
+report hpn/0: ~current_page names the hidden page "b"; GTK will not switch to it
+notebook on page 0 after the hidden select (reports=1)
+notebook reports after 5 parked frames: 1
+notebook on page 1 once the page is visible (reports=1)
+report hpn/0: ~current_page names the hidden page "b"; GTK will not switch to it
+notebook on page 0 after re-hiding (reports=2)
+notebook hidden-page memo done

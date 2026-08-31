@@ -303,7 +303,13 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
        the path is prefixed here -- [select] knows no more about where it is than any
        other container op does (spec §11). *)
     Queue.enqueue ctx.fixups (fun () ->
-      Patcher_checks.child_op ~path (fun () -> W_stack.select widget ~visible_child))
+      Patcher_checks.child_op ~path (fun () -> W_stack.select widget ~visible_child);
+      (* After the attempt, because the report the attempt may have minted -- a
+         [~visible_child] naming a hidden page, which GTK declines silently and which
+         [select] therefore says once -- is this pass's news. Same shape as the
+         [take_report] arms above, sequenced inside the fixup because the refusal is
+         decided there rather than in [reassert]. *)
+      Option.iter (W_stack.take_report widget) ~f:(ctx.report ~node_path:path))
   | Stack_ref (which, name) ->
     (* Re-enqueued on every pass rather than only when the name changed: it is one
        hashtable lookup and one setter per switcher per frame, and it is the only thing
@@ -333,7 +339,9 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
        -- [select] knows no more about where it is than any other container op does (spec
        §11). *)
     Queue.enqueue ctx.fixups (fun () ->
-      Patcher_checks.child_op ~path (fun () -> W_notebook.select widget ~current_page))
+      Patcher_checks.child_op ~path (fun () -> W_notebook.select widget ~current_page);
+      (* The stack arm's polling, over the twin divergence: a hidden [~current_page]. *)
+      Option.iter (W_notebook.take_report widget) ~f:(ctx.report ~node_path:path))
 ;;
 
 (* The immediate half of realizing a node -- a window is presented, a stack registers its
