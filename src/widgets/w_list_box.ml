@@ -20,6 +20,10 @@ open Gtk_import
    {i node} still mount two distinct child widgets. *)
 let row_keys = Child_keys.create ()
 
+(* The table's live-binding count, for tests: [live_lists.ml]'s Child_keys cases pin that
+   a removal and a teardown both drop their entries (see [Child_keys.length]). *)
+let tracked_keys () = Child_keys.length row_keys
+
 let row_key (node : Node.t) =
   match node.key with
   | Some key -> key

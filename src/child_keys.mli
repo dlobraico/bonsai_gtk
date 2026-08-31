@@ -63,3 +63,12 @@ val find : t -> Widget.t -> Key.t option
     [fire] rather than from its [connect]: [Signals.dispatch]'s trampolines are what stand
     between a raise and GTK's C frame, and [connect]'s closure runs outside them. *)
 val find_exn : t -> Widget.t -> what:string -> Key.t
+
+(** How many live bindings the table holds, for tests. Dead-but-unswept entries are
+    cleaned first, so after a [Gc.full_major] the answer is exact: mounting N keyed
+    children adds N, a removal ([Widget_impl.list_ops.remove]) subtracts eagerly, and a
+    torn-down container's [forget_*] hook subtracts the rest — which is precisely the hook
+    a mutation like [| Flow_box _ -> ()] in [Patcher.destroy]'s release would break, and
+    until this existed broke with every golden byte-identical (docs/m2-backlog.md:158-166,
+    task-7 review M4). *)
+val length : t -> int

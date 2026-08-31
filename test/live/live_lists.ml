@@ -2133,3 +2133,61 @@ let () =
     ~selected_keys:(fun live -> W_flow_box.selected_keys (flow_box live));
   printf "selected dedup done\n"
 ;;
+
+(* [Child_keys.length], pinned per container (M3 Task 3 step 3). Three claims, and the
+   third is the one nothing could see before: mounting N keyed children registers N keys;
+   a patch that removes k drops k eagerly (the [list_ops.remove] path); and tearing the
+   container down drops the rest through the [forget_*] hook -- the path task-7 review M4
+   proved unpinned by mutation ([| Flow_box _ -> () ] in the patcher's release left every
+   golden byte-identical). The [live] record is still reachable when the post-destroy
+   count is read, so the entries cannot have been collected out from under the assertion:
+   a missing [forget_*] call now reads N-k instead of 0. Counts are deltas against the
+   module table's baseline, because the tables are shared per kind and earlier blocks in
+   this file have run. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let keyed k = Node.label ~key:k k in
+  let tab k = Node.label ~key:k ~attrs:[ Attr.tab_label k ] k in
+  let run ~name ~tracked ~container =
+    let view keys = Node.window ~title:"keys" (container keys) in
+    let base = tracked () in
+    let count () = tracked () - base in
+    let live =
+      P.mount ctx ~path:"keys" ~is_root:true (view [ "a"; "b"; "c"; "d"; "e" ])
+    in
+    P.run_fixups ctx;
+    printf "%s tracks %d keys after mounting 5\n" name (count ());
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:"keys" ~is_root:true live (view [ "a"; "c"; "e" ]))
+    in
+    P.run_fixups ctx;
+    Gc.full_major ();
+    printf "%s tracks %d keys after removing 2\n" name (count ());
+    P.destroy ctx live;
+    Gc.full_major ();
+    printf "%s tracks %d keys after the teardown\n" name (count ());
+    (* Reachability, not decoration: reading [live] {i after} the count is what keeps the
+       wrappers alive through the [Gc.full_major], so the zero above is [forget_*]'s doing
+       and not the ephemeron's. *)
+    ignore (Sys.opaque_identity live : P.live)
+  in
+  run ~name:"list box" ~tracked:W_list_box.tracked_keys ~container:(fun keys ->
+    Node.list_box ~selected:[] (List.map keys ~f:keyed));
+  run ~name:"flow box" ~tracked:W_flow_box.tracked_keys ~container:(fun keys ->
+    Node.flow_box ~selected:[] (List.map keys ~f:keyed));
+  run ~name:"notebook" ~tracked:W_notebook.tracked_keys ~container:(fun keys ->
+    Node.notebook ~current_page:(List.hd_exn keys) (List.map keys ~f:tab));
+  printf "child_keys length done\n"
+;;

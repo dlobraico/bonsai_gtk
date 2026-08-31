@@ -55,6 +55,10 @@ let tab_position : Tab_position.t -> Gtk_enums.positiontype = function
    where the invariant is satisfied by construction rather than by care. *)
 let page_keys = Child_keys.create ()
 
+(* The table's live-binding count, for tests: [live_lists.ml]'s Child_keys cases pin that
+   a removal and a teardown both drop their entries (see [Child_keys.length]). *)
+let tracked_keys () = Child_keys.length page_keys
+
 let page_key (node : Node.t) =
   match node.key with
   | Some key -> key

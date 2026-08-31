@@ -35,6 +35,10 @@ open Gtk_import
    GTK keeps the children perfectly alive, and the lookups simply stop answering. *)
 let child_keys = Child_keys.create ()
 
+(* The table's live-binding count, for tests: [live_lists.ml]'s Child_keys cases pin that
+   a removal and a teardown both drop their entries (see [Child_keys.length]). *)
+let tracked_keys () = Child_keys.length child_keys
+
 let child_key (node : Node.t) =
   match node.key with
   | Some key -> key

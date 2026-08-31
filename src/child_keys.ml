@@ -31,3 +31,11 @@ let find_exn t widget ~what =
       what
       ()
 ;;
+
+(* [clean] first, so the answer counts {i live} bindings deterministically: an ephemeron
+   table's [length] includes bindings whose key has died but not yet been swept, and
+   "after the next GC, eventually" is not a number a test can assert on. *)
+let length t =
+  Table.clean t;
+  Table.length t
+;;

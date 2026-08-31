@@ -334,3 +334,13 @@ flow box with a clean list: selected=(a) reports=2
 report dup/0: ~selected lists "a" more than once; a selection holds each key at most once, and the duplicates were ignored
 flow box with the duplicate back: selected=(a) reports=3
 selected dedup done
+list box tracks 5 keys after mounting 5
+list box tracks 3 keys after removing 2
+list box tracks 0 keys after the teardown
+flow box tracks 5 keys after mounting 5
+flow box tracks 3 keys after removing 2
+flow box tracks 0 keys after the teardown
+notebook tracks 5 keys after mounting 5
+notebook tracks 3 keys after removing 2
+notebook tracks 0 keys after the teardown
+child_keys length done
