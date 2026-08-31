@@ -114,6 +114,7 @@ let%expect_test "every event attr has an action that fires it" =
     | On_click -> Some "Click_at"
     | On_focus_enter -> Some "Focus_enter"
     | On_focus_leave -> Some "Focus_leave"
+    | On_contains_focus_changed -> Some "Focus_contains"
     | On_key_pressed -> Some "Key_press"
     | On_key_released -> Some "Key_release"
     (* Not event attrs; [is_event] filters them out before this is reached, and they are

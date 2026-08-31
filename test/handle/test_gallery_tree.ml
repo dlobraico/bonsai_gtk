@@ -316,6 +316,7 @@ let gallery_tree ~n ~set_n =
                          ; Attr.focusable true
                          ; Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
                          ; Attr.on_focus_leave (fun () -> Ui_effect.Ignore)
+                         ; Attr.on_contains_focus_changed (fun _ -> Ui_effect.Ignore)
                          ]
                        "focus"
                    ]

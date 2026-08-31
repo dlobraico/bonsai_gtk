@@ -275,7 +275,9 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                         ((kind (Label ((text focus))))
                          (attrs
                           ((Focusable true) (Test_id focus)
-                           (On_focus_enter <handler>) (On_focus_leave <handler>)))
+                           (On_focus_enter (phase Bubble) (handler <handler>))
+                           (On_focus_leave (phase Bubble) (handler <handler>))
+                           (On_contains_focus_changed <handler>)))
                          (children No_children))))))))))))))))))))))
     |}]
 ;;

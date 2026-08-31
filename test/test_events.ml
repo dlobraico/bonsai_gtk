@@ -184,7 +184,8 @@ let%expect_test "is_event over every name" =
       On_visible_child_changed On_row_activated On_selected_rows_changed
       On_child_activated On_selected_children_changed On_page_changed
       On_selected_changed On_day_selected On_editing_changed On_click
-      On_focus_enter On_focus_leave On_key_pressed On_key_released))
+      On_focus_enter On_focus_leave On_contains_focus_changed On_key_pressed
+      On_key_released))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect
@@ -237,7 +238,11 @@ let%expect_test "the table and [is_event] cover the same names" =
 let%expect_test "every controller attr is supported on every kind" =
   let controller_attrs = List.filter Attr.Name.all ~f:Events.is_controller_attr in
   print_s [%sexp (controller_attrs : Attr.Name.t list)];
-  [%expect {| (On_click On_focus_enter On_focus_leave On_key_pressed On_key_released) |}];
+  [%expect
+    {|
+    (On_click On_focus_enter On_focus_leave On_contains_focus_changed
+     On_key_pressed On_key_released)
+    |}];
   let refused =
     List.concat_map all_kinds ~f:(fun kind ->
       List.filter_map controller_attrs ~f:(fun name ->

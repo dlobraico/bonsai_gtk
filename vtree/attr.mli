@@ -58,6 +58,7 @@ module Name : sig
     | On_click
     | On_focus_enter
     | On_focus_leave
+    | On_contains_focus_changed
     | On_key_pressed
     | On_key_released
   [@@deriving sexp_of, compare, equal, enumerate]
@@ -159,8 +160,15 @@ module Private : sig
         ; phase : Phase.t
         ; handler : Click_response.handler
         }
-    | On_focus_enter of unit Handler.t
-    | On_focus_leave of unit Handler.t
+    | On_focus_enter of
+        { phase : Phase.t
+        ; handler : unit Handler.t
+        }
+    | On_focus_leave of
+        { phase : Phase.t
+        ; handler : unit Handler.t
+        }
+    | On_contains_focus_changed of bool Handler.t
     | On_key_pressed of
         { phase : Phase.t
         ; handler : Key_response.handler
@@ -650,14 +658,34 @@ val on_click : ?button:int -> ?phase:Phase.t -> Click_response.handler -> t
     useful sense for a composite widget like a [GtkSearchEntry], whose own [has_focus] is
     always false because its inner [GtkText] holds the focus.
 
-    A [GtkEventControllerFocus], which this attr shares with {!on_focus_leave}: a widget
-    carrying either pays for one controller, and it lives exactly as long as the last of
-    the two attrs does. Like {!on_click}, legal on any node. *)
-val on_focus_enter : unit Handler.t -> t
+    A [GtkEventControllerFocus], which this attr shares with {!on_focus_leave} and
+    {!on_contains_focus_changed}: a widget carrying any of the three pays for one
+    controller, and it lives exactly as long as the last of the attrs does. Like
+    {!on_click}, legal on any node.
+
+    [phase] defaults to {!Phase.Bubble}, GTK's own, exactly as {!on_click}'s and
+    {!on_key_pressed}'s do; the attrs of one family that carry a phase share one
+    controller and so one phase, and asking for two different ones is [Invalid_argument]
+    on {!on_key_pressed}'s terms ([Events.family_phase_rejection] -- at mount, at patch,
+    and headlessly from [Bonsai_gtk_test]). *)
+val on_focus_enter : ?phase:Phase.t -> unit Handler.t -> t
 
 (** Fires when focus leaves this widget and all of its children. The other half of
-    {!on_focus_enter}, on the same controller and the same terms. *)
-val on_focus_leave : unit Handler.t -> t
+    {!on_focus_enter}, on the same controller and the same terms, [?phase] included. *)
+val on_focus_leave : ?phase:Phase.t -> unit Handler.t -> t
+
+(** The [contains_focus] {i query}, as an event: fires with the focus controller's
+    [contains-focus] property each time it flips, so "is the focus anywhere inside this
+    subtree" is a bit the model can own without deriving it from enter/leave pairs. The
+    composite-widget sense is the same as {!on_focus_enter}'s -- an entry's inner
+    [GtkText] taking the focus counts as inside.
+
+    Rides on [notify::contains-focus] of the same shared Focus-family controller, so a
+    widget carrying all three focus attrs still pays for one controller. Like every
+    [notify::], it fires for changes the library's own writes provoke as well as the
+    user's; the reentrancy guard drops the former. It carries no [?phase]: a property
+    notification fires in no propagation phase at all. *)
+val on_contains_focus_changed : (bool -> unit Ui_effect.t) -> t
 
 (** A [GtkEventControllerKey] on this widget.
 

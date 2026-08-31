@@ -108,7 +108,7 @@ end
 
 let controller_family : Attr.Name.t -> Family.t option = function
   | On_click -> Some Click
-  | On_focus_enter | On_focus_leave -> Some Focus
+  | On_focus_enter | On_focus_leave | On_contains_focus_changed -> Some Focus
   | On_key_pressed | On_key_released -> Some Key
   | Margin_start
   | Margin_end
@@ -155,53 +155,6 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | Tab_label -> None
 ;;
 
-(* One [GtkEventControllerKey] serves both key attrs, so there is exactly one propagation
-   phase to write and two places that can ask for one. Two attrs asking for different
-   phases is a mistake with no good resolution -- picking either silently gives one of
-   them behaviour its author did not ask for -- so it is a rejection, like every other
-   structural mistake (spec §11).
-
-   It lives here rather than in [Controllers] for the reason [for_kind] and
-   [Placement.reader] do: the runtime is not the only thing that has to refuse this tree.
-   [Bonsai_gtk_test] refuses it too, from this same function, so a headless suite cannot
-   certify a view that raises the moment it is shown -- which is the whole point of
-   putting these tables in [vtree]. Both callers render {!key_phase_rejection}'s string,
-   so the two messages are identical outright rather than by convention. *)
-let key_phases attrs =
-  ( (match (Attrs.find attrs On_key_pressed :> Attr.Private.t option) with
-     | Some (On_key_pressed { phase; _ }) -> Some phase
-     | Some _ | None -> None)
-  , match (Attrs.find attrs On_key_released :> Attr.Private.t option) with
-    | Some (On_key_released { phase; _ }) -> Some phase
-    | Some _ | None -> None )
-;;
-
-let key_phase attrs =
-  match key_phases attrs with
-  | Some p, _ -> Some p
-  | None, r -> r
-;;
-
-(* Plain [sprintf] over a pre-rendered name rather than
-   [!"...%{sexp: Phase.t}..."]: ocamlformat rewrites a [\]-continued ppx_custom_printf
-   literal by joining the lines and keeping their indentation, so the message comes out
-   with a run of spaces down the middle of it. [Placement.rejection] is plain [sprintf]
-   for the same reason. *)
-let phase_name phase = Sexp.to_string (Phase.sexp_of_t phase)
-
-let key_phase_rejection ~path attrs =
-  match key_phases attrs with
-  | Some pressed, Some released when not (Phase.equal pressed released) ->
-    Some
-      (sprintf
-         "%s: Attr.on_key_pressed asks for %s and Attr.on_key_released for %s, but they \
-          share one GtkEventControllerKey and so one propagation phase"
-         path
-         (phase_name pressed)
-         (phase_name released))
-  | (Some _ | None), (Some _ | None) -> None
-;;
-
 (* The controller attrs are legal on every kind: they are not any impl's signal, they are
    a [GtkEventController] the runtime attaches to whatever widget carries the attr. So
    [is_supported] short-circuits on them rather than consulting [for_kind], and no impl
@@ -216,6 +169,79 @@ let family_attrs family =
     match controller_family name with
     | Some f -> Family.equal f family
     | None -> false)
+;;
+
+(* One controller per family serves every attr of that family, so there is exactly one
+   propagation phase to write and up to two places that can ask for one. Two attrs asking
+   for different phases is a mistake with no good resolution -- picking either silently
+   gives one of them behaviour its author did not ask for -- so it is a rejection, like
+   every other structural mistake (spec §11). Not every family attr carries a phase
+   ([On_contains_focus_changed] is a [notify::], which fires in no phase at all), which is
+   why this walks the attrs that do rather than the family's whole list.
+
+   It lives here rather than in [Controllers] for the reason [for_kind] and
+   [Placement.reader] do: the runtime is not the only thing that has to refuse this tree.
+   [Bonsai_gtk_test] refuses it too, from this same function, so a headless suite cannot
+   certify a view that raises the moment it is shown -- which is the whole point of
+   putting these tables in [vtree]. Both callers render {!family_phase_rejection}'s
+   string, so the two messages are identical outright rather than by convention. *)
+let attr_phase (attr : Attr.t) =
+  match (attr :> Attr.Private.t) with
+  | On_click { phase; _ }
+  | On_focus_enter { phase; _ }
+  | On_focus_leave { phase; _ }
+  | On_key_pressed { phase; _ }
+  | On_key_released { phase; _ } -> Some phase
+  | _ -> None
+;;
+
+(* The phased attrs of [family] that are present, in [Attr.Name] order -- which is what
+   makes "the first two that disagree" a stable answer. *)
+let family_phases family attrs =
+  List.filter_map (family_attrs family) ~f:(fun name ->
+    match Attrs.find attrs name with
+    | None -> None
+    | Some attr -> Option.map (attr_phase attr) ~f:(fun phase -> name, phase))
+;;
+
+let family_phase family attrs =
+  match family_phases family attrs with
+  | [] -> None
+  | (_, phase) :: _ -> Some phase
+;;
+
+(* Plain [sprintf] over pre-rendered names rather than
+   [!"...%{sexp: Phase.t}..."]: ocamlformat rewrites a [\]-continued ppx_custom_printf
+   literal by joining the lines and keeping their indentation, so the message comes out
+   with a run of spaces down the middle of it. [Placement.rejection] is plain [sprintf]
+   for the same reason. *)
+let phase_name phase = Sexp.to_string (Phase.sexp_of_t phase)
+
+(* The smart constructor's spelling, [Placement.rejection]'s rule: the message points at
+   the line the caller wrote, which says [Attr.on_key_pressed]. *)
+let attr_spelling name = String.lowercase (Attr.Name.to_string name)
+
+let controller_class : Family.t -> string = function
+  | Click -> "GtkGestureClick"
+  | Focus -> "GtkEventControllerFocus"
+  | Key -> "GtkEventControllerKey"
+;;
+
+let family_phase_rejection ~path (family : Family.t) attrs =
+  match family_phases family attrs with
+  | [] | [ _ ] -> None
+  | (first_name, first_phase) :: rest ->
+    List.find rest ~f:(fun (_, phase) -> not (Phase.equal first_phase phase))
+    |> Option.map ~f:(fun (other_name, other_phase) ->
+      sprintf
+        "%s: Attr.%s asks for %s and Attr.%s for %s, but they share one %s and so one \
+         propagation phase"
+        path
+        (attr_spelling first_name)
+        (phase_name first_phase)
+        (attr_spelling other_name)
+        (phase_name other_phase)
+        (controller_class family))
 ;;
 
 let is_supported kind name =

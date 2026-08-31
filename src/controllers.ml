@@ -183,9 +183,16 @@ let click_spec (gc : W.Gesture_click.t) : Signals.spec =
     }
 ;;
 
-(* [enter] and [leave] ride on one [GtkEventControllerFocus], so a widget carrying either
-   attr pays for one controller and gets both specs; the slot of the attr that is absent
-   is simply never filled. *)
+(* [enter], [leave] and [contains-focus] ride on one [GtkEventControllerFocus], so a
+   widget carrying any of the three attrs pays for one controller and gets all three
+   specs; the slot of an attr that is absent is simply never filled.
+
+   The third is a [notify::] on the {i controller} -- [contains-focus] is the controller's
+   property, not the widget's -- so its connection names the controller, which is exactly
+   what [Signals.connection] exists for, and its [fire] reads the property back off the
+   captured controller because the generic marshaller carries nothing. Like every
+   [notify::], it fires for the library's own doing as well as the user's (an
+   [Attr.autofocus] grab included); the [in_patch] guard drops those. *)
 let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
   [ Read_back
       { attr = Attr.Name.On_focus_enter
@@ -195,7 +202,7 @@ let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
       ; fire =
           (fun _w attr ->
             match (attr :> Attr.Private.t) with
-            | On_focus_enter handler -> Some (handler ())
+            | On_focus_enter { handler; _ } -> Some (handler ())
             | _ -> None)
       }
   ; Read_back
@@ -206,7 +213,19 @@ let focus_specs (fc : W.Event_controller_focus.t) : Signals.spec list =
       ; fire =
           (fun _w attr ->
             match (attr :> Attr.Private.t) with
-            | On_focus_leave handler -> Some (handler ())
+            | On_focus_leave { handler; _ } -> Some (handler ())
+            | _ -> None)
+      }
+  ; Read_back
+      { attr = Attr.Name.On_contains_focus_changed
+      ; connect =
+          (fun _w ~callback ->
+            [ Signals.notify_connection ~prop:"contains-focus" fc ~callback ])
+      ; fire =
+          (fun _w attr ->
+            match (attr :> Attr.Private.t) with
+            | On_contains_focus_changed handler ->
+              Some (handler (W.Event_controller_focus.contains_focus fc))
             | _ -> None)
       }
   ]
@@ -294,21 +313,24 @@ let key_released_spec (kc : W.Event_controller_key.t) : Signals.spec =
 
 let key_specs kc = [ key_pressed_spec kc; key_released_spec kc ]
 
-(* One controller, one phase, and two attrs that can each ask for one. The rejection is
-   [Events.key_phase_rejection] rather than a message built here, because
-   [Bonsai_gtk_test] refuses the same node with the same string -- see that function.
+(* One controller per family, one phase, and up to two attrs that can each ask for one.
+   The rejection is [Events.family_phase_rejection] rather than a message built here,
+   because [Bonsai_gtk_test] refuses the same node with the same string -- see that
+   function.
 
    Raising from [configure] is raising from inside [update], which the patcher calls at
    mount and on every patch: the same place, and the same [Invalid_argument] carrying the
    node path, as every other structural rejection (spec §11). It runs before
-   [add_controller] on the attach path, so a rejected node leaves nothing attached. *)
-let configure_key (kc : W.Event_controller_key.t) attrs ~node_path =
-  Option.iter (Events.key_phase_rejection ~path:node_path attrs) ~f:invalid_arg;
-  match Events.key_phase attrs with
-  | Some phase ->
-    W.Event_controller.set_propagation_phase
-      (kc :> W.Event_controller.t)
-      (propagation_phase phase)
+   [add_controller] on the attach path, so a rejected node leaves nothing attached.
+
+   Shared by the Focus and Key families, which are exactly the families whose phase comes
+   from more than one attr; the click gesture's is a field of its one attr and
+   [configure_click] writes it directly. *)
+let configure_phase (c : W.Event_controller.t) (family : Events.Family.t) attrs ~node_path
+  =
+  Option.iter (Events.family_phase_rejection ~path:node_path family attrs) ~f:invalid_arg;
+  match Events.family_phase family attrs with
+  | Some phase -> W.Event_controller.set_propagation_phase c (propagation_phase phase)
   | None -> ()
 ;;
 
@@ -374,9 +396,8 @@ let update t attrs =
         ~make:W.Event_controller_focus.new_
         ~upcast:(fun fc -> (fc :> W.Event_controller.t))
         ~specs:focus_specs
-          (* A focus controller has nothing to configure: there is no [Attr.on_focus_*]
-             phase in M2, so it stays in GTK's default (bubble) phase. *)
-        ~configure:(fun _ _ -> ())
+        ~configure:(fun fc attrs ->
+          configure_phase (fc :> W.Event_controller.t) Focus attrs ~node_path:t.node_path)
         ~name:"focus"
         attrs
     | Key ->
@@ -388,7 +409,8 @@ let update t attrs =
         ~make:W.Event_controller_key.new_
         ~upcast:(fun kc -> (kc :> W.Event_controller.t))
         ~specs:key_specs
-        ~configure:(fun kc attrs -> configure_key kc attrs ~node_path:t.node_path)
+        ~configure:(fun kc attrs ->
+          configure_phase (kc :> W.Event_controller.t) Key attrs ~node_path:t.node_path)
         ~name:"key"
         attrs)
 ;;

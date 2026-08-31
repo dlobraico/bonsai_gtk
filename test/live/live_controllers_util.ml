@@ -128,6 +128,28 @@ let key_controller_props label w =
     printf "%s: phase=%s\n" label phase
 ;;
 
+(* The focus controller's read-back, on [key_controller_props]'s terms: the family's
+   [?phase] (Task 2) is only provable delivered by reading it off the live controller, and
+   there must be exactly one of ours -- all three focus attrs share it. *)
+let focus_controller_props label w =
+  match
+    List.filter (ours w) ~f:(fun c ->
+      String.equal (Gobject.Type.name (Gobject.get_type c)) "GtkEventControllerFocus")
+  with
+  | [] -> printf "%s: no focus controller of ours\n" label
+  | _ :: _ :: _ as all ->
+    printf "%s: %d focus controllers of ours!\n" label (List.length all)
+  | [ o ] ->
+    let phase =
+      match W.Event_controller.get_propagation_phase o with
+      | `NONE -> "NONE"
+      | `CAPTURE -> "CAPTURE"
+      | `BUBBLE -> "BUBBLE"
+      | `TARGET -> "TARGET"
+    in
+    printf "%s: phase=%s\n" label phase
+;;
+
 (* The window's box's n'th child, as both the live record and the GTK widget. *)
 let nth (live : P.live) i =
   match live.children with

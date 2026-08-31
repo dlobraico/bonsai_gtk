@@ -125,6 +125,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | On_click _
   | On_focus_enter _
   | On_focus_leave _
+  | On_contains_focus_changed _
   | On_key_pressed _
   | On_key_released _
   | On_clicked _
@@ -182,6 +183,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | On_click
   | On_focus_enter
   | On_focus_leave
+  | On_contains_focus_changed
   | On_key_pressed
   | On_key_released
   | On_clicked

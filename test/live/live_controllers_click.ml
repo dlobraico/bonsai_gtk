@@ -90,6 +90,7 @@ let each_controller_attr : (Attr.Name.t * Attr.t) list =
   [ On_click, Attr.on_click (fun _ -> Click_response.Continue)
   ; On_focus_enter, Attr.on_focus_enter (fun () -> Ui_effect.Ignore)
   ; On_focus_leave, Attr.on_focus_leave (fun () -> Ui_effect.Ignore)
+  ; On_contains_focus_changed, Attr.on_contains_focus_changed (fun _ -> Ui_effect.Ignore)
   ; On_key_pressed, Attr.on_key_pressed (fun _ -> Key_response.Propagate)
   ; On_key_released, Attr.on_key_released (fun _ -> Ui_effect.Ignore)
   ]

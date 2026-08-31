@@ -332,3 +332,54 @@ let () =
     (List.length (all_controllers target));
   printf "destroyed cleanly\n"
 ;;
+
+(* The family's two Task 2 additions, live: the [?phase] the attrs share really reaches
+   the [GtkEventControllerFocus], and [Attr.on_contains_focus_changed] fires with the
+   controller's [contains-focus] property as the focus moves in and out for real. The
+   [notify::] connection names the controller, and this block is what proves the whole
+   chain -- connect, read-back, dispatch -- rather than the plumbing alone. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx = presenting_ctx scheduler in
+  let view ~phase =
+    Node.window
+      ~title:"contains"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.button
+             ~attrs:
+               [ Attr.on_focus_enter ~phase (fun () ->
+                   record "enter";
+                   Ui_effect.Ignore)
+               ; Attr.on_contains_focus_changed (fun b ->
+                   record (sprintf "contains=%b" b);
+                   Ui_effect.Ignore)
+               ]
+             ~label:"target"
+             ()
+         ; Node.button ~label:"other" ()
+         ])
+  in
+  let live = P.mount ctx ~path:"contains" ~is_root:true (view ~phase:Phase.Capture) in
+  P.run_fixups ctx;
+  controllers "contains mounted" (nth live 0) (nth live 0).widget;
+  focus_controller_props "contains mounted" (nth live 0).widget;
+  (* Presenting focuses the first focusable child, so the bit flips true on its own. *)
+  pump ();
+  drain "contains focus from presenting";
+  ignore (W.Widget.grab_focus (nth live 1).widget : bool);
+  pump ();
+  drain "contains focus moved away";
+  ignore (W.Widget.grab_focus (nth live 0).widget : bool);
+  pump ();
+  drain "contains focus back";
+  (* The phase is re-read on patch, exactly as the key family's is. *)
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch ctx ~path:"contains" ~is_root:true live (view ~phase:Phase.Bubble))
+  in
+  P.run_fixups ctx;
+  focus_controller_props "contains re-phased" (nth live 0).widget;
+  P.destroy ctx live;
+  printf "contains-focus done\n"
+;;

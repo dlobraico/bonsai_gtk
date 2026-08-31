@@ -645,7 +645,7 @@ let%expect_test "a controller attr is accepted on a kind that emits no signals" 
        (((kind (Label ((text card))))
          (attrs
           ((On_click (button 0) (phase Bubble) (handler <handler>))
-           (On_focus_enter <handler>)))
+           (On_focus_enter (phase Bubble) (handler <handler>))))
          (children No_children))))))
     |}]
 ;;
@@ -762,8 +762,9 @@ let%expect_test "focus actions fire the focus handlers" =
           (List
            (((kind (Button ((label (target)))))
              (attrs
-              ((Test_id target) (On_focus_enter <handler>)
-               (On_focus_leave <handler>)))
+              ((Test_id target)
+               (On_focus_enter (phase Bubble) (handler <handler>))
+               (On_focus_leave (phase Bubble) (handler <handler>))))
              (children (Single ())))
             ((kind (Label ((text "")))) (attrs ((Test_id log)))
              (children No_children))))))))))
@@ -782,11 +783,69 @@ let%expect_test "focus actions fire the focus handlers" =
             (List
              (((kind (Button ((label (target)))))
                (attrs
-                ((Test_id target) (On_focus_enter <handler>)
-                 (On_focus_leave <handler>)))
+                ((Test_id target)
+                 (On_focus_enter (phase Bubble) (handler <handler>))
+                 (On_focus_leave (phase Bubble) (handler <handler>))))
                (children (Single ())))
     -|        ((kind (Label ((text "")))) (attrs ((Test_id log)))
     +|        ((kind (Label ((text leave,enter)))) (attrs ((Test_id log)))
+               (children No_children))))))))))
+    |}]
+;;
+
+(* The [contains_focus] query as an event: the model owns the bit without deriving it from
+   enter/leave pairs, and the action drives both directions. *)
+let%expect_test "a Focus_contains action fires on_contains_focus_changed" =
+  let app (graph @ local) =
+    let inside, set_inside = Bonsai.state false graph in
+    let%arr inside and set_inside in
+    Node.window
+      ~title:"contains"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.entry
+             ~attrs:[ Attr.test_id "field"; Attr.on_contains_focus_changed set_inside ]
+             ~text:""
+             ()
+         ; Node.label
+             ~attrs:[ Attr.test_id "state" ]
+             (if inside then "inside" else "outside")
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.store_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Focus_contains ("field", true) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (contains))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Entry ((text ""))))
+               (attrs ((Test_id field) (On_contains_focus_changed <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text outside)))) (attrs ((Test_id state)))
+    +|        ((kind (Label ((text inside)))) (attrs ((Test_id state)))
+               (children No_children))))))))))
+    |}];
+  Bonsai_gtk_test.Handle.do_actions handle [ Focus_contains ("field", false) ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind (Window ((title (contains))))) (attrs ())
+       (children
+        (Single
+         (((kind (Box ((orientation Vertical)))) (attrs ())
+           (children
+            (List
+             (((kind (Entry ((text ""))))
+               (attrs ((Test_id field) (On_contains_focus_changed <handler>)))
+               (children No_children))
+    -|        ((kind (Label ((text inside)))) (attrs ((Test_id state)))
+    +|        ((kind (Label ((text outside)))) (attrs ((Test_id state)))
                (children No_children))))))))))
     |}]
 ;;
@@ -984,8 +1043,8 @@ let%expect_test "a key press can be observed without being consumed" =
 
 (* The two key attrs share one [GtkEventControllerKey] and so one propagation phase.
    Asking for two is a node the runtime cannot mount, and this is the check that stops a
-   headless suite certifying it anyway: [Controllers.configure_key] and this handle both
-   render [Events.key_phase_rejection], so the message is identical rather than merely
+   headless suite certifying it anyway: [Controllers.configure_phase] and this handle both
+   render [Events.family_phase_rejection], so the message is identical rather than merely
    similar. *)
 let%expect_test "two key attrs with different phases are rejected by the handle" =
   let app (_graph @ local) =
@@ -1033,6 +1092,48 @@ let%expect_test "two key attrs with different phases are rejected by the handle"
            (On_key_released (phase Capture) (handler <handler>))))
          (children No_children))))))
     |}]
+;;
+
+(* The generalisation the focus [?phase] forced: the same rejection, from the same
+   [Events.family_phase_rejection], over the Focus family -- naming the family's
+   controller class, so the message says which controller the two attrs share. *)
+let%expect_test "two focus attrs with different phases are rejected by the handle" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"focus phases"
+         (Node.label
+            ~attrs:
+              [ Attr.on_focus_enter ~phase:Capture (fun () -> Ui_effect.Ignore)
+              ; Attr.on_focus_leave ~phase:Bubble (fun () -> Ui_effect.Ignore)
+              ]
+            "sheet"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create app in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: Attr.on_focus_enter asks for Capture and Attr.on_focus_leave for Bubble, but they share one GtkEventControllerFocus and so one propagation phase")
+    |}];
+  (* [on_contains_focus_changed] carries no phase, so it does not vote: beside one phased
+     attr it is not a disagreement, whatever the phase. *)
+  let ok (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"focus phases"
+         (Node.label
+            ~attrs:
+              [ Attr.on_focus_enter ~phase:Capture (fun () -> Ui_effect.Ignore)
+              ; Attr.on_contains_focus_changed (fun _ -> Ui_effect.Ignore)
+              ]
+            "sheet"))
+  in
+  let handle = Bonsai_gtk_test.create ok in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  print_s [%sexp "accepted"];
+  [%expect {| accepted |}]
 ;;
 
 (* Same rule as every other action: a node that carries no such handler fails rather than

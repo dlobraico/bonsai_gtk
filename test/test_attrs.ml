@@ -89,7 +89,7 @@ let%expect_test "controller attrs round-trip and diff" =
   [%expect
     {|
     ((On_click (button 2) (phase Bubble) (handler <handler>))
-     (On_focus_enter <handler>))
+     (On_focus_enter (phase Bubble) (handler <handler>)))
     |}];
   (* A handler that changed is a Set; a handler that is physically the same is not.
      Handlers compare physically (spec §5.2), so a view that rebuilds its closures every

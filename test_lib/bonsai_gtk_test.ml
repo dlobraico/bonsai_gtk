@@ -16,6 +16,7 @@ module Action = struct
     | Click_at of string * Click_event.t
     | Focus_enter of string
     | Focus_leave of string
+    | Focus_contains of string * bool
     | Key_press of string * Key_event.t
     | Key_release of string * Key_event.t
     | Activate_row of string * Key.t
@@ -131,13 +132,16 @@ let rec require_supported ~path ~parent (node : Node.t) =
        (Kind.name node.kind)
        (Attr.Name.to_string name)
        ());
-  (* The third thing the runtime refuses that is decidable from pure vtree data: the two
-     key attrs share one [GtkEventControllerKey] and so one propagation phase, and a node
-     asking for two is one [Controllers] cannot mount. Same function, same string, so the
-     two messages are identical rather than merely similar. Last of the three because it
-     is last at mount too -- [Controllers.update] runs after [Signals.require_specs] -- so
-     a node carrying more than one mistake reports the same one here and there. *)
-  Option.iter (Events.key_phase_rejection ~path node.attrs) ~f:invalid_arg;
+  (* The third thing the runtime refuses that is decidable from pure vtree data: a
+     family's attrs share one controller and so one propagation phase, and a node asking
+     for two is one [Controllers] cannot mount. Same function, same string, so the two
+     messages are identical rather than merely similar -- and over every family, in
+     [Family.all] order, which is the order [Controllers.update] configures them in, so a
+     node carrying two families' disagreements reports the same one here and there. Last
+     of the three because it is last at mount too -- [Controllers.update] runs after
+     [Signals.require_specs]. *)
+  List.iter Events.Family.all ~f:(fun family ->
+    Option.iter (Events.family_phase_rejection ~path family node.attrs) ~f:invalid_arg);
   require_unique_keys ~path node.children;
   Children.iteri node.children ~path ~f:(fun path child ->
     require_supported ~path ~parent:(Some node.kind) child)
@@ -316,13 +320,25 @@ module Result_spec = struct
     | Focus_enter id ->
       let n = node_exn node id in
       (match (Attrs.find n.attrs On_focus_enter :> Attr.Private.t option) with
-       | Some (On_focus_enter h) -> h ()
+       | Some (On_focus_enter { handler; _ }) -> handler ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_focus_enter handler" id ())
     | Focus_leave id ->
       let n = node_exn node id in
       (match (Attrs.find n.attrs On_focus_leave :> Attr.Private.t option) with
-       | Some (On_focus_leave h) -> h ()
+       | Some (On_focus_leave { handler; _ }) -> handler ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_focus_leave handler" id ())
+    (* The bit is an argument rather than derived, on [Set_expanded]'s rule: "the focus is
+       now inside / no longer inside" is what the real controller's [notify] reports, and
+       there is no node prop to negate. *)
+    | Focus_contains (id, contains) ->
+      let n = node_exn node id in
+      (match (Attrs.find n.attrs On_contains_focus_changed :> Attr.Private.t option) with
+       | Some (On_contains_focus_changed h) -> h contains
+       | _ ->
+         failwithf
+           "Bonsai_gtk_test: node %s has no on_contains_focus_changed handler"
+           id
+           ())
     (* The answer is printed rather than returned, because it is the half of a key press
        that has nowhere else to go: [incoming] hands back an effect, and
        [Handled]/[Propagate] is not one -- it is a value that reaches GTK synchronously,

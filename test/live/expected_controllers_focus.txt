@@ -46,3 +46,10 @@ focus after the attrs came back: focus-enter
 before destroy: gtk=(bonsai_gtk.focus bonsai_gtk.click) bonsai=2 total=5 armed=(On_click On_focus_enter On_focus_leave)
 after destroy: gtk=() total=3
 destroyed cleanly
+contains mounted: gtk=(bonsai_gtk.focus) bonsai=1 total=4 armed=(On_focus_enter On_contains_focus_changed)
+contains mounted: phase=CAPTURE
+contains focus from presenting: contains=true,enter
+contains focus moved away: contains=false
+contains focus back: contains=true,enter
+contains re-phased: phase=BUBBLE
+contains-focus done

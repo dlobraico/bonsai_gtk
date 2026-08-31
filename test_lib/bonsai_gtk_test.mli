@@ -92,6 +92,11 @@ module Action : sig
 
         Unlike the click pair, focus {i is} genuinely drivable live ([Widget.grab_focus]
         on a presented window), so these have a live counterpart. *)
+    | Focus_contains of string * bool
+    (** test_id of a node carrying [Attr.on_contains_focus_changed], and the value the
+        controller's [contains-focus] flipped to. Fires that handler with exactly that
+        bool -- there is no node prop to negate, so the direction is the test's to say,
+        exactly as [Set_expanded]'s is. *)
     | Key_press of string * Key_event.t
     (** test_id of a node carrying [Attr.on_key_pressed], and the key to deliver. Fires
         that handler with exactly that event, prints the

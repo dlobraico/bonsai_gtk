@@ -51,6 +51,7 @@ module Name = struct
       | On_click
       | On_focus_enter
       | On_focus_leave
+      | On_contains_focus_changed
       | On_key_pressed
       | On_key_released
     [@@deriving sexp_of, compare, equal, enumerate]
@@ -88,6 +89,7 @@ module Name = struct
       | On_click
       | On_focus_enter
       | On_focus_leave
+      | On_contains_focus_changed
       | On_key_pressed
       | On_key_released -> true
       | Margin_start
@@ -240,14 +242,31 @@ module Private = struct
         ; phase : Phase.t
         ; handler : Click_response.handler
         }
-    | On_focus_enter of unit Handler.t
-    | On_focus_leave of unit Handler.t
+    (* [phase] rides in the constructor for the reason [On_click]'s does: it is a property
+       of the *controller*, and [Controllers.update] has to see it change without the
+       handler having to. The two focus attrs share one [GtkEventControllerFocus] -- as
+       [On_contains_focus_changed] does, though that one carries no phase of its own: a
+       [notify::] fires in no propagation phase at all -- so carrying it on both is what
+       lets either appear alone, at the price of a rejection when both appear and disagree
+       ([Events.family_phase_rejection]). *)
+    | On_focus_enter of
+        { phase : Phase.t
+        ; handler : unit Handler.t
+        }
+    | On_focus_leave of
+        { phase : Phase.t
+        ; handler : unit Handler.t
+        }
+    (* The [contains_focus] {i query} stavekeeper polls, as an event: rides on
+       [notify::contains-focus] of the shared Focus-family controller, and the handler is
+       handed the property read back. No phase field -- see the pair above. *)
+    | On_contains_focus_changed of bool Handler.t
     (* [phase] rides in the constructor for the same reason [On_click]'s does: it is a
        property of the *controller*, and [Controllers.update] has to see it change without
        the handler having to. The two key attrs share one [GtkEventControllerKey], so
        there is exactly one phase to write and carrying it on both is what lets either
        attr appear alone -- at the price of a rejection when both appear and disagree
-       ([Events.key_phase_rejection]). *)
+       ([Events.family_phase_rejection]). *)
     | On_key_pressed of
         { phase : Phase.t
         ; handler : Key_response.handler
@@ -322,6 +341,7 @@ let name = function
   | On_click _ -> Some On_click
   | On_focus_enter _ -> Some On_focus_enter
   | On_focus_leave _ -> Some On_focus_leave
+  | On_contains_focus_changed _ -> Some On_contains_focus_changed
   | On_key_pressed _ -> Some On_key_pressed
   | On_key_released _ -> Some On_key_released
 ;;
@@ -380,8 +400,11 @@ let rec equal a b =
     Int.equal a.button b.button
     && Phase.equal a.phase b.phase
     && phys_equal a.handler b.handler
-  | On_focus_enter a, On_focus_enter b -> Handler.equal a b
-  | On_focus_leave a, On_focus_leave b -> Handler.equal a b
+  | On_focus_enter a, On_focus_enter b ->
+    Phase.equal a.phase b.phase && Handler.equal a.handler b.handler
+  | On_focus_leave a, On_focus_leave b ->
+    Phase.equal a.phase b.phase && Handler.equal a.handler b.handler
+  | On_contains_focus_changed a, On_contains_focus_changed b -> Handler.equal a b
   (* Same rule as [On_click]: the controller property structurally, the handler
      physically. [On_key_pressed]'s handler is not a [Handler.t] -- it returns a
      [Key_response.t] rather than an effect -- but it is still a closure the view rebuilds
@@ -463,8 +486,9 @@ let on_click ?(button = 0) ?(phase = Phase.Bubble) handler =
   On_click { button; phase; handler }
 ;;
 
-let on_focus_enter f = On_focus_enter f
-let on_focus_leave f = On_focus_leave f
+let on_focus_enter ?(phase = Phase.Bubble) f = On_focus_enter { phase; handler = f }
+let on_focus_leave ?(phase = Phase.Bubble) f = On_focus_leave { phase; handler = f }
+let on_contains_focus_changed f = On_contains_focus_changed f
 let on_key_pressed ?(phase = Phase.Bubble) handler = On_key_pressed { phase; handler }
 let on_key_released ?(phase = Phase.Bubble) handler = On_key_released { phase; handler }
 let many l = Many l
