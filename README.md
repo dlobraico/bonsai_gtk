@@ -339,34 +339,35 @@ See `docs/upstream/README.md` for the fork, the fixes, and their upstreaming sta
 M2 covers the widgets listed under [Widgets](#widgets) and the input attributes under
 [Input](#input); anything else is a `Node.native` case. What is deliberately still out:
 
-### Not covered by any test
+### Testing the input path
 
-- **No test anywhere delivers a real click or a real keystroke.** The pinned ocgtk binding
-  can synthesise neither: there is no `GdkEvent` constructor for any event subtype,
-  `Gobject.Signal.emit_by_name` takes no arguments, and no `gtk_test_*` entry point is
-  bound. What *is* covered is the plumbing on one side and the handler on the other — that
+- **A real click and a real keystroke are delivered by the X server, not by the binding.**
+  The pinned ocgtk binding can synthesise neither: there is no `GdkEvent` constructor for
+  any event subtype, `Gobject.Signal.emit_by_name` takes no arguments, and no `gtk_test_*`
+  entry point is bound. So the plumbing and the handler are tested from either side — that
   `Attr.on_click` attaches a `GtkGestureClick` with the button and phase it asked for, that
   the key attrs attach one shared `GtkEventControllerKey` carrying the phase read back off
   the live controller, that dropping an attr empties one slot and removes the controller
   (`test/live/live_controllers.ml`, which prints `armed=` on every line for exactly this
   reason); and that a middle click with Shift reaches the application's closure with the
   right `Click_event.t`, and that a key handler consumes Escape and lets `x` through
-  (`test/handle/test_handle.ml`, headlessly). What no *test* covers is GTK routing a real
-  press to the controller in between — and for keys specifically, **that propagation
-  works**: nothing here shows that a `Handled` Escape failed to reach a sibling, or that a
-  `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The
-  compensating controls are the fact that every input to GTK's routing is asserted, and the
-  gallery's *Input* page, which M2 closed by driving under `xvfb` with `xdotool` — real
-  X button presses and keystrokes, delivered by the X server rather than synthesised in
-  process, with screenshots of the readouts. That run moved all four readouts and showed
-  the button number, the press count, the widget-local coordinates and the modifiers all
-  arriving, an Escape reaching a capture-phase handler and incrementing its counter, and
-  focus arriving on the second entry after a Tab. It is a hand-run demonstration, not a test:
-  nothing re-runs it and nothing fails if it stops working. Closing it needs a fork patch
-  exposing a `GdkEvent` constructor or `gtk_test_widget_click`, or driving the X server the
-  live tests already run on (`xdotool` under the same `xvfb`); both are on the backlog.
-  Focus is the exception and *is* covered end to end — `Widget.grab_focus` on a presented
-  window really drives `GtkEventControllerFocus`.
+  (`test/handle/test_handle.ml`, headlessly) — and GTK's routing *in between* is tested by
+  driving the X server the live suite already runs on. `test/live/live_input.ml` is both the
+  application and the driver: it presents a small tree, computes its own target coordinates
+  from the widget geometry, and has `xdotool` issue XTEST button and key events, which the
+  server delivers to it as ordinary input. Its golden covers buttons 1/2/3 reported as
+  themselves, `n_press` 2 on a double click, widget-local coordinates matching the point the
+  click was aimed at, `ctrl` carried through a click, a printable key propagating past a
+  `Capture`-phase handler into the entry's text, Escape `Handled` in the capture phase and
+  reaching neither the entry's own controller nor its text, focus enter/leave on a click and
+  on Tab, and — as the check that the coordinates are real — a click 10 px outside the
+  target moving nothing. There are no sleeps and no screenshots in it: it pumps its own main
+  loop until the handler's counter moves. Focus was covered end to end before this too —
+  `Widget.grab_focus` on a presented window really drives `GtkEventControllerFocus`.
+
+  **What remains uncovered is a real display**: this runs under `xvfb` with no window
+  manager and no compositor, so the X11 input path is exercised and Wayland's (`gdk_wayland`)
+  is not. That residual is on the backlog.
 
 ### Input
 

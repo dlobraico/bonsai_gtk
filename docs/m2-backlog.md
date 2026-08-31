@@ -471,54 +471,66 @@ Consistency:
     than emitting through GTK; and the key spec's own mapping from `Key_response.t` to that
     value is `Controllers.key_pressed_answer`, called directly in `live_controllers.ml` over
     all four constructors.
-  - **Not covered:** that GTK actually routes a real button press, or a real keystroke, to the
-    controller this library attached — and, for keys specifically, **that propagation works**:
-    neither suite can show that a `Handled` Escape failed to reach a sibling, or that a
-    `Capture`-phase controller saw the key before a child's `Bubble`-phase one. The routing is
-    GTK's, and every input to it is asserted; the routing itself is not. Compensating controls:
-    the gallery's Input section, and the XTEST click-through Task 16 ran through it (below) --
-    which demonstrated the routing once, by hand, but is not a test and re-runs nowhere. Closing it properly
-    needs an ocgtk fork patch exposing a `GdkEvent` constructor or
-    `gtk_test_widget_click`/`gtk_test_widget_send_key` (none is bound today), or the XTEST
-    route below. Tasks 4 and 5.
-- **A synthetic click or key press is reachable through XTEST rather than through the
-  binding**, and this is the single most valuable follow-up in the file: it would *close* the
-  gap above rather than compensate for it. The plan closed the question against ocgtk and did
-  not consider driving the X server the live tests already run on. **Task 16 established that
-  the route works**: `xvfb-run -a -s '-screen 0 1280x800x24 -nolisten tcp'`, the gallery
-  launched inside it, `xdotool search --onlyvisible --name` for the window and `windowfocus`
-  to give it the keyboard (there is no window manager, so `windowactivate` fails and is not
-  needed), then `mousemove X Y click 1|2|3|--repeat 2` and `key`/`type`, with ImageMagick
-  `import -window root` between the steps. GTK reads those as ordinary events: the click
-  readout produced the right button, press count, widget-local coordinates and modifiers, and
-  the key readout the right keyvals and modifiers. Two things the by-hand run did not solve, of
-  which **one is already solved in the pinned binding** (final review, live lens):
-  **mapping a widget to screen coordinates** needs no fork patch —
-  `Widget.compute_bounds`, `Widget.compute_point` and `Widget.translate_coordinates` are all
-  bound in the pin — so the estimate here was too pessimistic by whatever a fork round costs.
-  What is left is **a settling wait that is not a `sleep`** (the pattern is
-  `live_embed.ml`'s bounded `drain`: pump the loop until the handler's counter moves, bounded
-  by an iteration count), and getting `xdotool` into the dev shell —
-  `task-16-clickthrough/clickthrough.sh` works around its absence with a hardcoded store path
-  that is one `nix-collect-garbage` from failing, and failing *misleadingly*, since the
-  `xdotool search` is guarded by `|| true` and a missing binary surfaces as "no window".
-  ImageMagick is needed for the human-facing screenshots, not for a test.
+  - ~~**Not covered:** that GTK actually routes a real button press, or a real keystroke, to
+    the controller this library attached — and, for keys specifically, **that propagation
+    works**.~~ **Closed on `xtest-input` (`d0a761e`)** by `test/live/live_input.ml`, the twelfth
+    live executable, which delivers both through XTEST. It needed no fork patch and no new
+    binding: what the routing had to be driven *from* was the X server, not the OCaml side.
+    See the closed item below for what its golden proves. Tasks 4 and 5, then the XTEST
+    bead.
+- ~~**A synthetic click or key press is reachable through XTEST rather than through the
+  binding**, and this is the single most valuable follow-up in the file.~~ **Closed on
+  `xtest-input` (`d0a761e`)**: `test/live/live_input.ml`, a twelfth live executable that is both
+  the application and the driver. It builds a small tree of its own, presents it, drains
+  until mapped, computes its own target coordinates from the binding, spawns `xdotool` with
+  `Unix.create_process`, pumps its own main loop until the handler's counter moves, and diffs
+  a readout against `expected_input.txt` like every other rule in the directory — with
+  `(locks x-display)`, the `BONSAI_GTK_LIVE_TESTS` gate, and `%{bin:xdotool}`, which both
+  declares the dependency and hands the executable an absolute path. `xdotool` is in the
+  devShell now, so the hardcoded store path is gone from the by-hand scripts too.
 
-  The shape a test should take, per the same review: not a shell driver against
-  `examples/gallery.exe` but a twelfth live executable, `test/live/live_input.ml`, which is
-  both the application and the driver. It builds a small tree of its own, presents it, computes
-  its own target coordinates with `Widget.compute_bounds` relative to the toplevel (which is at
-  (0,0) under Xvfb with no window manager), spawns `xdotool` with `Unix.create_process`, pumps
-  its own main loop until the handler's counter moves, and diffs a readout against a golden
-  like every other rule in the directory — with `(locks x-display)` and the existing
-  `enabled_if`, plus a dep on the binary so it is skipped rather than red where `xdotool` is
-  absent. One thing that must be XTEST and not `XSendEvent`, and should be written down in the
-  test because it is the first thing someone will try to simplify: GTK ignores `send_event`
-  records, so `xdotool key --window $WID` does not work and `windowfocus` + plain `key` does.
+  What the golden proves: buttons 1, 2 and 3 each reported as themselves; `n_press` 2 on the
+  second press of a double click; widget-local coordinates that match the point the click was
+  aimed at and lie inside the target; `ctrl` carried through a click; a printable key
+  propagating past a `Capture`-phase handler into the entry's text; F1 propagating all the way
+  to the entry's own `Bubble`-phase controller (the control for the next one); Escape
+  `Handled` in the capture phase and reaching neither; focus enter/leave on a click and on
+  Tab; and the negative — a click 10 px past the target's bottom edge moves nothing, which is
+  what makes the coordinates real rather than lucky.
 
-  Task 13's review asked for this to become a numbered bead rather than a backlog line,
-  "because the backlog is where the same gap has already sat since M1"; the controller filed
-  it.
+  Three corrections to what this entry used to say, all measured rather than argued:
+
+  - **The estimate here was too pessimistic.** "Mapping a widget to screen coordinates" never
+    needed a fork patch: `Widget.compute_bounds`, `compute_point` and `translate_coordinates`
+    are all bound in the pin.
+  - **But `compute_bounds` is the wrong call for aiming a click.** It answers with the region
+    the widget *draws in* — which its own documentation says, and which CSS can put outside
+    the widget's box. Measured: a themed `GtkButton` allocated 320x120 has a widget box of
+    286x110 inset by (17,5), and `compute_bounds` answers 320x120. A gesture reports
+    coordinates in the *box*, so aiming at the centre of the bounds lands 17 px off — the
+    same shape of miss that made a working handler look broken in the by-hand run. The right
+    pair is `translate_coordinates` of (0,0) plus `get_width`/`get_height`, and
+    `live_input.ml` reports `bounds-is-box` per target so the difference is on the record.
+  - **The `graphene_rect_t` `compute_bounds` answers with does not own its storage.** One
+    more call into the binding and its accessors return zeros; reading a width off a kept
+    rect gave 0 where the widget is 320 wide. `live_input.ml` pins this with a golden line,
+    and it is an ocgtk bug worth an upstream issue — see "ocgtk" below.
+
+  Two facts about GTK the file also records, because both would otherwise read as bugs in
+  this library: an `Attr.on_click` on a `GtkButton` *does* see the press, despite the
+  button's own gesture claiming the sequence; and a `GtkEntry`'s bubble-phase key controller
+  never sees a printable key, because the `GtkText` inside consumes it to insert it — which
+  is why the propagation proof uses F1 as its control and the entry's *text* as the evidence
+  that the printable arrived.
+
+  Determinism: 10/10 clean runs of `BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build
+  @test/live/runtest`, 5/5 with 48 spinners on 24 cores (2x oversubscription, load average
+  ~50), and two consecutive green `nix develop -c ./scripts/ci.sh`.
+
+  **What is still open** is the residual Task 16 named and this does not touch: a *real*
+  display — an X server with a window manager and a compositor, or Wayland, where GTK takes
+  the `gdk_wayland` input path rather than the X11 one exercised here.
+
 - Focus is the exception and *is* covered end to end: `Widget.grab_focus` on a presented window
   really drives `GtkEventControllerFocus`, and `live_controllers.ml` asserts the handler fires,
   that the reentrancy guard drops a focus change made during a patch, and that a removed
@@ -533,10 +545,13 @@ Consistency:
   each reported as itself, a double click as `press 2`, a ctrl-held click as `ctrl`, `hello`
   typed into the first entry with the last keyval reported per keystroke, Escape counted and
   consumed with the entry keeping its text, and focus moving to the second entry on Tab.
-  Screenshots were read, not just captured. **What is still not done is a real display**: an
-  X server with a window manager and a compositor, or Wayland, where GTK takes a different
-  input path (`gdk_wayland`) than the one exercised here. That is now a small residual rather
-  than the whole check.
+  Screenshots were read, not just captured. That run is now a demonstration with a test
+  behind it: `test/live/live_input.ml` (closed above) re-proves the same routing on every CI
+  run, against a tree of its own rather than against the gallery, and the two by-hand scripts
+  under the SDD workspace stay only as the human-facing screenshot walk. **What is still not
+  done is a real display**: an X server with a window manager and a compositor, or Wayland,
+  where GTK takes a different input path (`gdk_wayland`) than the one exercised here. That is
+  now a small residual rather than the whole check.
 - **GC/lifetime**: remove a keyed child, `Gc.full_major`, assert the widget was finalized — the
   spec's central ownership assumption, still unwritten (carried from M0). M2 makes it more
   interesting, not less: `Child_keys` is an ephemeron table on exactly those widgets, and the
@@ -755,6 +770,16 @@ pin. `ci.sh` is green against it.
   bare-GObject elements.
 
 ### Still open on the fork
+
+- **`Widget.compute_bounds`'s `graphene_rect_t` does not own its storage.** Found by
+  `test/live/live_input.ml`: read the rectangle's width immediately and it is 320, make one
+  more call into the binding and read it again and it is 0 — the accessors answer with zeros
+  once whatever buffer the stub returned has been reused. Any caller that keeps the rect and
+  reads it later gets garbage, silently and with no crash, which is the worst shape a
+  geometry bug can take. `live_input.ml` works around it by reading all four fields
+  immediately and pins the behaviour with a golden line (`compute_bounds rect survives a
+  later ocgtk call: false`), so a fork round that fixes this turns that line green-to-red and
+  says so. Worth checking every stub that returns a boxed struct by value, not just this one.
 
 - **No transfer-full `char*` return is freed anywhere in the generated stubs** — a memory leak in
   every one of them, and **the highest-value remaining fork item**. The one M2 walks into is
