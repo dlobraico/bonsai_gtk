@@ -194,6 +194,22 @@ val switch : ?key:Key.t -> ?attrs:Attr.t list -> active:bool -> unit -> t
     model must see the truncated value, clamp the text where the model owns it rather than
     relying on the widget.
 
+    {b A [text] containing a NUL byte is refused, and reported.} [gtk_editable_set_text]
+    takes a NUL-terminated string, so GTK would store the prefix and no more -- with no
+    critical, no error and nothing the user can see. That divergence is unbounded rather
+    than one-off: the read-back never equals the model, so the widget would be rewritten
+    on every idle frame for the life of the tree. So the write is refused before it is
+    made, the widget keeps the text it had, the refusal is remembered (the frames after it
+    cost a pointer comparison) and it is reported once, with the node's path, through the
+    same channel {!text_view} and {!drop_down} use. The same rule holds for
+    {!password_entry}, {!search_entry} and {!editable_label}: all four write their text
+    through one function and refuse a NUL in one place.
+
+    Invalid UTF-8 is {i not} refused here -- a [GtkEditable] stores the bytes and reads
+    them back unchanged (measured), so there is nothing to refuse. {!text_view} is the one
+    that must refuse it, because a [GtkTextBuffer] empties itself and then declines the
+    insert.
+
     Not exposed: [GtkEntry]'s icon API ([set_icon_from_icon_name] and friends), whose
     [icon-press]/[icon-release] signals carry a [GtkEntryIconPosition] and so make a
     per-icon handler story better designed alongside M3's action routing; and
@@ -217,9 +233,10 @@ val entry
 (** A [GtkPasswordEntry]: the masked field, with the accessibility and input-method hints
     that {!entry} with [visibility:false] does not carry.
 
-    [text] is controlled on the same rule as {!entry}'s, and required for the same reason.
-    [show_peek_icon] is the eye icon that reveals the text while held; it defaults to
-    GTK's own [true]. *)
+    [text] is controlled on the same rule as {!entry}'s, and required for the same reason,
+    and a NUL in it is refused and reported on the same rule too -- all four [GtkEditable]
+    widgets write their text through one function. [show_peek_icon] is the eye icon that
+    reveals the text while held; it defaults to GTK's own [true]. *)
 val password_entry
   :  ?key:Key.t
   -> ?attrs:Attr.t list
@@ -249,6 +266,12 @@ val password_entry
     write. The one edit this cannot distinguish is a user who types the box back to
     exactly what the library last wrote, within [search_delay] of the write; that search
     is dropped, and it would have reported the text the model already holds.
+
+    {b A NUL in [text] is refused and reported}, on {!entry}'s rule and with a consequence
+    of this widget's own: before the refusal, the per-frame rewrite re-armed GTK's
+    [search_delay] timeout every 16 ms, so a debounce of 150 ms never elapsed and
+    {!Attr.on_search_changed} did not fire {i at all} on such an entry -- the one signal
+    that would have said something was wrong was the one the fault suppressed.
 
     [set_key_capture_widget] — which makes typing anywhere in a window focus the search
     box — is deliberately absent: it names another {i live widget}, which a virtual tree

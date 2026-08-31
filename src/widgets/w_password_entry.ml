@@ -22,7 +22,7 @@ let impl : Widget_impl.t =
               W.Password_entry.set_placeholder_text e (Some t));
             if not p.show_peek_icon then W.Password_entry.set_show_peek_icon e false;
             if p.activates_default then W.Password_entry.set_activates_default e true;
-            ignore (W_entry.set_text_if_needed (W_entry.editable w) p.text : bool));
+            ignore (W_entry.set_text_if_needed w p.text : bool));
           w
         | k -> Widget_impl.wrong_kind "PasswordEntry" k)
   ; update =
@@ -47,10 +47,12 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Password_entry p ->
-            let e = W_entry.editable w in
-            let writes = W_entry.needs_text e p.text in
+            (* [needs_write] rather than [needs_text]: it asks the refusal memo first, so
+               a password entry parked on a text with a NUL in it costs a pointer
+               comparison per idle frame rather than a read and a compare. *)
+            let writes = W_entry.needs_write w p.text in
             Widget_impl.batch_if writes w (fun () ->
-              if writes then ignore (W_entry.set_text_if_needed e p.text : bool))
+              if writes then ignore (W_entry.set_text_if_needed w p.text : bool))
           | k -> Widget_impl.wrong_kind "PasswordEntry" k)
   ; signals =
       [ W_entry.changed

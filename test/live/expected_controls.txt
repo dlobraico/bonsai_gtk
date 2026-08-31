@@ -219,3 +219,17 @@ value-changed reaching Bonsai from patches: 0
 searches after the mount wrote the text: 0
 searches after the model rewrote it: 0
 searches after a real edit: BACHS
+entry: asked for a text with a NUL -> text="kept", wrote 0, reported 1
+entry: five idle frames parked on it -> text="kept", wrote 0, reported 0
+entry: and a text GTK does take -> text="recovered", wrote 2, reported 0
+password_entry: asked for a text with a NUL -> text="kept", wrote 0, reported 1
+password_entry: five idle frames parked on it -> text="kept", wrote 0, reported 0
+password_entry: and a text GTK does take -> text="recovered", wrote 2, reported 0
+search_entry: asked for a text with a NUL -> text="kept", wrote 0, reported 1
+search_entry: five idle frames parked on it -> text="kept", wrote 0, reported 0
+search_entry: and a text GTK does take -> text="recovered", wrote 2, reported 0
+editable_label: asked for a text with a NUL -> text="kept", wrote 0, reported 1
+editable_label: five idle frames parked on it -> text="kept", wrote 0, reported 0
+editable_label: and a text GTK does take -> text="recovered", wrote 2, reported 0
+search entry mounted on a refused text: searches 1 (GTK's own, from set_search_delay)
+and after a real edit: searches ,S

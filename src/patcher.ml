@@ -168,11 +168,15 @@ type interest =
      hold, and this is where that gets said. *)
   | Drop_down
   (* Carries nothing, twice more and for the same reason. A calendar's [~date] in a year
-     outside GTK's 1-9999 and an editable label's [~text] with a NUL in it are both writes
+     outside GTK's 1-9999 and any [GtkEditable]'s [~text] with a NUL in it are both writes
      the widget will not take; the impls refuse them and this is where the path comes
      from. *)
   | Calendar
-  | Editable_label
+  (* One arm for four kinds, because they are one widget as far as the text is concerned:
+     entry, password entry, search entry and editable label all write their [~text]
+     through [W_entry.set_text_if_needed], which refuses a NUL and records the refusal in
+     one table, so there is one [take_report] to ask. *)
+  | Editable
 
 let interest_of_kind (kind : Kind.t) =
   match kind with
@@ -186,15 +190,12 @@ let interest_of_kind (kind : Kind.t) =
   | Text_view _ -> Text_view
   | Drop_down _ -> Drop_down
   | Calendar _ -> Calendar
-  | Editable_label _ -> Editable_label
+  | Entry _ | Password_entry _ | Search_entry _ | Editable_label _ -> Editable
   | Label _
   | Button _
   | Toggle_button _
   | Check_button _
   | Switch _
-  | Entry _
-  | Password_entry _
-  | Search_entry _
   | Spin_button _
   | Scale _
   | Progress_bar _
@@ -252,8 +253,10 @@ let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
      allocating nothing unless there is something to say. *)
   | Calendar ->
     Option.iter (W_calendar.take_report widget) ~f:(ctx.report ~node_path:path)
-  | Editable_label ->
-    Option.iter (W_editable_label.take_report widget) ~f:(ctx.report ~node_path:path)
+  (* The fifth caller, over four kinds at once: a [~text] with a NUL in it is refused by
+     [W_entry.set_text_if_needed] whichever [GtkEditable] widget it was written through,
+     and the refusals of all four live in one table. *)
+  | Editable -> Option.iter (W_entry.take_report widget) ~f:(ctx.report ~node_path:path)
   | Stack { visible_child; _ } ->
     (* Enqueued rather than applied: the pages are attached after this on a mount, and
        patched after this on a patch, and a page GTK does not have yet cannot be selected.
@@ -340,7 +343,7 @@ let note_interest
    | Text_view
    | Drop_down
    | Calendar
-   | Editable_label -> ());
+   | Editable -> ());
   enqueue_fixups ctx ~path ~widget ~interest
 ;;
 
@@ -735,7 +738,7 @@ and drop_stack_names ctx (live : live) =
    | Text_view
    | Drop_down
    | Calendar
-   | Editable_label -> ());
+   | Editable -> ());
   Children.iter live.children ~f:(drop_stack_names ctx)
 
 and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =

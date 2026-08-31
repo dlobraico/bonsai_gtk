@@ -257,11 +257,11 @@ a no-op patch and five idle frames: 0 changed, 0 notify::editing
 a programmatic write of both props: GTK emitted 2 changed and 1 notify::editing, reached Bonsai 0
 the same writes outside a patch: reached Bonsai 3
 put back by the next patch: text="Programmatic" editing=false
-asked for a text with a NUL: text="Programmatic" (reports ((lbl/0"text contains a NUL byte, which GTK would silently truncate the text at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the label was left as it was")))
+asked for a text with a NUL: text="Programmatic" (reports ((lbl/0"text contains a NUL byte, which GTK would silently truncate the text at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the widget was left as it was")))
 five idle frames parked on it: text="Programmatic" (reports ())
 and a text GTK does take: text="caf\195\169 latte" (reports ())
 invalid UTF-8 is stored rather than refused: true (reports ())
-mounted with a NUL in the text: text="" (reports ((lbl2/0"text contains a NUL byte, which GTK would silently truncate the text at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the label was left as it was")))
+mounted with a NUL in the text: text="" (reports ((lbl2/0"text contains a NUL byte, which GTK would silently truncate the text at (gtk_editable_set_text takes a NUL-terminated string); the write was refused and the widget was left as it was")))
 driver, after mount: 2026-08-28 (handler saw 0)
 driver, user picked the 31st (a Monday), before the frame: 2026-08-31
 driver, after the frame the choice armed: 2026-08-31
@@ -276,6 +276,7 @@ driver, and a year forward: 2027-09-30 (handler saw 1 more)
 driver, one more frame after the walks: 2027-09-30 (handler saw 0 more)
 after 500 from_gobject wrappers and a full major: text="Rehearsal", references 3 -> 3
 after 5000 idle frames: text="Rehearsal", references 3
-bench: refusals reported across every frame above: 2
+bench: refusals reported across every frame above: 3
 bench: 20000 idle frames over a settled calendar and one parked on a refused date, ratio under 5: true
 bench: the same for an editable label, ratio under 5: true
+bench: an entry parked on a refused 100 000-character write, against a settled short one, ratio under 5: true

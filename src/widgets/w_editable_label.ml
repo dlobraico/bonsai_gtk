@@ -33,97 +33,20 @@ let editing (w : Widget.t) : W.Editable_label.t = cast w
 
 (* {1 Text a [GtkEditableLabel] will not hold}
 
-   One shape, and it is not the text view's. [gtk_editable_set_text] takes a
-   NUL-terminated string, so a text with an embedded NUL is stored up to the NUL and no
-   further -- silently, with no critical and no error (measured: ["aa\000bb"] leaves the
-   label holding ["aa"]). That is the same {i silent} shape the text view refuses, and it
-   gets the same answer: refused before the write, so the widget keeps what it had,
-   remembered so the frames after it cost nothing, and reported once with the node's path.
+   Nothing here, any more, and that is the point. [gtk_editable_set_text] truncates at an
+   embedded NUL silently, which is the divergence this widget refuses -- and it refuses it
+   through {!W_entry.set_text_if_needed}, the same function it already wrote its text
+   through, which now refuses a NUL for all four [GtkEditable] widgets at once. The
+   private copy of the refuse-record-report machinery that used to live here (a [Cache], a
+   [state], a [take_report], an [already_refused] -- byte-identical to the text view's
+   modulo the record) went with it: see {!Refusal}, which is the mechanism once, and
+   [w_entry.ml], which is this rule once.
 
-   {b Invalid UTF-8 is not refused here, and that is a measured difference rather than an
-     oversight.}
-   A [GtkTextBuffer] empties itself and then declines the insert, so [w_text_view.ml] has
-   to refuse it; a [GtkEditable] stores the bytes and reads them back unchanged (measured:
-   ["caf\xe9 latte"] round-trips), so there is nothing to refuse and the controlled
-   comparison settles on the first frame. Refusing it anyway would be refusing a write GTK
-   takes. *)
-let unwritable text =
-  if String.mem text '\000'
-  then
-    Some
-      "text contains a NUL byte, which GTK would silently truncate the text at \
-       (gtk_editable_set_text takes a NUL-terminated string); the write was refused and \
-       the label was left as it was"
-  else None
-;;
-
-(* What this label has already asked GTK for and been refused, per widget. Weakly keyed on
-   the widget, as [w_text_view.ml]'s cache and [w_drop_down.ml]'s are: a label that is
-   destroyed takes its entry with it rather than pinning the GObject alive. The key must
-   be the [Widget.t] the patcher retains -- the same value [create] returned and
-   [reassert] is handed -- which is [Child_keys]' invariant in a smaller place.
-
-   There is no {i text} cache of the kind [w_text_view.ml] keeps, and none is wanted. That
-   cache exists because reading a [GtkTextBuffer] copies the whole document and leaks the
-   copy, which an idle frame cannot afford; [gtk_editable_get_text] is transfer-none and
-   copies one short string into OCaml, which is precisely the cost [w_entry.ml] already
-   pays on every idle frame for every entry in the tree. A second mechanism here would be
-   a second thing to keep true for no gain. *)
-module Cache = Stdlib.Ephemeron.K1.Make (struct
-    type t = Widget.t
-
-    let equal = Gobject.same
-    let hash = Stdlib.Hashtbl.hash
-  end)
-
-type cached =
-  { (* The exact text a write was last refused for, so the decision is made once rather
-       than on every frame. *)
-    mutable refused : string option
-  ; (* A refusal the patcher has not yet reported. Taken (and cleared) by
-       [Patcher.enqueue_fixups], which is the one place holding both this widget and the
-       path of the node it came from. *)
-    mutable unreported : string option
-  }
-
-let cache : cached Cache.t = Cache.create 8
-
-let state w =
-  match Cache.find_opt cache w with
-  | Some st -> st
-  | None ->
-    let st = { refused = None; unreported = None } in
-    Cache.replace cache w st;
-    st
-;;
-
-(* The message for a refused write, if there is one that has not been reported yet. Called
-   by the patcher once per label per frame; cleared by the read, so one refusal is
-   reported once however many frames it survives. *)
-let take_report w =
-  let st = state w in
-  match st.unreported with
-  | None -> None
-  | Some message ->
-    st.unreported <- None;
-    Some message
-;;
-
-(* Whether this exact text has already been decided against, with the text view's
-   adoption: a model that rebuilds an equal string every frame would otherwise re-run
-   [String.equal] against the memo forever, where adopting the node's string turns every
-   later frame into a pointer comparison. [unwritable] is pure and [st.refused] is cleared
-   by every write that lands, so a matching memo means the write can only fail again. *)
-let already_refused st text =
-  match st.refused with
-  | Some refused ->
-    phys_equal refused text
-    || (String.equal refused text
-        &&
-        (st.refused <- Some text;
-         true))
-  | None -> false
-;;
+   {b Invalid UTF-8 is still not refused}, and that is a measured difference rather than
+   an oversight: a [GtkTextBuffer] empties itself and then declines the insert, so
+   [w_text_view.ml] has to refuse it; a [GtkEditable] stores the bytes and reads them back
+   unchanged (measured: ["caf\xe9 latte"] round-trips), so there is nothing to refuse and
+   the controlled comparison settles on the first frame. *)
 
 (* Whether a [GtkEditableLabel] is now in editing mode.
 
@@ -162,33 +85,28 @@ let editing_changed : Signals.spec =
    commit the {i model's} text: by the time it runs the widget already holds it, so
    committing and discarding would differ only in the case the model has already decided.
 
-   Both comparisons come first so the bracket is outside the decision: a label patched
-   with the text and the mode it already has -- which is every idle frame -- pays neither
-   write nor freeze/thaw. See [Widget_impl.batch_if]. The memo is asked before the text
-   comparison, on [w_text_view.ml]'s reasoning (task-9-review.md R1): after a refusal the
-   widget holds the old text and the node holds the unstorable one, so the comparison
-   answers "differs" on every frame forever, and asking the memo first makes the parked
-   frame a pointer comparison. *)
+   Both decisions come first so the bracket is outside them: a label patched with the text
+   and the mode it already has -- which is every idle frame -- pays neither write nor
+   freeze/thaw. See [Widget_impl.batch_if]. [W_entry.needs_write] asks the refusal memo
+   before it reads the widget, on [w_text_view.ml]'s reasoning (task-9-review.md R1):
+   after a refusal the widget holds the old text and the node holds the unstorable one, so
+   the comparison answers "differs" on every frame forever, and asking the memo first
+   makes the parked frame a pointer comparison.
+
+   {b The text refusal is not written here any more.} It is
+   [W_entry.set_text_if_needed]'s, which refuses a NUL for every [GtkEditable] widget and
+   leaves the widget untouched when it does, so this file states the {i order} of the two
+   props and nothing about the refusal. While a text is parked, [~editing] goes on being
+   enforced -- the two decisions are independent, which is deliberate: a label whose text
+   the library will not write is still a label the model says is or is not being edited. *)
 let reassert w (kind : Kind.t) =
   match kind with
   | Editable_label p ->
-    let e = W_entry.editable w in
     let l = editing w in
-    let st = state w in
-    let writes_text = (not (already_refused st p.text)) && W_entry.needs_text e p.text in
+    let writes_text = W_entry.needs_write w p.text in
     let writes_editing = not (Bool.equal (W.Editable_label.get_editing l) p.editing) in
     Widget_impl.batch_if (writes_text || writes_editing) w (fun () ->
-      if writes_text
-      then (
-        match unwritable p.text with
-        | Some reason ->
-          (* Refused. The label is untouched, so it goes on showing the text it had, and a
-             later frame offering text GTK will store writes it on {i that} frame. *)
-          st.refused <- Some p.text;
-          st.unreported <- Some reason
-        | None ->
-          ignore (W_entry.set_text_if_needed e p.text : bool);
-          st.refused <- None);
+      if writes_text then ignore (W_entry.set_text_if_needed w p.text : bool);
       if writes_editing
       then
         if p.editing

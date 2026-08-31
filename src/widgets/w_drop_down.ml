@@ -80,56 +80,19 @@ let set_items (d : W.Drop_down.t) items =
    record are: a view that is destroyed takes its entry with it rather than pinning the
    GObject alive. The key must be the [Widget.t] the patcher retains -- the same value
    [create] returned and [reassert] is handed -- which is [Child_keys]' invariant in a
-   smaller place. *)
-module Cache = Stdlib.Ephemeron.K1.Make (struct
-    type t = Widget.t
+   smaller place.
 
-    let equal = Gobject.same
-    let hash = Stdlib.Hashtbl.hash
-  end)
+   The mechanism itself is {!Refusal}'s, written once for the five widgets that refuse
+   something; what is this widget's is the value a refusal is remembered against (a vtree
+   index, so the comparison is a machine word and there is no string to adopt) and the
+   fact that it is the one refusal that is {i not} a pure function of that value -- a
+   drop-down's index is refused relative to the item list, so [forget_refusal] is called
+   from the items branch of [update]. *)
+module Refused = Refusal.Make (Int) (Refusal.No_extra)
 
-type cached =
-  { (* The vtree index a write was last refused for, kept so that the decision is made
-       once rather than on every frame -- see [reassert]. An [int option] rather than the
-       [string option] the text view keeps for the same purpose, so there is no string to
-       adopt and the comparison is already a machine word. *)
-    mutable refused : int option
-  ; (* A refusal the patcher has not yet reported. Taken (and cleared) by
-       [Patcher.enqueue_fixups], which is the one place holding both this widget and the
-       path of the node it came from. *)
-    mutable unreported : string option
-  }
-
-let cache : cached Cache.t = Cache.create 8
-
-let state w =
-  match Cache.find_opt cache w with
-  | Some st -> st
-  | None ->
-    let st = { refused = None; unreported = None } in
-    Cache.replace cache w st;
-    st
-;;
-
-(* The message for a refused selection, if there is one that has not been reported yet.
-
-   Called by the patcher once per drop-down per frame, because a [Widget_impl] is handed a
-   widget and a kind and knows neither where it is in the tree nor how the runtime
-   reports. Cleared by the read, so one refusal is reported once however many frames it
-   survives. *)
-let take_report w =
-  let st = state w in
-  match st.unreported with
-  | None -> None
-  | Some message ->
-    st.unreported <- None;
-    Some message
-;;
-
-let forget_refusal w =
-  let st = state w in
-  st.refused <- None
-;;
+let state = Refused.state
+let take_report = Refused.take_report
+let forget_refusal = Refused.forget_refusal
 
 (* Why GTK is still showing something else after a write.
 
@@ -195,26 +158,18 @@ let select (d : W.Drop_down.t) st ~selected =
   W.Drop_down.set_selected d want;
   let live = W.Drop_down.get_selected d in
   if live = want
-  then st.refused <- None
-  else (
-    st.refused <- Some selected;
-    st.unreported <- Some (refusal d ~selected ~live:(of_gtk live)))
+  then Refused.landed st
+  else Refused.refuse st selected ~reason:(refusal d ~selected ~live:(of_gtk live))
 ;;
 
-(* Whether this exact selection has already been decided against.
-
-   Safe to consult {i before} the comparison with the widget, on [w_text_view.ml]'s
-   [already_refused] reasoning: [st.refused] is cleared by every write that lands and by
-   every items change, which are the only two things that can change GTK's answer, so a
-   matching memo means the write can only fail again. Without it, a drop-down parked on
-   [~selected:(-1)] over a non-empty list would set the property on every idle frame
-   forever -- each one a C call GTK throws away, and each one inside a
-   [freeze_notify]/[thaw_notify] pair. *)
-let already_refused st selected =
-  match st.refused with
-  | Some n -> n = selected
-  | None -> false
-;;
+(* [Refused.already_refused] answers "has this exact selection already been decided
+   against", and is safe to consult {i before} the comparison with the widget for the
+   reason {!Refusal} states -- with the caveat that this is the widget the caveat is
+   about: the memo is cleared by every write that lands {i and} by every items change
+   ([forget_refusal] above, called from [update]), which are the only two things that can
+   change GTK's answer. Without it, a drop-down parked on [~selected:(-1)] over a
+   non-empty list would set the property on every idle frame forever -- each one a C call
+   GTK throws away, inside a [freeze_notify]/[thaw_notify] pair. *)
 
 (* [items] is compared here, and this comparison is what decides whether the expensive
    half of [update] runs.
@@ -279,7 +234,7 @@ let reassert w (kind : Kind.t) =
        O(1) here -- an int getter and an int compare -- so this ordering is about not
        writing rather than about not comparing, but the shape is the same one. *)
     let writes =
-      (not (already_refused st p.selected))
+      (not (Refused.already_refused st p.selected))
       && W.Drop_down.get_selected d <> to_gtk p.selected
     in
     Widget_impl.batch_if writes w (fun () ->

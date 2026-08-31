@@ -13,7 +13,21 @@ reach back past it: the M1 history is under the old path, `docs/m1-backlog.md`.
 
 ## Closed during M2 (was "do first in M2")
 
-All thirteen, in the tasks the plan put them in.
+All thirteen, in the tasks the plan put them in — plus one the final review's fix wave took:
+
+- **`entry`/`search_entry`/`password_entry` now refuse a NUL, the way `text_view` and
+  `editable_label` do.** They validated nothing: `gtk_editable_set_text` takes a
+  NUL-terminated string, so a NUL in `~text` truncated silently, the read-back never equalled
+  the model, and the widget was rewritten on *every* idle frame for the life of the tree with
+  nothing on stderr — measured at 1.18 ms per idle frame against 0.00019 ms parked, 5300×, on
+  a 100 000-character text. On a search entry each of those writes re-armed the debounce, so
+  `Attr.on_search_changed` never fired at all. The refusal lives in
+  `W_entry.set_text_if_needed`, the one function all four `GtkEditable` widgets write their
+  text through, so it is one rule rather than three more. The counter-argument on record —
+  "three more per-widget caches are a cost" — was an artefact of the copying: the four
+  hand-copied refuse-record-report mechanisms became one `Refusal` functor in the same
+  change, and the number of caches went from four to four rather than to seven. Final review,
+  controls I2 + recommendation; task-16 review I1.
 
 - **Seal `Attr.t`** — the constructors moved to `Attr.Private` and `Attr.t` is
   `private Private.t`, so an application can neither build one from a raw constructor nor
@@ -171,14 +185,6 @@ All thirteen, in the tasks the plan put them in.
   routing at all, and filtering this one case would be the only routing it implements — was
   accepted. Recorded because the decision should be revisited once, deliberately, for all
   three, and `bonsai_gtk_test.mli` should gain a sentence if it stands. task-6 review M5.
-- **Should `entry`/`search_entry`/`password_entry` refuse a NUL the way `text_view` does?**
-  Today they validate nothing at all: `gtk_editable_set_text` takes a NUL-terminated string, so
-  a NUL in `~text` truncates silently, the read-back never equals the model, and the widget is
-  rewritten on *every* idle frame for the life of the tree with nothing on stderr. `text_view`
-  and `editable_label` both refuse-record-report it; these three are the odd ones out, and the
-  same `unwritable`/`already_refused` machinery is right there. The counter-argument is that a
-  NUL is a caller bug and three more per-widget caches are a cost. Weigh it in the final review.
-  task-16 review I1.
 
 ## API shape decisions before they become breaking
 

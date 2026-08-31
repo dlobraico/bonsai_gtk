@@ -376,23 +376,25 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   length before the caret, approximate for one that does (an autocompleter inserting six
   characters at the start leaves the caret six characters early). `notify::cursor-position`
   is the hook for an app that wants to own the caret; it is on the backlog.
-- **Text GTK cannot hold: three different rules across the five text widgets.** Where a
-  write *is* refused it is refused *before* it happens — the widget keeps what it had, the
-  refusal is reported once per distinct text through the patcher's channel, and, unlike the
-  two states above, no later frame makes the value valid, so the widget and the model stay
-  diverged until the model offers text GTK will take.
-  - **`TextView` refuses both** an embedded NUL (GTK would silently truncate at it) and
-    invalid UTF-8 (a `GtkTextBuffer` empties itself and *then* declines the insert). Its
-    cached copy of the buffer text is left untouched along with the buffer.
-  - **`EditableLabel` refuses a NUL only.** Invalid UTF-8 is written, deliberately: a
-    `GtkEditable` stores the bytes and reads them back unchanged (measured — `"caf\xe9 latte"`
-    round-trips), so there is nothing to refuse and the controlled comparison settles on the
-    first frame. Refusing it would be refusing a write GTK takes.
-  - **`Entry`, `PasswordEntry` and `SearchEntry` validate nothing.** A NUL in `~text` is
-    truncated at by `gtk_editable_set_text`, the read-back never equals the model, and the
-    widget is therefore rewritten on every idle frame, silently. Strip NULs before they reach
-    a text prop. Whether these three should refuse a NUL the way `TextView` does is an open
-    question on the backlog.
+- **Text GTK cannot hold: two rules across the five text widgets.** Where a write *is*
+  refused it is refused *before* it happens — the widget keeps what it had, the refusal is
+  remembered so the frames after it cost a pointer comparison, and it is reported once per
+  distinct text through the patcher's channel. Unlike the two states above, no later frame
+  makes the value valid, so the widget and the model stay diverged until the model offers
+  text GTK will take.
+  - **Every `GtkEditable` widget refuses a NUL and nothing else** — `Entry`,
+    `PasswordEntry`, `SearchEntry` and `EditableLabel`, from one place
+    (`W_entry.set_text_if_needed`), because they all write their text through it.
+    `gtk_editable_set_text` takes a NUL-terminated string, so GTK would store the prefix
+    silently and the widget would then be rewritten on every idle frame for the life of the
+    tree; on a `SearchEntry` each of those writes re-armed the debounce, so
+    `Attr.on_search_changed` never fired at all. Invalid UTF-8 is written rather than
+    refused, deliberately: a `GtkEditable` stores the bytes and reads them back unchanged
+    (measured — `"caf\xe9 latte"` round-trips), so there is nothing to refuse and the
+    controlled comparison settles on the first frame.
+  - **`TextView` refuses that and invalid UTF-8 too**, because a `GtkTextBuffer` empties
+    itself and *then* declines the insert. Its cached copy of the buffer text is left
+    untouched along with the buffer.
 - **`Calendar` has no date range and no "no date selected"** — `~date` is always a real
   `Core.Date.t`. GTK's own year range is 1–9999, so a `Date.t` in year 0 is refused,
   reported once, and written on the first later frame that offers a date GTK will hold.

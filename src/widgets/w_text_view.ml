@@ -73,60 +73,34 @@ let read (w : Widget.t) =
    Weakly keyed on the widget, as [w_search_entry.ml]'s echo record is: a view that is
    destroyed takes its entry with it rather than pinning the GObject alive. The key must
    be the [Widget.t] the patcher retains -- the same value [create] returned and
-   [reassert] is handed -- which is [Child_keys]' invariant in a smaller place. *)
-module Cache = Stdlib.Ephemeron.K1.Make (struct
-    type t = Widget.t
+   [reassert] is handed -- which is [Child_keys]' invariant in a smaller place.
 
-    let equal = Gobject.same
-    let hash = Stdlib.Hashtbl.hash
-  end)
+   {b The refusing half is {!Refusal}'s}, which is that mechanism written once for the
+   five widgets that have one; what is local here is the {i text} cache, which rides in
+   the same ephemeron entry so that an idle frame costs one lookup rather than two. *)
+module Written = struct
+  type t =
+    { mutable text : string
+    ; mutable stale : bool
+    }
 
-type cached =
-  { mutable text : string
-  ; mutable stale : bool
-  ; (* The exact text a write was last refused for, kept so that the decision is made once
-       rather than on every frame -- see [set_text_if_needed]. *)
-    mutable refused : string option
-  ; (* A refusal the patcher has not yet reported. Taken (and cleared) by
-       [Patcher.enqueue_fixups], which is the one place that holds both this widget and
-       the path of the node it came from. *)
-    mutable unreported : string option
-  }
+  (* Created [stale], so that a record which appears from nowhere knows nothing and reads
+     before it answers. [create] is reached on a freshly built view whose buffer is empty,
+     where that first read costs nothing. *)
+  let create () = { text = ""; stale = true }
+end
 
-let cache : cached Cache.t = Cache.create 8
+module Refused = Refusal.Make (String) (Written)
 
-(* Created [stale], so that a record which appears from nowhere knows nothing and reads
-   before it answers. [create] calls this on a freshly built view whose buffer is empty,
-   where that first read costs nothing. *)
-let state w =
-  match Cache.find_opt cache w with
-  | Some st -> st
-  | None ->
-    let st = { text = ""; stale = true; refused = None; unreported = None } in
-    Cache.replace cache w st;
-    st
-;;
+let state = Refused.state
+let take_report = Refused.take_report
 
-(* The message for a refused write, if there is one that has not been reported yet.
-
-   Called by the patcher, once per text view per frame, because a [Widget_impl] is handed
-   a widget and a kind and knows neither where it is in the tree nor how the runtime
-   reports. Cleared by the read, so one refusal is reported once however many frames it
-   survives. *)
-let take_report w =
-  let st = state w in
-  match st.unreported with
-  | None -> None
-  | Some message ->
-    st.unreported <- None;
-    Some message
-;;
-
-let refresh w st =
-  if st.stale
+let refresh w (st : Refused.t) =
+  let c = st.extra in
+  if c.stale
   then (
-    st.text <- read w;
-    st.stale <- false)
+    c.text <- read w;
+    c.stale <- false)
 ;;
 
 (* Whether the buffer already holds [text] -- the comparison the whole controlled-text
@@ -143,12 +117,13 @@ let refresh w st =
    the node's string is adopted into the cache. They are equal, so nothing is lost, and it
    turns a steady state that would compare a megabyte every frame forever into one that
    compares a pointer. *)
-let holds w st text =
+let holds w (st : Refused.t) text =
   refresh w st;
-  phys_equal st.text text
-  || (String.equal st.text text
+  let c = st.extra in
+  phys_equal c.text text
+  || (String.equal c.text text
       &&
-      (st.text <- text;
+      (c.text <- text;
        true))
 ;;
 
@@ -185,32 +160,13 @@ let unwritable text =
   else None
 ;;
 
-(* Whether a write of [text] has already been decided against, and reported.
-
-   The memo is against the {i text} rather than against the widget: a model that keeps
-   asking for the same unstorable text pays one validation and one message, and a model
-   that changes to a different unstorable text is a new datum and is validated and
-   reported again.
-
-   The string is adopted on a match, exactly as [holds] adopts, and for the same reason: a
-   model that rebuilds an equal string every frame would otherwise re-run [String.equal]
-   against the memo forever. (The first round's comment claimed this adoption and the code
-   did not do it -- task-9-review.md R1.)
-
-   [unwritable] is pure, so a text refused once is refused always, and [st.refused] is
-   cleared by every successful write. That is what makes it safe for [reassert] to consult
-   this {i before} [holds]: a matching memo means the write can only fail, so the frame
-   has nothing to do and need not compare anything or bracket anything. *)
-let already_refused st text =
-  match st.refused with
-  | Some refused ->
-    phys_equal refused text
-    || (String.equal refused text
-        &&
-        (st.refused <- Some text;
-         true))
-  | None -> false
-;;
+(* [Refused.already_refused] is what answers "has a write of this text already been
+   decided against", and it is safe to consult {i before} the widget is read for the
+   reason {!Refusal} states: [unwritable] is pure, so a text refused once is refused
+   always, and the memo is cleared by every write that lands. The memo is against the
+   {i text} rather than against the widget, so a model that keeps asking for the same
+   unstorable text pays one validation and one message while a model that changes to a
+   different unstorable text is a new datum. *)
 
 (* Controlled, on spec §6.5's rule: written only when the buffer's current text differs
    from the model's, never when the previous node's did.
@@ -243,7 +199,7 @@ let set_text_if_needed w text =
              own, whoever calls it; [reassert] additionally asks the same question
              {i first}, which is what makes a frame parked on a refusal cost nothing at
              all. *)
-          already_refused st text
+          Refused.already_refused st text
   then false
   else (
     match unwritable text with
@@ -253,8 +209,7 @@ let set_text_if_needed w text =
          round got wrong: caching what was *attempted* left [holds] answering [true]
          against a buffer that held something else, permanently under [~editable:false],
          where no user edit will ever re-read it. *)
-      st.refused <- Some text;
-      st.unreported <- Some reason;
+      Refused.refuse st text ~reason;
       false
     | None ->
       let b = buffer w in
@@ -272,9 +227,9 @@ let set_text_if_needed w text =
          and an insert), so [st.stale] is [true] by now; the assignment below is what puts
          the cache back, and it has to come after the write rather than before it. *)
       W.Text_buffer.place_cursor b (W.Text_buffer.get_iter_at_offset b offset);
-      st.text <- text;
-      st.stale <- false;
-      st.refused <- None;
+      st.extra.text <- text;
+      st.extra.stale <- false;
+      Refused.landed st;
       true)
 ;;
 
@@ -295,16 +250,16 @@ let changed : Signals.spec =
              drops for [in_patch] and the ones that reach an empty slot, which are still
              edits.
 
-             [(state w).stale] rather than a record captured here, which is what [fire] on
-             the next lines already does. Capturing would be faster by one ephemeron
-             lookup per emission and would be the cache's only *silent* failure shape: if
-             the entry for [w] were ever dropped while the widget lived, [state w] would
-             mint a second record, this callback would go on invalidating the first, and
-             [holds] would read a clean record a frame behind -- a text view that quietly
-             stops being controlled. It cannot happen today (the key is held both by
-             [live.widget] and by this closure, which [connect_all] roots in the
-             GClosure), but that reasoning is three hops long and lives nowhere near here.
-             task-9-review.md M1.
+             [(Refused.extra w).stale] rather than a record captured here, which is what
+             [fire] on the next lines already does. Capturing would be faster by one
+             ephemeron lookup per emission and would be the cache's only *silent* failure
+             shape: if the entry for [w] were ever dropped while the widget lived,
+             [state w] would mint a second record, this callback would go on invalidating
+             the first, and [holds] would read a clean record a frame behind -- a text
+             view that quietly stops being controlled. It cannot happen today (the key is
+             held both by [live.widget] and by this closure, which [connect_all] roots in
+             the GClosure), but that reasoning is three hops long and lives nowhere near
+             here. task-9-review.md M1.
 
              The closure captures neither the record nor the buffer, so it adds no
              reference of its own to the object it is connected to. *)
@@ -312,7 +267,7 @@ let changed : Signals.spec =
           [ Signals.connected
               b
               (W.Text_buffer.on_changed b ~callback:(fun () ->
-                 (state w).stale <- true;
+                 (Refused.extra w).stale <- true;
                  callback ()))
           ])
     ; fire =
@@ -324,7 +279,7 @@ let changed : Signals.spec =
                [reassert]'s comparison would have had to pay for it. *)
             let st = state w in
             refresh w st;
-            Some (handler st.text)
+            Some (handler st.extra.text)
           | _ -> None)
     }
 ;;
@@ -413,7 +368,9 @@ let impl : Widget_impl.t =
                stays set until the model offers a text GTK will take, and that frame pays
                the one read it genuinely needs. *)
             let st = state w in
-            let writes = (not (already_refused st p.text)) && not (holds w st p.text) in
+            let writes =
+              (not (Refused.already_refused st p.text)) && not (holds w st p.text)
+            in
             Widget_impl.batch_if writes w (fun () ->
               if writes then ignore (set_text_if_needed w p.text : bool))
           | k -> Widget_impl.wrong_kind "TextView" k)

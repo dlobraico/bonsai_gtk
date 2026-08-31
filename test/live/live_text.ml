@@ -2259,12 +2259,13 @@ let () =
 
 (* ------------------------------------------------------------------------------------ *)
 
-(* What an idle frame over these two widgets costs, in the shape Tasks 9 and 10 both used.
+(* What an idle frame over these three widgets costs, in the shape Tasks 9 and 10 both
+   used.
 
-   Two claims, one per widget, and both are about the {i memo} rather than about the
-   widget: a controlled prop the widget will not take leaves [reassert] deciding not to
-   write on every frame forever, and the deciding is what has to be cheap. Task 9's R1 is
-   where that was first got wrong, and both of these follow its fix.
+   Three claims, one per widget, and all of them are about the {i memo} rather than about
+   the widget: a controlled prop the widget will not take leaves [reassert] deciding not
+   to write on every frame forever, and the deciding is what has to be cheap. Task 9's R1
+   is where that was first got wrong, and both of these follow its fix.
 
    A ratio rather than a timing, for [live_lists.ml]'s reason: the absolute number depends
    on the machine and on how oversubscribed CI is, and contention scales both measurements
@@ -2275,7 +2276,14 @@ let () =
    getters and a [Date.create_exn] over an immediate, so it does not move with anything.
    An editable label's is [String.equal] against a fresh copy of the widget's text, so it
    is O(len) exactly as every [Node.entry] in the tree already is; the long-text figure is
-   printed so that stays visible rather than becoming folklore. *)
+   printed so that stays visible rather than becoming folklore.
+
+   The entry pair is the one the fix wave added, and it is the sharpest of the three: the
+   text it is parked on is 100 000 characters long, so without the refusal memo every idle
+   frame would copy the widget's text out of GTK and [String.equal] it -- the O(len)
+   figure above, forever -- and with it the frame is a pointer comparison against a
+   settled 16-character entry. Before the fix wave there was no memo to ask, because there
+   was no refusal: the entry simply rewrote itself, and its whole text, on every frame. *)
 let () =
   let bound_ratio = 5.0 in
   let frames = 20_000 in
@@ -2324,6 +2332,11 @@ let () =
          ~text
          ())
   in
+  let entry text =
+    Node.window
+      ~title:"bench"
+      (Node.entry ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ] ~text ())
+  in
   let cal_settled = idle_frame_ms ~path:"bench" (cal "2026-08-30") in
   let cal_refused = idle_frame_ms ~path:"bench" (cal "0000-01-01") in
   let short = String.make 16 'x' in
@@ -2331,7 +2344,9 @@ let () =
   let lbl_settled = idle_frame_ms ~path:"bench" (lbl short) in
   let lbl_refused = idle_frame_ms ~path:"bench" (lbl (short ^ "\000tail")) in
   let lbl_long = idle_frame_ms ~path:"bench" (lbl long) in
-  (* Two refusals, each reported exactly once across forty thousand frames. *)
+  let entry_settled = idle_frame_ms ~path:"bench" (entry short) in
+  let entry_refused = idle_frame_ms ~path:"bench" (entry (long ^ "\000tail")) in
+  (* Three refusals, each reported exactly once across sixty thousand frames. *)
   printf "bench: refusals reported across every frame above: %d\n" !refusals;
   printf
     "bench: %d idle frames over a settled calendar and one parked on a refused date, \
@@ -2343,6 +2358,14 @@ let () =
     "bench: the same for an editable label, ratio under %g: %b\n"
     bound_ratio
     Float.(lbl_refused /. lbl_settled < bound_ratio);
+  (* The entry's parked frame is compared against a {i short} settled entry rather than
+     against one holding the same 100 000 characters: the claim is that the memo makes the
+     parked frame independent of the length, which a same-length baseline would hide. *)
+  printf
+    "bench: an entry parked on a refused 100 000-character write, against a settled \
+     short one, ratio under %g: %b\n"
+    bound_ratio
+    Float.(entry_refused /. entry_settled < bound_ratio);
   eprintf
     "bench: calendar %.5f ms settled, %.5f ms parked on a refused date, ratio %.2f\n%!"
     cal_settled
@@ -2354,5 +2377,12 @@ let () =
      %!"
     lbl_settled
     lbl_refused
-    lbl_long
+    lbl_long;
+  eprintf
+    "bench: entry %.5f ms settled at 16 chars, %.5f ms parked on a refused 100 000-char \
+     write, ratio %.2f\n\
+     %!"
+    entry_settled
+    entry_refused
+    (entry_refused /. entry_settled)
 ;;

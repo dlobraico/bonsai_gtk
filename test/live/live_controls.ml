@@ -527,3 +527,172 @@ let () =
   printf "searches after a real edit: %s\n" (String.concat ~sep:"," (List.rev !searches));
   P.destroy ctx live
 ;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* A [~text] with a NUL in it, over all four [GtkEditable] widgets.
+
+   [gtk_editable_set_text] takes a NUL-terminated string, so GTK stores the prefix and no
+   more -- silently, with no critical and no error. Before the fix wave the library then
+   compared the model's whole text against that prefix, found them different, and rewrote
+   the widget on every idle frame for the life of the tree, saying nothing; on a search
+   entry each of those writes re-armed the 150 ms debounce, so at 60 fps
+   [Attr.on_search_changed] never fired at all.
+
+   Now it is refused before the write, on the terms [w_text_view.ml] set: the widget keeps
+   what it had (not a truncated prefix -- that is the difference the first line below
+   pins), the refusal is remembered so the frames after it cost a pointer comparison, and
+   it is reported once with the node's path. All four widgets get it from
+   [W_entry.set_text_if_needed], which is the one place all four write their text.
+
+   Each claim is asserted per kind rather than once, because each kind reaches
+   [GtkEditable] through a delegate of its own and the search entry additionally has the
+   debounce to lose. *)
+let () =
+  let reports = ref [] in
+  let scheduled = ref 0 in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~report:(fun ~node_path message -> reports := (node_path, message) :: !reports)
+      ~signals:
+        { schedule = (fun _ -> incr scheduled)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let take_reports () =
+    let taken = List.rev !reports in
+    reports := [];
+    List.length taken
+  in
+  let kinds =
+    [ ( "entry"
+      , fun text ->
+          Node.entry ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ] ~text () )
+    ; ( "password_entry"
+      , fun text ->
+          Node.password_entry
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~text
+            () )
+    ; ( "search_entry"
+      , fun text ->
+          Node.search_entry
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~text
+            () )
+    ; ( "editable_label"
+      , fun text ->
+          Node.editable_label
+            ~attrs:[ Attr.on_changed (fun _ -> Ui_effect.Ignore) ]
+            ~text
+            () )
+    ]
+  in
+  let child (live : P.live) =
+    match live.children with
+    | Single (Some c) -> c.P.widget
+    | No_children | Single None | List _ | Slots _ -> assert false
+  in
+  List.iter kinds ~f:(fun (name, node) ->
+    let view text = Node.window ~title:"nul" (node text) in
+    let live = P.mount ctx ~path:name ~is_root:true (view "kept") in
+    ignore (take_reports () : int);
+    let w = child live in
+    let text () = W.Editable.get_text (W.Editable.from_gobject w) in
+    (* Counted on the widget's own [changed], which fires for the library's writes as well
+       as the user's: a frame that wrote is a frame this saw. *)
+    let writes = ref 0 in
+    let (_ : Gobject.Signal.handler_id) =
+      W.Editable.on_changed (W.Editable.from_gobject w) ~callback:(fun () -> incr writes)
+    in
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:name ~is_root:true live (view "ab\000cd"))
+    in
+    printf
+      "%s: asked for a text with a NUL -> text=%S, wrote %d, reported %d\n"
+      name
+      (text ())
+      !writes
+      (take_reports ());
+    (* Parked: the memo answers before the widget is read, so nothing is written, nothing
+       is re-reported, and the frame does not depend on the text's length. *)
+    writes := 0;
+    for _ = 1 to 5 do
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.reassert_only ctx ~path:name live;
+        P.run_fixups ctx)
+    done;
+    printf
+      "%s: five idle frames parked on it -> text=%S, wrote %d, reported %d\n"
+      name
+      (text ())
+      !writes
+      (take_reports ());
+    (* And the widget is not wedged: the next text GTK will take is written on the frame
+       that offers it. *)
+    writes := 0;
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        P.patch ctx ~path:name ~is_root:true live (view "recovered"))
+    in
+    printf
+      "%s: and a text GTK does take -> text=%S, wrote %d, reported %d\n"
+      name
+      (text ())
+      !writes
+      (take_reports ());
+    P.destroy ctx live);
+  (* The search entry's own consequence, which is the one that made this worth fixing
+     rather than documenting: a refused write arms no debounce, so the signal that tells
+     the application what the box says still fires for a real edit. Before the fix the
+     rewrite-per-frame reset the timeout every 16 ms and this printed nothing at all. *)
+  let searches = ref [] in
+  let search text =
+    Node.window
+      ~title:"nul-search"
+      (Node.search_entry
+         ~attrs:
+           [ Attr.on_search_changed (fun t ->
+               searches := t :: !searches;
+               Ui_effect.Ignore)
+           ]
+         ~search_delay:10
+         ~text
+         ())
+  in
+  let live = P.mount ctx ~path:"srch" ~is_root:true (search "ab\000cd") in
+  ignore (take_reports () : int);
+  let entry = child live in
+  pump_for ~ms:60;
+  (* One search, for [""], and it is GTK's rather than ours:
+     [gtk_search_entry_set_search_delay] ends in [reset_timeout] (gtksearchentry.c:1048),
+     so writing [~search_delay] at mount arms a debounce nobody typed into. The block
+     above never sees it because the library's own write records an echo that swallows the
+     emission; here the write was refused, so there is no echo and GTK's own timeout is
+     reported. What matters is that a timeout {i elapsed at all} -- that is the machinery
+     the old rewrite-per-frame suppressed. *)
+  printf
+    "search entry mounted on a refused text: searches %d (GTK's own, from \
+     set_search_delay)\n"
+    (List.length !searches);
+  (* A real edit, typed the way a user types one. Five idle frames run first, because that
+     is where the old behaviour did its damage: each one would have re-armed the debounce
+     the edit below is waiting on. *)
+  for _ = 1 to 5 do
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.reassert_only ctx ~path:"srch" live;
+      P.run_fixups ctx)
+  done;
+  W.Editable.insert_text (W.Editable.from_gobject entry) "S" 1 0;
+  pump_for ~ms:60;
+  printf
+    "and after a real edit: searches %s\n"
+    (String.concat ~sep:"," (List.rev !searches));
+  P.destroy ctx live
+;;

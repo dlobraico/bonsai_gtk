@@ -30,9 +30,7 @@ let echoes : string Echo.t = Echo.create 8
 
 (* Recorded only when the write actually happened: a write that changed nothing provokes
    no signal to decline. *)
-let set_text w text =
-  if W_entry.set_text_if_needed (W_entry.editable w) text then Echo.replace echoes w text
-;;
+let set_text w text = if W_entry.set_text_if_needed w text then Echo.replace echoes w text
 
 (* Consumed whether or not it matched, so that a record outlives at most one emission.
 
@@ -116,10 +114,13 @@ let impl : Widget_impl.t =
         (fun w (kind : Kind.t) ->
           match kind with
           | Search_entry p ->
-            (* [set_text] compares again and records an echo only if it really wrote; what
-               is hoisted here is the same comparison, so that the bracket is outside the
-               decision. See [Widget_impl.batch_if]. *)
-            let writes = W_entry.needs_text (W_entry.editable w) p.text in
+            (* [set_text] decides again and records an echo only if it really wrote; what
+               is hoisted here is the same decision, so that the bracket is outside it.
+               See [Widget_impl.batch_if]. [needs_write] asks the refusal memo before the
+               widget, which matters most here: a search entry parked on a text with a NUL
+               in it would otherwise re-arm the debounce on every frame and never fire
+               [Attr.on_search_changed] at all. *)
+            let writes = W_entry.needs_write w p.text in
             Widget_impl.batch_if writes w (fun () -> if writes then set_text w p.text)
           | k -> Widget_impl.wrong_kind "SearchEntry" k)
   ; signals =

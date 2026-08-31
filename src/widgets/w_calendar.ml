@@ -105,89 +105,50 @@ let unholdable date =
    calendar that is destroyed takes its entry with it rather than pinning the GObject
    alive. The key must be the [Widget.t] the patcher retains -- the same value [create]
    returned and [reassert] is handed -- which is [Child_keys]' invariant in a smaller
-   place. *)
-module Cache = Stdlib.Ephemeron.K1.Make (struct
-    type t = Widget.t
+   place.
 
-    let equal = Gobject.same
-    let hash = Stdlib.Hashtbl.hash
-  end)
+   The refusing half is {!Refusal}'s, written once for the five widgets that have one;
+   what rides beside it here is the dedup memo below, in the same ephemeron entry so that
+   a frame costs one lookup rather than two. *)
+module Fired = struct
+  (* The date the handler was last told about, so that one user action reaching this
+     widget through more than one GTK emission is delivered once. See {!fire_date}. *)
+  type t = { mutable last_fired : Date.t option }
 
-type cached =
-  { (* The exact date a write was last refused for, so the decision is made once rather
-       than on every frame. A [Date.t option] rather than the text view's [string option]:
-       [Date.t] is an immediate, so there is no string to adopt and the comparison is
-       already a machine word -- the drop-down's [int option] in a different type. *)
-    mutable refused : Date.t option
-  ; (* A refusal the patcher has not yet reported. Taken (and cleared) by
-       [Patcher.enqueue_fixups], which is the one place holding both this widget and the
-       path of the node it came from. *)
-    mutable unreported : string option
-  ; (* The date the handler was last told about, so that one user action reaching this
-       widget through more than one GTK emission is delivered once. See {!fire_date}. *)
-    mutable last_fired : Date.t option
-  }
+  let create () = { last_fired = None }
+end
 
-let cache : cached Cache.t = Cache.create 8
+module Refused = Refusal.Make (Date) (Fired)
 
-let state w =
-  match Cache.find_opt cache w with
-  | Some st -> st
-  | None ->
-    let st = { refused = None; unreported = None; last_fired = None } in
-    Cache.replace cache w st;
-    st
-;;
+let state = Refused.state
+let take_report = Refused.take_report
 
-(* The message for a refused date, if there is one that has not been reported yet.
-
-   Called by the patcher once per calendar per frame, because a [Widget_impl] is handed a
-   widget and a kind and knows neither where it is in the tree nor how the runtime
-   reports. Cleared by the read, so one refusal is reported once however many frames it
-   survives. *)
-let take_report w =
-  let st = state w in
-  match st.unreported with
-  | None -> None
-  | Some message ->
-    st.unreported <- None;
-    Some message
-;;
-
-(* Whether this exact date has already been decided against.
-
-   Safe to consult {i before} the widget is read, on [w_text_view.ml]'s [already_refused]
-   reasoning (task-9-review.md R1): [unholdable] is pure and [st.refused] is cleared by
-   every write that lands, so a matching memo means the write can only fail again and the
-   frame has nothing to do. Without it a calendar parked on a year-0 date would run
-   [unholdable] and take a [freeze_notify]/[thaw_notify] pair on every idle frame forever.
-   Both questions are O(1) here, so this ordering is about not writing rather than about
-   not comparing -- the same shape as the drop-down's. *)
-let already_refused st date =
-  match st.refused with
-  | Some d -> Date.equal d date
-  | None -> false
-;;
+(* [Refused.already_refused] answers "has this exact date already been decided against",
+   and is safe to consult {i before} the widget is read for the reason {!Refusal} states
+   (task-9-review.md R1): [unholdable] is pure and the memo is cleared by every write that
+   lands. Without it a calendar parked on a year-0 date would run [unholdable] and take a
+   [freeze_notify]/[thaw_notify] pair on every idle frame forever. Both questions are O(1)
+   here, so this ordering is about not writing rather than about not comparing -- the same
+   shape as the drop-down's. *)
 
 (* Write the date, or refuse it and record why. Returns nothing: the caller has already
    decided that a write is wanted. *)
-let set_date c st date =
+let set_date c (st : Refused.t) date =
   match unholdable date with
   | Some reason ->
     (* Refused. The calendar is untouched, so it goes on showing a date that is at least a
        real one, and a later frame offering a date GTK will hold writes it on {i that}
        frame -- Tasks 6-8's same-frame rule, over a different kind of ghost. *)
-    st.refused <- Some date;
-    st.unreported <- Some reason
+    Refused.refuse st date ~reason
   | None ->
     write_date c date;
-    st.refused <- None;
+    Refused.landed st;
     (* The dedup memo is about what the {i user} was last told, and this write moves the
        widget out from under it. Without this line a date the model {i declined} could be
        chosen only once: the handler fired for it, [reassert] put the model's date back,
        and a second attempt at the same day would be coalesced away against a memo that no
        longer describes anything the user can see. *)
-    st.last_fired <- None
+    st.extra.last_fired <- None
 ;;
 
 (* Marks, applied whole rather than diffed.
@@ -264,12 +225,12 @@ let same_marks a b = phys_equal a b || List.equal Int.equal a b
    need to be: any other way the widget's date changes is itself an emission that updates
    it. *)
 let fire_date w =
-  let st = state w in
+  let fired = Refused.extra w in
   let date = read_date (cast w) in
-  match st.last_fired with
+  match fired.last_fired with
   | Some d when Date.equal d date -> None
   | Some _ | None ->
-    st.last_fired <- Some date;
+    fired.last_fired <- Some date;
     Some date
 ;;
 
@@ -324,7 +285,7 @@ let reassert w (kind : Kind.t) =
     let c : W.Calendar.t = cast w in
     let st = state w in
     let writes =
-      (not (already_refused st p.date)) && not (Date.equal (read_date c) p.date)
+      (not (Refused.already_refused st p.date)) && not (Date.equal (read_date c) p.date)
     in
     Widget_impl.batch_if writes w (fun () -> if writes then set_date c st p.date)
   | k -> Widget_impl.wrong_kind "Calendar" k
