@@ -32,3 +32,10 @@ Escape dismisses the popover: (focus-leave e2 popover-closed)
 popover mapped after Escape: false
 window focus stranded in the popover: false
 a window key after the menu closed: (capture F1 mods=none)
+menu2 geometry: compute_bounds=true origin=true box-positive=true bounds-is-box=true
+popover menu mapped after a real click: true
+menu item sensitive (the tracker bound): true
+a real click on the item activates it: (picked)
+popover menu mapped after activation: false
+window focus stranded in the popover menu: false
+a window key after item activation: (capture F1 mods=none)

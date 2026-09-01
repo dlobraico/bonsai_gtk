@@ -73,6 +73,9 @@ let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
   | Flow_box _ -> W_flow_box.forget_children widget
   (* Same reason, same placement requirement: {i above} the or-pattern chain below. *)
   | Notebook _ -> W_notebook.forget_pages widget
+  (* The [~menu] machinery: the model handle, and the focus-repair connection on the
+     {i internal} PopoverMenu -- which [closed]-at-dispose could otherwise still reach. *)
+  | Menu_button _ -> W_menu_button.forget_menu widget
   | Label _
   | Button _
   | Toggle_button _
@@ -103,7 +106,6 @@ let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
   | Header_bar _
   | Action_bar _
   | Popover _
-  | Menu_button _
   | Grid _
   | Stack_switcher _
   | Stack_sidebar _

@@ -216,3 +216,33 @@ let release t =
   Option.iter t.group ~f:(fun g -> release_group t g);
   t.group <- None
 ;;
+
+(* The GTK-side read-back, for tests: what [GAction] answers for each name, which is the
+   only honest source for a controlled-prop golden -- the runtime's own bookkeeping cannot
+   certify itself. Sorted by name so the golden is stable. *)
+let dump t =
+  match t.group with
+  | None -> Sexp.Atom "no-group"
+  | Some g ->
+    let rows =
+      Hashtbl.to_alist g.actions
+      |> List.sort ~compare:(fun (a, _) (b, _) -> String.compare a b)
+      |> List.map ~f:(fun (name, st) ->
+        let a = Gio.Action.from_gobject st.action in
+        let state =
+          match Gio.Action.get_state a with
+          | None -> Sexp.Atom "-"
+          | Some v ->
+            (match st.shape with
+             | `Toggle -> Bool.sexp_of_t (Gvariant.to_boolean v)
+             | `Radio -> String.sexp_of_t (Gvariant.to_string v)
+             | `Simple -> Sexp.Atom "?")
+        in
+        Sexp.List
+          [ Atom name
+          ; List [ Atom "enabled"; Bool.sexp_of_t (Gio.Action.get_enabled a) ]
+          ; List [ Atom "state"; state ]
+          ])
+    in
+    Sexp.List (Sexp.List [ Atom "scope"; Atom g.scope ] :: rows)
+;;

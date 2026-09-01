@@ -1,0 +1,99 @@
+(GtkWindow (title (menus)) (css (background))
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children
+    (GtkMenuButton (label menu) has-menu (css (popup))
+     (children
+      (GtkToggleButton (label ()) (css (text-button arrow-button toggle))
+       (children
+        (GtkBox (spacing 0) (css (horizontal))
+         (children (GtkLabel (text menu) hexpand)
+          (GtkBuiltinIcon (css (down)))))))
+      (GtkPopoverMenu (css (background menu)) hidden
+       (children
+        (GtkPopoverContent
+         (children
+          (GtkScrolledWindow propagate-natural-height propagate-natural-width
+           (children
+            (GtkViewport
+             (children
+              (GtkStack (visible (main))
+               (children
+                (GtkMenuSectionBox (css (vertical))
+                 (children
+                  (GtkBox (spacing 0) (css (vertical))
+                   (children
+                    (GtkModelButton (css (flat))
+                     (children (GtkBox (spacing 0) (css (horizontal)))
+                      (GtkLabel (text Ping) (halign start) hexpand)
+                      (GtkLabel (text Ctrl+P) (halign end) hexpand)))
+                    (GtkModelButton (css (flat))
+                     (children (GtkBox (spacing 0) (css (horizontal)))
+                      (GtkLabel (text View) (halign start) hexpand)
+                      (GtkBuiltinIcon (css (right)) (halign center)
+                       (valign center))))))))
+                (GtkMenuSectionBox (css (vertical))
+                 (children
+                  (GtkModelButton (css (title flat))
+                   (children
+                    (GtkBox (spacing 0) (css (horizontal))
+                     (children
+                      (GtkBuiltinIcon (css (left)) (halign center)
+                       (valign center))))
+                    (GtkLabel (text View) (halign center) hexpand)
+                    (GtkBuiltinIcon (css (right)) (halign center)
+                     (valign center))))
+                  (GtkBox (spacing 0) (css (vertical))
+                   (children
+                    (GtkModelButton (css (flat))
+                     (children
+                      (GtkBox (spacing 0) (css (horizontal))
+                       (children
+                        (GtkBuiltinIcon (css (left)) (halign center)
+                         (valign center))))
+                      (GtkLabel (text Dark) (halign start) hexpand)))
+                    (GtkMenuSectionBox (css (vertical))
+                     (children
+                      (GtkBox (spacing 0) (css (vertical))
+                       (children
+                        (GtkModelButton (css (flat))
+                         (children
+                          (GtkBox (spacing 0) (css (horizontal))
+                           (children
+                            (GtkBuiltinIcon (css (left)) (halign center)
+                             (valign center))))
+                          (GtkLabel (text Solar) (halign start) hexpand)))
+                        (GtkModelButton (css (flat))
+                         (children
+                          (GtkBox (spacing 0) (css (horizontal))
+                           (children
+                            (GtkBuiltinIcon (css (left)) (halign center)
+                             (valign center))))
+                          (GtkLabel (text Mono) (halign start) hexpand)))))))))))))))
+            (GtkScrollbar (css (bottom horizontal))
+             (children
+              (GtkRange (css (horizontal)) hexpand vexpand
+               (children (GtkGizmo (children (GtkGizmo)))))))
+            (GtkScrollbar (css (vertical right))
+             (children
+              (GtkRange (css (vertical)) hexpand vexpand
+               (children (GtkGizmo (children (GtkGizmo)))))))))))))))))))
+((scope app) (dark (enabled true) (state false))
+ (ping (enabled true) (state -)) (theme (enabled true) (state solar)))
+activate app.ping resolves: true
+after activating ping: (ping)
+activate app.nope resolves: false
+activate app.dark resolves: true
+after activating dark: (dark-requested (model holds false))
+((scope app) (dark (enabled true) (state false))
+ (ping (enabled true) (state -)) (theme (enabled true) (state solar)))
+((scope app) (dark (enabled true) (state true))
+ (ping (enabled true) (state -)) (theme (enabled true) (state solar)))
+activate app.theme::mono resolves: true
+after activating theme: (theme-requested:mono)
+((scope app) (dark (enabled true) (state true))
+ (ping (enabled false) (state -)) (theme (enabled true) (state mono)))
+actions round trip done
+late.fire before the attr exists: false
+late.fire after the attr appeared: true (fired 1)
+late actions done

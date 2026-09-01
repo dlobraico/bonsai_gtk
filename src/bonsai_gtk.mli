@@ -150,6 +150,7 @@ end
 
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private : sig
+  module Actions = Actions
   module Attr_apply = Attr_apply
   module Controllers = Controllers
   module Gtk_import = Gtk_import

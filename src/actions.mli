@@ -35,3 +35,7 @@ val clear : t -> unit
 (** Disconnects the activate handlers, removes the group from the widget
     ([insert_action_group scope None]) and drops it. *)
 val release : t -> unit
+
+(** For tests: the scope and, per action sorted by name, [enabled] and [state] read back
+    through the [GAction] interface — the only honest source for a controlled-prop golden. *)
+val dump : t -> Sexp.t

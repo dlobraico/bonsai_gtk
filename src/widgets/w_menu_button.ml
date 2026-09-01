@@ -78,10 +78,35 @@ module Menus = struct
       let hash = Stdlib.Hashtbl.hash
     end)
 
-  let table : Gio.Menu.t Table.t = Table.create 8
-  let set w m = Table.replace table w m
+  (* Beside the model handle: the focus-repair connection on the {i internal}
+     [PopoverMenu] GTK builds from the model. A [~menu] button has no [Node.popover], so
+     [w_popover]'s spec -- where the repair rides for the slot path -- never connects
+     here; this is the menu path's copy of the same connection, and the stavekeeper bug
+     ([viewer_window.ml:750-797]) is precisely this popover after item activation.
+     Disconnected before the model is replaced or dropped, and at teardown through
+     [Patcher.release_kind]'s [forget_menu] hook -- [closed] is a signal a disposing
+     popover can emit, and the dispose rule wants no handler connected by then. *)
+  type entry =
+    { menu : Gio.Menu.t
+    ; mutable repair : Signals.connection option
+    }
+
+  let table : entry Table.t = Table.create 8
+  let set w m = Table.replace table w { menu = m; repair = None }
   let find w = Table.find_opt table w
-  let remove w = Table.remove table w
+
+  let drop_repair w =
+    match Table.find_opt table w with
+    | Some ({ repair = Some c; _ } as e) ->
+      Signals.disconnect [ c ];
+      e.repair <- None
+    | Some { repair = None; _ } | None -> ()
+  ;;
+
+  let remove w =
+    drop_repair w;
+    Table.remove table w
+  ;;
 end
 
 (* One [Menu.entry], appended. An item with a "::target" goes through
@@ -117,11 +142,29 @@ let rec append_entry (menu : Gio.Menu.t) (entry : Menu.entry) =
 let fill (menu : Gio.Menu.t) (m : Menu.t) = List.iter m ~f:(append_entry menu)
 
 let set_menu (mb : W.Menu_button.t) (w : Widget.t) (m : Menu.t) =
+  Menus.drop_repair w;
   let menu = Gio.Menu.new_ () in
   fill menu m;
   Menus.set w menu;
-  W.Menu_button.set_menu_model mb (Some (menu :> Ocgtk_gio.Gio.Wrappers.Menu_model.t))
+  W.Menu_button.set_menu_model mb (Some (menu :> Ocgtk_gio.Gio.Wrappers.Menu_model.t));
+  (* The internal [PopoverMenu] GTK just built from the model gets the focus repair the
+     slot path gets from [w_popover]'s spec. [repair_focus_after_popdown] is its own
+     exception guard (it runs on the C stack outside the trampolines). *)
+  match W.Menu_button.get_popover mb with
+  | None -> ()
+  | Some p ->
+    let id =
+      W.Popover.on_closed p ~callback:(fun () ->
+        repair_focus_after_popdown (p :> Widget.t))
+    in
+    (match Menus.find w with
+     | Some entry -> entry.repair <- Some (Signals.connected p id)
+     | None -> (* unreachable: [Menus.set] just ran *) ())
 ;;
+
+(* The teardown hook [Patcher.release_kind] calls: the repair connection must leave before
+   the internal popover can be disposed. The model handle goes with it. *)
+let forget_menu (w : Widget.t) = Menus.remove w
 
 let apply_label_or_icon (mb : W.Menu_button.t) (p : Kind.menu_button_props) =
   match p.label, p.icon_name with
@@ -173,11 +216,12 @@ let impl : Widget_impl.t =
                 Menus.remove w
               | Some m ->
                 (match Menus.find w with
-                 | Some menu ->
+                 | Some entry ->
                    (* The same model, rebuilt in place: an open PopoverMenu tracks the
-                      items-changed stream without popping down (pre-flight 9). *)
-                   Gio.Menu.remove_all menu;
-                   fill menu m
+                      items-changed stream without popping down (pre-flight 9), and the
+                      internal popover -- and its repair connection -- survive. *)
+                   Gio.Menu.remove_all entry.menu;
+                   fill entry.menu m
                  | None ->
                    (* No handle: the menu is appearing (or the entry was somehow lost, in
                       which case a fresh model re-binds everything). This is also the

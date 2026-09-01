@@ -71,6 +71,7 @@ let clicks = ref 0
 let keys = ref 0
 let focuses = ref 0
 let closes = ref 0
+let picks = ref 0
 let record s = log := s :: !log
 
 (* What the nested claim target answers, flipped by the driver between blocks: [Claim] for
@@ -324,23 +325,48 @@ let view =
                ~text:""
                ()
            ; Node.entry ~attrs:(entry_attrs "e2") ~text:"" ()
-             (* The menu button, for the popover blocks at the end: its popover holds a
-                {i focusable} child, because the focus-repair regression is about focus
-                stranded {i inside} a popped-down popover. *)
-           ; Node.menu_button
-               ~label:"menu"
-               ~popover:
-                 (Node.popover
-                    ~attrs:
-                      [ Attr.on_closed
-                          (Ui_effect.of_sync_fun
-                             (fun () ->
-                               incr closes;
-                               record "popover-closed")
-                             ())
-                      ]
-                    (Node.button ~label:"menu item" ()))
-               ()
+             (* Two menu buttons for the popover blocks at the end, side by side so the
+                640x480 screen keeps every row on it. The first holds a plain popover with
+                a {i focusable} child (the Task 5 Escape block); the second renders a
+                [~menu] -- a real GtkPopoverMenu, which is the stavekeeper focus bug's
+                actual trigger, exercised by the item-activation block (the Task 5 carry).
+                Its action lives on this box ([Attr.actions] below). *)
+           ; Node.box
+               ~orientation:Horizontal
+               ~spacing:12
+               ~attrs:
+                 [ Attr.actions
+                     ~scope:"app"
+                     [ Action_spec.simple
+                         ~name:"pick"
+                         (Ui_effect.of_sync_fun
+                            (fun () ->
+                              incr picks;
+                              record "picked")
+                            ())
+                     ]
+                 ]
+               [ Node.menu_button
+                   ~key:"m1"
+                   ~label:"menu"
+                   ~popover:
+                     (Node.popover
+                        ~attrs:
+                          [ Attr.on_closed
+                              (Ui_effect.of_sync_fun
+                                 (fun () ->
+                                   incr closes;
+                                   record "popover-closed")
+                                 ())
+                          ]
+                        (Node.button ~label:"menu item" ()))
+                   ()
+               ; Node.menu_button
+                   ~key:"m2"
+                   ~label:"menu2"
+                   ~menu:[ Menu.item ~label:"Pick" ~action:"app.pick" () ]
+                   ()
+               ]
            ]
          (* A second click target that {i is} a [GtkButton], for one empirical question
             the label cannot answer: a [GtkButton] has a [GtkGestureClick] of its own, and
@@ -422,12 +448,14 @@ let () =
   let entries = List.map middle ~f:(fun c -> c.widget) in
   let entry1 = List.nth_exn entries 0
   and entry2 = List.nth_exn entries 1 in
-  let menu_button = (List.nth_exn middle 2).widget in
+  let menus_row = children (List.nth_exn middle 2) in
+  let menu_button = (List.nth_exn menus_row 0).widget in
   let popover =
-    match (List.nth_exn middle 2).children with
+    match (List.nth_exn menus_row 0).children with
     | Slots [ ("popover", Single (Some pop)) ] -> pop.widget
     | _ -> assert false
   in
+  let menu_button2 = (List.nth_exn menus_row 1).widget in
   (* A [GtkEntry] never has the focus itself: the focus lands on the [GtkText] it wraps,
      which is why [Attr.on_focus_enter] is documented as firing for a widget
      {i or any of its children} and why [has_focus] on the entry reads [false] throughout. *)
@@ -704,5 +732,74 @@ let () =
      | Some f -> Gobject.same f popover || W.Widget.is_ancestor f popover);
   (* ...and the proof that matters: a window-level key still reaches its handler. *)
   key ~name:"menu-f1" "F1";
-  show "a window key after the menu closed"
+  show "a window key after the menu closed";
+  (* --- the Task 5 carry, mandatory here: the stavekeeper stranding
+     (viewer_window.ml:750-797) is a [GtkPopoverMenu] after {i item activation} -- not the
+     plain-popover Escape the block above covers -- and its trigger only exists now that
+     [~menu] renders one. A real click opens the PopoverMenu GTK built from the model; the
+     sensitivity probe pins pre-flight 1's good half (the group was inserted before
+     rooting, so the item tracker bound and the item is sensitive); a real click on the
+     item activates it through GTK's own menu machinery (GtkModelButton -> menu item ->
+     GAction -> the runtime's trampoline -- the handler is the evidence, and the only test
+     in the repository that proves a human can operate a menu); the popover closes itself
+     on activation; and then the two lines the carry demands: the stranding probe with the
+     repair's exact predicate, and a window-level F1.
+
+     {b Keyboard activation (the plan's Down+Return) is not attempted}, and the reason is
+     the harness, not the library: under WM-less Xvfb, XTEST keys go to the X input focus,
+     which is the toplevel -- a popover's popup surface never receives X focus, so arrows
+     and Return never reach the menu (measured: Down then Return, with pumps, moved
+     nothing, while the same session's Escape dismissed the plain popover -- the
+     {i toplevel} handles that one by dismissing its grab, no popup routing needed). This
+     is the M2 README's Wayland/real-display input residual in one more shape; the pointer
+     path exercises everything past the routing. *)
+  let internal_popover =
+    match W.Menu_button.get_popover (cast menu_button2) with
+    | Some p -> (p :> Bonsai_gtk.Private.Gtk_import.Widget.t)
+    | None -> failwith "menu2 has no internal popover"
+  in
+  let m2x, m2y, m2w, m2h = box_of menu_button2 ~name:"menu2" in
+  let on_menu2 = target ~x:m2x ~y:m2y ~w:m2w ~h:m2h in
+  let m2sx, m2sy = on_menu2 0.5 0.5 in
+  xdotool [ "mousemove"; Int.to_string m2sx; Int.to_string m2sy; "click"; "1" ];
+  pump_until ~label:"popovermenu-open" ~ready:(fun () ->
+    W.Widget.get_mapped internal_popover);
+  drain ();
+  printf
+    "popover menu mapped after a real click: %b\n"
+    (W.Widget.get_mapped internal_popover);
+  let rec find_model_buttons w acc =
+    let acc =
+      if String.equal (Bonsai_gtk.Private.Gtk_import.type_name w) "GtkModelButton"
+      then w :: acc
+      else acc
+    in
+    List.fold (Bonsai_gtk.Private.Gtk_import.widget_children w) ~init:acc ~f:(fun acc c ->
+      find_model_buttons c acc)
+  in
+  let item =
+    match find_model_buttons internal_popover [] with
+    | [ mbw ] -> mbw
+    | l -> failwithf "expected one model button, found %d" (List.length l) ()
+  in
+  printf "menu item sensitive (the tracker bound): %b\n" (W.Widget.get_sensitive item);
+  let ok, ix, iy = W.Widget.translate_coordinates item window 0. 0. in
+  ignore (ok : bool);
+  let isx = Int.of_float (ix +. (Float.of_int (W.Widget.get_width item) /. 2.))
+  and isy = Int.of_float (iy +. (Float.of_int (W.Widget.get_height item) /. 2.)) in
+  xdotool [ "mousemove"; Int.to_string isx; Int.to_string isy; "click"; "1" ];
+  pump_until ~label:"popovermenu-activate" ~ready:(fun () -> !picks > 0);
+  drain ();
+  show "a real click on the item activates it";
+  printf
+    "popover menu mapped after activation: %b\n"
+    (W.Widget.get_mapped internal_popover);
+  printf
+    "window focus stranded in the popover menu: %b\n"
+    (match W.Window.get_focus (cast window) with
+     | None -> false
+     | Some f ->
+       Gobject.same f internal_popover || W.Widget.is_ancestor f internal_popover);
+  key ~name:"popovermenu-f1" "F1";
+  show "a window key after item activation"
 ;;
