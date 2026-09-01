@@ -210,6 +210,32 @@ patcher's signal closures hold the runtime, which holds the shadow tree, which h
 GObject references back. `stop` is what breaks the cycle, and it is also what disconnects
 the `destroy` backstop `create` installs — see the §11 amendment on finalisation.
 
+**M3 amendment (2026-09-01).** The `Node.windows [...]` root this section anticipated
+shipped (Task 8), and both entry points grew `?global_css` (Task 11); `?flags` is still
+unimplemented.
+
+- **`Node.windows` is a real kind with a never-shown anchor widget** — a bare `GtkBox`
+  the shadow tree keeps its shape around, never parented or presented, so the list
+  machinery (keyed reconciliation, `Child_keys`, the unwind paths) runs unmodified.
+  Children must be keyed `Node.window`s (rejected at the constructor *and* by the shared
+  walk); `on_window_created` fires once per child as it mounts, exactly as for a single
+  window root. Rendering `windows []` lets the application exit — with no window added,
+  the `GtkApplication` releases and `start` returns 0 (measured; the declarative
+  `Effect.quit`).
+- **`Expert.Driver.root_widget` answers `None` for a `Windows` root** — the breaking
+  change the M2 backlog predicted. The anchor is useful to nobody; `Driver.windows`
+  (`(Key.t * Widget.t) list`, in the model's own list order — pinned where insertion and
+  node order differ) is the replacement, and what `Effect.Window.present` resolves.
+- **`embed` still rejects both window-shaped roots**; the message names them.
+- **`?global_css`** installs one `GtkCssProvider` on the default display at application
+  priority — under `start` at activate (the first moment GTK has a display;
+  `add_provider_for_default_display` raises before init), under `embed` at `create`. Its
+  `prefers-color-scheme` is mirrored from `GtkSettings` and re-mirrored on change,
+  because GTK 4.20+ evaluates `@media (prefers-color-scheme)` per provider and syncs
+  only its own theme provider — without the mirror a dark block can never match
+  (verified against 4.22's `gtkcssprovider.c`). Never removed: a second `start` adds a
+  second provider, the situation the one-app-per-process warning covers.
+
 ### 4.2 Frame
 
 A frame is, in order:
@@ -380,6 +406,28 @@ The five are also unlike every other event attr in being legal on *any* node: th
 signals of a widget class but controllers the runtime attaches to whatever carries the
 attr, and the controller exists exactly as long as the attr does.
 
+**M3 amendment (2026-09-01).** The attr set grew on both sides of the signal/controller
+line, and the M2 asymmetry this section left is closed.
+
+*Signal attrs*: `on_cursor_moved` (a text view's caret, the hook that completes §6.5's
+caret story), `on_closed` (a popover's dismissal; the open direction has no exposed
+signal — backlog), and `on_close_request` (a window's close request, under §6.5's veto
+ruling). *Controller-family attrs*: the focus attrs gained `?phase`, joined by
+`on_contains_focus_changed` (the coarse containment signal), and
+`Events.key_phase_rejection` generalised into `family_phase_rejection` — one
+one-controller-one-phase rule over all four families. `on_click`'s handler was retyped
+to return a `Click_response.t` (`Continue`/`Claim`, each with an effect-carrying `_and`),
+the click twin of `Key_response.t`, taken as a clean source break. *Neither kind*:
+`Attr.actions ~scope specs` (one `GSimpleActionGroup` per node — carries handlers, so the
+event diagnostics apply, but is no impl's signal; §6.4), `Attr.shortcut` (repeatable;
+accumulates into one keyed entry; §6.4), `Attr.autofocus` (a fire-once fixup-queue focus
+grab at mount or on a false→true flip, at most one per frame per toplevel — deliberately
+*not* a controlled prop; the interim floor under the still-unbuilt focus model), and
+`Attr.css_provider` (a per-widget stylesheet whose provider object the runtime owns for
+the widget's life; its media queries evaluate against the provider's own unset
+preference, so scheme-dependent styling belongs in `?global_css`). `on_map`/`on_unmap`
+still do not ship.
+
 ### 5.3 Children shapes
 
 Fixed per kind, encoded in constructor arguments:
@@ -427,6 +475,24 @@ is in the call. A list box's rows and a flow box's children are wrapped by the i
 settings arrive as placement attrs on the child (`Attr.row_selectable`,
 `Attr.row_activatable`). A notebook interposes nothing: its pages *are* its children's
 widgets, and `Attr.tab_label` is a string GTK builds a label from.
+
+**M3 amendment (2026-09-01).** The table's `Slots` row is real now, and two rows are new.
+
+- **`HeaderBar` is `Slots`** (`title` a `Single`, `start`/`end` keyed `List`s) — its
+  title is a *widget* slot, not a string, because GTK 4 has no title-string setter on the
+  bar (the window's `~title` is what shows when no title widget is set). **`ActionBar`**
+  likewise (`center` + `start`/`end`). Both pack areas are insertion-ordered with no
+  reorder primitive: keys preserve identity, not position, and a key moving *between*
+  areas is a remove-plus-insert (identity loss, documented).
+- **`Popover` has exactly one legal position: `Node.menu_button`'s `~popover` slot** —
+  rejected anywhere else at the constructor *and* by the shared walk (the record-update
+  backstop), because the slot's impl hands it to `set_popover` through a downcast.
+  `~menu` and `~popover` on one button are mutually exclusive (GTK's two setters replace
+  each other's surface).
+- **`Windows` is a `List` of keyed `Node.window`s, legal only at the root** — the
+  converse (only windows, all keyed) checked constructor-and-walk like the popover's.
+  Toplevels have no z-order the application controls, so `move = None` and a list
+  reorder touches nothing (same GObjects, pinned live).
 
 ### 5.4 Keys
 
@@ -638,6 +704,28 @@ and detaches a family the moment its last attr goes. The controllers are named
 and a computed OCaml string is reclaimed heap) so that a live test can tell this library's
 controllers apart from the three a `GtkButton` brings of its own.
 
+**M3 amendment (2026-09-01).** A fourth controller family, and one new widget signal
+whose answer GTK reads synchronously.
+
+- **The `Shortcut` family** joins Click/Focus/Key, with one deliberate asymmetry: it has
+  {b no slot and no trampoline of its own}. A shortcut cannot invoke an OCaml closure
+  (no `GtkCallbackAction` in the pin), so firing routes GTK's own way —
+  `GtkShortcutController` → `GtkNamedAction` → the `GSimpleActionGroup` trampoline
+  `Attr.actions` installed — and teardown rides the action slots. The controller's
+  shortcut set is rebuilt in stable `(trigger, action)` order on any change, which is
+  what makes cross-node contention deterministic (goldened: the window's capture
+  controller wins by routing, not by luck); a same-trigger/different-action pair on one
+  node is rejected outright, headlessly and at mount, phase-doctrine style. Scope is
+  explicitly `LOCAL`. Measured for the record: a chord whose action is *disabled* falls
+  through to capture handlers and the focused widget — stavekeeper's
+  `text_input_active` shape depends on exactly that.
+- **`close-request` is an ordinary `Payload`** in `w_window.ml`'s spec list — the third
+  member of the answers-GTK-synchronously class beside the two key signals — with one
+  wrinkle: the `bool` GTK sees is produced by the spec's own connect wrapper and is
+  {b constant `true`} (the §6.5 veto); what flows through the trampoline is only whether
+  anybody heard, so the three `declined` paths can be told from a handled one and the
+  unhandled case reported once per window.
+
 ### 6.5 Controlled text widgets
 
 `Entry`, `SearchEntry`, `PasswordEntry`, `EditableLabel`, `TextView`:
@@ -718,6 +806,37 @@ take is written normally.
 that write nothing, and `Widget_impl.batch`'s freeze/thaw measured ~80 ns per call. So
 `reassert` brackets **conditionally**: `Widget_impl.batch_if writes`, with the condition
 being whether this frame is going to write anything at all.
+
+**M3 amendment (2026-09-01).** The controlled-prop rule met the chrome, and its clearest
+statement is now the close ruling.
+
+*New controlled props.* A popover's `~open_` (compared against `get_visible`; applied
+from the **fixup queue**, because `popup` needs the popover parented and its `create`
+runs before the menu button's slot `set` — and the fixups run on mount, patch *and*
+reassert-only passes, which is exactly a controlled prop's coverage; the `closed` this
+provokes is emitted synchronously inside `popdown`, so the `in_patch` guard covers it —
+measured). An action's `enabled` and `state` (compared against the *GAction interface
+read-backs*, the only honest source; a declined toggle's checkmark stands still because
+activation never moves state — the model's next render does, or doesn't). A window's
+`~transient_for` (a fixup, resolved against the window-key registry after the whole
+list exists, so a dialog may precede its parent in the list; compared against
+`get_transient_for`).
+
+*The close ruling.* `close-request` is the controlled-prop story told about window
+lifetime: the runtime **always answers GTK "handled"**, so the X button destroys nothing
+behind the patcher's back — a window closes when, and only when, the model stops
+rendering its node, and `Attr.on_close_request` is the model's chance to do that. The
+rejected alternatives (allow-and-desync, allow-and-hope) both leave the shadow tree
+describing a window GTK destroyed. A window with no handler swallows the request and
+reports once per window. This deliberately changes M2's observable behaviour — an M2
+app's X button destroyed the window under the shadow tree — and the README carries the
+migration note.
+
+*Not controlled, deliberately.* `Attr.autofocus` is a fire-once grab, not focus-as-state
+(the full design stays on the backlog); an action bar's `revealed` is plain (the user
+cannot move it); a menu is a *prop* (pure data, equalable) while actions are an *attr*
+(they carry the handlers the menu's names resolve to) — the split §5.2's amendment
+records.
 
 ### 6.6 `Node.native`
 
@@ -840,18 +959,41 @@ Milestones, each merged only with its tests green:
   `GDateTime` anywhere, and there is no `GLib-2.0.gir` in the checkout to
   generate one from — so the year/month/day conversion (GTK's month is
   zero-based; its day is not) exists exactly once, in `w_calendar.ml`.
-- **M3 — chrome & popups:** HeaderBar, ActionBar, Popover, MenuButton +
-  `Node.menu` (GMenu model + GAction routing), AlertDialog / FileDialog
-  effects, `Node.windows` multi-window, `Attr.shortcut` (GtkShortcutController).
+- **M3 — chrome & popups:** *done* (2026-09-01). HeaderBar and ActionBar (real `Slots`
+  containers; a header's title is a widget slot — §5.3 amendment), MenuButton with
+  either a `~menu` (pure-data `Menu.t` over `Attr.actions`' GAction routing, display
+  `"accel"` attributes included) or a `~popover` slot (the popover's one legal
+  position), `Node.windows` multi-window with `~transient_for`/`~modal`/`~resizable`
+  and the close-request veto (§6.5 amendment), `Attr.shortcut` on a fourth controller
+  family (§6.4 amendment), the timing/clipboard/present and dialog effects (§8
+  amendment), `Attr.autofocus`, `Attr.css_provider` and `?global_css` (display-wide CSS
+  wired through the fork's `Style_display` stub, with the color-scheme mirror) —
+  **42 `Node.*` constructors in all**, still checked against
+  `Kind.Variants.descriptions` by the sweeps rather than counted by hand, and
+  `Bonsai_gtk_test.Action.t` grown to twenty-nine. `examples/chrome.ml` is the
+  milestone's counter: one `Action_spec` list serving a menu, two chords and the
+  handlers, an alert whose answer binds back into the model, and a second window the
+  model opens and `Effect.Window.present` raises.
+
+  Details this section did not anticipate. **The dialog effects ride the §8
+  contingencies**: a real `GtkDialog` for alerts (no `AlertDialog` constructor in the
+  pin) and `FileChooserNative` for files (`GtkFileDialog` cannot be launched) — see §8.
+  **A shortcut cannot hold a closure** (no `GtkCallbackAction`), so `Attr.shortcut`
+  names an action `Attr.actions` declared — which forced the design that turned out
+  right anyway: one spec list serves the menu, the chord and the palette, the
+  `Command.Registry` composition the port needs. **`Attr.autofocus` was not planned**
+  (the plan said "no focus story"); it shipped as the overruled interim — fire-once,
+  per-toplevel — because the palette's portability claim requires an entry you can type
+  into. **The popover ships only as the menu button's slot** (`GdkRectangle` cannot be
+  constructed, so `set_pointing_to` is unusable — fork round 3).
 
 Out of scope until a follow-up design: ListView/ColumnView/GridView (ocgtk
 generates no `SignalListItemFactory` signals, so they cannot be populated
 without new C stubs), Assistant, ColorDialog/FontDialog, drag & drop, custom
-Cairo drawing (`DrawingArea.set_draw_func` unbound), display-wide CSS
-(`add_provider_for_display` is unbound upstream; the fork already carries the
-stub as commit 6, awaiting the upstream PR, so M3 wires it up rather than
-writing it. Until then `Attr.css_provider` applies a provider to a widget's own
-style context).
+Cairo drawing (`DrawingArea.set_draw_func` unbound). Display-wide CSS left this
+list in M3: `?global_css` wires the fork's `Style_display` stub, and
+`Attr.css_provider` applies a per-widget provider to the widget's own style
+context, both as this parenthetical planned.
 
 Implementation notes carried from the survey: `ListBox`/`FlowBox` sorting and
 filtering are done in the Bonsai model (the GTK callbacks are unbound — **M2
@@ -884,6 +1026,43 @@ Asynchronous ones are built with `Ui_effect.Private.make`; the GLib callback
 resolves the effect's callback, then `request_frame`.
 
 M0 implements only `quit` (§4.5); the rest of this list is M3 scope (§7).
+
+**M3 amendment (2026-09-01).** M3 shipped the list with three deviations and two
+contingencies, each documented at the mli a caller reads (`gtk_effect.mli`, quoted here
+so this section stops promising what does not exist):
+
+- **`Clipboard.get_text` does not ship.** The binding has no synchronous read and no
+  bound async one (`Gdk.Clipboard.set_text` is a C macro; `read_text_async` is
+  callback-async — fork round 3). `set_text` ships, as a string `GValue` through
+  `Clipboard.set_value` on a widget the runtime registers.
+- **`Window.close` and `Window.set_title` do not ship.** In a declarative tree the
+  node's existence *is* close and `~title` *is* set_title; an effect duplicating a prop
+  is a second writer fighting the patcher — the Paned lesson. `Window.present` is the
+  one with no prop equivalent (raise the window that already has this score) and ships,
+  resolving its key through `Driver.windows`; every miss path logs-and-resolves on
+  `quit`'s precedent.
+- **`Alert_dialog.show` gained `?cancel`** (the index answered on Escape / the close
+  button, default 0). §8's signature returned the chosen index and said nothing about
+  dismissal; every dismissal delivers a reserved negative response id (DELETE_EVENT,
+  −4 — measured, not CANCEL), and mapping it to `?cancel` is what makes the effect
+  *total*, so a `let%bind` over it needs no other-case.
+- **The alert contingency fired**: `AlertDialog` has no constructor in the pin
+  (`gtk_alert_dialog_new` is varargs, and there is no generic `g_object_new`), so the
+  alert is a real `GtkDialog` — deprecated in 4.10, present and functional in 4.22 —
+  exactly as this section's "if `choose` cannot be reached" clause planned.
+- **The file contingency fired too, one step further than planned**: `GtkFileDialog`
+  cannot be *launched* (its async halves are unbound; only `*_finish` exists), so the
+  three file effects are `FileChooserNative` end to end — whose portal-less fallback is
+  a real dialog window, which is what makes the Escape path live-testable. No
+  initial-folder argument anywhere: `Gio.File` has no constructor in the pin.
+
+Two shipped mechanics this section under-specified: the GLib callback that "resolves the
+effect's callback" runs the continuation *inside* `respond_to`, so the resolver catches
+a raise coming back out of it, logs it by name, and still requests the frame (injects
+that landed before the raise deserve their flush); and each shown dialog is held by the
+runtime in a table from show until its response — §2.2's ownership rule discharged by
+hand, since the effect value is dropped at perform and a wrapper held only by C would be
+collected mid-show (pinned with a `Gc.full_major` between show and answer).
 
 ## 9. Testing
 
