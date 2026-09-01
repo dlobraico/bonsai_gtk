@@ -900,12 +900,10 @@ let () =
      entry 1's key controller both see the g, where a consuming shortcut would stop the
      event before them. The text line only pins that nothing strayed in. The F1 sentinel
      bounds the wait, as in the miss block. *)
-  let before_keys = !keys in
   xdotool [ "keydown"; "ctrl" ];
   xdotool [ "key"; "g" ];
   xdotool [ "keyup"; "ctrl" ];
   key ~name:"gated-sentinel" "F1";
-  ignore (before_keys : int);
   drain ();
   show "Ctrl+g on a disabled action, then the sentinel";
   printf "gated handler fired: %d times\n" !gated;

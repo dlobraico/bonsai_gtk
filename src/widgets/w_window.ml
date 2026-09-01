@@ -32,9 +32,14 @@ let apply_transient_for (w : Widget.t) ~(desired : Widget.t option) =
    trampoline is only whether anybody heard. [declined = `Unhandled] therefore reaches the
    wrapper on the three no-handler paths (empty slot, in-patch emission, a handler that
    raised), and the wrapper reports the first of them once per window -- the [reported]
-   ref is per-connection, and [connect] runs once per widget. A once-latched stderr line
+   ref is per-connection, and [connect] runs once per widget. The line's wording claims
+   only "unhandled": the usual reason is no armed handler, but the raised-handler path
+   (already reported via [on_exn]) and an in-patch emission reach it too, so naming
+   no-handler as {i the} cause would misstate two of the three. A once-latched stderr line
    rather than [ctx.report], because the trampoline has no node path and [Signals.ctx] no
-   reporting channel (the mli of [Attr.on_close_request] says so). *)
+   reporting channel (the mli of [Attr.on_close_request] says so) -- and swallow-guarded,
+   because this frame was called from C and an [Out_channel] raise (EPIPE on stderr, say)
+   must not cross into it, the trampoline's own absolute rule. *)
 let close_request : Signals.spec =
   Payload
     { attr = Attr.Name.On_close_request
@@ -51,11 +56,14 @@ let close_request : Signals.spec =
                   if not !reported
                   then (
                     reported := true;
-                    eprintf
-                      "bonsai_gtk: a close request went unhandled (no \
-                       Attr.on_close_request on this window's node); the window stays \
-                       open -- a window closes when its node leaves the tree\n\
-                       %!"));
+                    try
+                      eprintf
+                        "bonsai_gtk: a close request went unhandled; the window stays \
+                         open -- a window closes when its node leaves the tree (arm \
+                         Attr.on_close_request to hear the request)\n\
+                         %!"
+                    with
+                    | _ -> ()));
                (* The veto, on every path. *)
                true)))
     ; fire =

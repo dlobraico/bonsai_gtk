@@ -753,7 +753,9 @@ val on_closed : unit Ui_effect.t -> t
     that no longer exist. A window with {i no} handler therefore swallows the request and
     reports once -- a single stderr line per window, since the trampoline has no reporting
     channel of its own -- because a window whose lifetime nobody owns is a model bug, not
-    a UI courtesy.
+    a UI courtesy. (Headlessly, [Bonsai_gtk_test]'s [Close_request] on such a window fails
+    loudly instead: the swallow is a runtime diagnostic, not a semantics for tests to
+    emulate.)
 
     Attaching it to a node that is not a {!Node.window} raises [Invalid_argument] when the
     node is mounted or patched. *)

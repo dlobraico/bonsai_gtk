@@ -5,6 +5,8 @@ open Bonsai_gtk_vtree
 module Glib = Bonsai_gtk.Private.Gtk_import.Glib
 module Gobject = Bonsai_gtk.Private.Gtk_import.Gobject
 module Live_tree = Bonsai_gtk.Private.Live_tree
+module P = Bonsai_gtk.Private.Patcher
+module Scheduler = Bonsai_gtk.Private.Scheduler
 module W = Bonsai_gtk.Private.Gtk_import.W
 module Widget = Bonsai_gtk.Private.Gtk_import.Widget
 
@@ -226,9 +228,47 @@ let () =
      && Gobject.same tools_before (window_exn "tools"));
   Expert.Driver.stop d;
   printf
-    "after stop: windows = %d, main visible=%b\n"
+    "after stop: windows = %d, main visible=%b tools visible=%b\n"
     (List.length (windows ()))
     (Widget.get_visible main_before)
+    (Widget.get_visible tools_before)
+;;
+
+(* --- the missing-key fixup raise, executed (task-8-review minor 4): the reference is the
+   fixup pass's business, so the mount itself succeeds and [run_fixups] is what raises the
+   shared [Events] string -- the same one the handle renders, here actually thrown.
+   [Exn.protect] has emptied the queue by then, so the mounted tree is still ours to
+   destroy. Hand-driven, because [Driver.frame] would turn the raise into a broken driver
+   (its own suite's claim). *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live =
+        P.mount
+          ctx
+          ~path:"root"
+          ~is_root:true
+          (Node.windows [ Node.window ~key:"a" ~transient_for:"nope" (Node.label "x") ])
+      in
+      (match P.run_fixups ctx with
+       | () -> printf "missing-key fixup did not raise\n"
+       | exception Invalid_argument m -> printf "missing-key fixup raised: %s\n" m);
+      live)
+  in
+  P.destroy ctx live;
+  printf "missing-key block done\n"
 ;;
 
 (* [Node.windows []] is the declarative quit, and only [Bonsai_gtk.start] can prove it:

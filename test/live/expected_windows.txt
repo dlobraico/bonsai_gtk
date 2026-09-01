@@ -28,11 +28,13 @@ prefs: window focus is inside its autofocused entry: true
 main: window focus is inside its autofocused entry: true
 after the mount burst (prefs,main,tools presented in order): active = prefs:false main:false tools:true
 after re-presenting main: active = prefs:false main:true tools:false
-bonsai_gtk: a close request went unhandled (no Attr.on_close_request on this window's node); the window stays open -- a window closes when its node leaves the tree
+bonsai_gtk: a close request went unhandled; the window stays open -- a window closes when its node leaves the tree (arm Attr.on_close_request to hear the request)
 tools after two swallowed close requests: visible=true mapped=true
 prefs after a handled close request: visible=false mapped=false
 keys now: main,tools
 keys after the flip: tools,main
 both windows kept their GObjects across the reorder: true
-after stop: windows = 0, main visible=false
+after stop: windows = 0, main visible=false tools visible=false
+missing-key fixup raised: root/0: ~transient_for names no window: no Node.windows child is keyed "nope" (keys that exist: "a"; a window may only be transient for another window in the same Node.windows list)
+missing-key block done
 start over windows [] returned 0 (the declarative quit)
