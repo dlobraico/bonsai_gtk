@@ -96,6 +96,20 @@ val frame : t -> unit
     what was queued. *)
 val schedule_event : t -> unit Ui_effect.t -> unit
 
+(** Asks for a frame without queueing anything: the path an async effect's GLib callback
+    takes after resolving its continuation (whose injects are already enqueued in the
+    graph). Registered as [Gtk_effect.For_runtime]'s [request_frame] hook by [Loop.start]
+    and [Embed.create]. A no-op once broken or {!stop}ped, like {!schedule_event}. *)
+val request_frame : t -> unit
+
+(** Registers the thunk {!stop} runs to drop the process-global effect hooks that close
+    over this driver — [Loop.start] and [Embed.create] hand
+    [Gtk_effect.For_runtime.unregister] here right after registering. Without the drop, a
+    stopped driver's whole graph stays reachable from the hooks for the process's life:
+    the [on_root_widget_changed] leak shape, and the reason {!stop} documents dropping
+    callbacks at all. Defaults to doing nothing; {!stop} resets it after running it. *)
+val set_effect_hooks_drop : t -> (unit -> unit) -> unit
+
 (** The root widget, or [None] before the first {!frame} (and after {!stop}).
 
     {b Also [None] for a [Node.windows] root} — a breaking change of M3 Task 8. The widget

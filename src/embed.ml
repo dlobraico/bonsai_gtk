@@ -121,6 +121,19 @@ let create ?time_source ?optimize ?(target_frames_per_second = 60.) app =
            check and the patcher should both have rejected")
       app
   in
+  (* The effect hooks (Task 9), registered the way [Loop.start]'s are and dropped the same
+     way ([Driver.stop], through the thunk below -- which [stop] and the unwind both
+     reach). No [lookup_window]: an embed has no windows, and [Effect.Window.present]
+     under one logs and resolves. The context widget is the wrapper -- the one widget
+     whose identity never changes, and [gtk_widget_get_clipboard] falls back to the
+     default display for an unrooted widget. *)
+  let reg =
+    Gtk_effect.For_runtime.register
+      ~request_frame:(fun () -> Driver.request_frame driver)
+      ~context_widget:(fun () -> Some (cast wrapper : Widget.t))
+      ()
+  in
+  Driver.set_effect_hooks_drop driver (fun () -> Gtk_effect.For_runtime.unregister reg);
   (* The first frame is what mounts the tree, and it is the frame most likely to raise: a
      constructor's [Invalid_argument], a window at the root, a misplaced placement attr.
      It runs before the tick is installed so that a failure leaves no timeout behind, and

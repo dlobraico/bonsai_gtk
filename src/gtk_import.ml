@@ -36,6 +36,11 @@ module Gio = Ocgtk_gio.Gio.Wrappers
    [Gobject] and [Glib]. *)
 module Gvariant = Gvariant
 module Gvariant_type = Gvariant_type
+
+(* The GDK class wrappers, beside [W] for the same reason [Gio] sits here: today only the
+   clipboard is reached ([Gdk.Clipboard.set_value] is the one write the binding has --
+   fact table), and no widget impl should have to remember it lives in [ocgtk.gdk]. *)
+module Gdk = Ocgtk_gdk.Gdk.Wrappers
 module Widget = W.Widget
 module Gobject = Gobject
 module Glib = Glib

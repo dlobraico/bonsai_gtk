@@ -52,6 +52,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private = struct
   module Actions = Actions
+  module Gtk_effect = Gtk_effect
   module Attr_apply = Attr_apply
   module Controllers = Controllers
   module Gtk_import = Gtk_import

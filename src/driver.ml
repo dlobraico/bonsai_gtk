@@ -17,7 +17,23 @@ type t =
   ; ctx : Patcher.ctx
   ; mutable root : Patcher.live option
   ; mutable stopped : bool
+  ; (* What {!stop} runs to drop the process-global effect hooks that close over this
+       driver ([Gtk_effect.For_runtime]); a no-op until [Loop.start] or [Embed.create]
+       registers hooks and hands the matching unregister here. On the driver rather than
+       inside [Gtk_effect] because only the registrar knows whether this driver registered
+       anything, and only [stop] knows when it died. *)
+    mutable drop_effect_hooks : unit -> unit
   }
+
+(* The async effects' GLib callbacks come through here (via the registered [request_frame]
+   hook): the effect's continuation has already enqueued its injects, and this is the
+   frame that will flush them. Guarded like {!schedule_event}, for its reasons. *)
+let request_frame t =
+  if (not t.stopped) && not (Scheduler.broken t.scheduler)
+  then Scheduler.request_frame t.scheduler
+;;
+
+let set_effect_hooks_drop t f = t.drop_effect_hooks <- f
 
 let schedule_event t effect =
   (* A broken driver renders nothing again (see [frame]), so queueing effects into it only
@@ -213,6 +229,7 @@ let create
     ; ctx
     ; root = None
     ; stopped = false
+    ; drop_effect_hooks = (fun () -> ())
     }
   in
   cell := Some t;
@@ -268,6 +285,11 @@ let stop t =
   if not t.stopped
   then (
     t.stopped <- true;
+    (* First, so that nothing performed during the teardown below can reach a half-stopped
+       driver through the global hooks -- and reset, so a second [stop] does not
+       unregister whatever some later driver registered meanwhile. *)
+    t.drop_effect_hooks ();
+    t.drop_effect_hooks <- (fun () -> ());
     Scheduler.stop t.scheduler;
     (* Dropped, because it is the caller's closure and it captures the caller's widgets --
        [Expert.embed]'s captures the wrapper it hands the embedder and then tells the

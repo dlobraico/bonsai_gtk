@@ -49,6 +49,26 @@ let start
                 app
             in
             driver := Some d;
+            (* The effect hooks, before the first frame so an effect it performs already
+               finds them (Task 9). [context_widget] answers for both root shapes: a
+               [Window] root has a root widget, a [Windows] root answers its first live
+               window (or nothing -- [windows []] -- in which case the clipboard logs and
+               resolves). The hooks close over [d], so the matching unregister is handed
+               to [Driver.stop], which is also what covers this function's own exit path
+               (the [Driver.stop] below, beside [For_start.clear_app]). *)
+            let reg =
+              Gtk_effect.For_runtime.register
+                ~request_frame:(fun () -> Driver.request_frame d)
+                ~lookup_window:(fun key ->
+                  List.Assoc.find (Driver.windows d) key ~equal:Bonsai_gtk_vtree.Key.equal)
+                ~context_widget:(fun () ->
+                  match Driver.root_widget d with
+                  | Some w -> Some w
+                  | None -> Option.map (List.hd (Driver.windows d)) ~f:snd)
+                ()
+            in
+            Driver.set_effect_hooks_drop d (fun () ->
+              Gtk_effect.For_runtime.unregister reg);
             (* The first frame is what mounts the window, so it has to happen before the
                loop starts spinning, not on the first tick. *)
             Driver.frame d;

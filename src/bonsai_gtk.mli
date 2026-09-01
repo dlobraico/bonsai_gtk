@@ -72,7 +72,10 @@ module Native : sig
   module Picture = Paintable_picture
 end
 
-(** [Ui_effect] plus {!Effect.quit}. *)
+(** [Ui_effect] plus the effects that only make sense in a GTK app: {!Effect.quit}, the
+    two timing effects, the clipboard write and {!Effect.Window.present}. The async ones
+    resolve on the GLib main loop and then request a frame; each documents what a perform
+    outside a running app does (always log-and-resolve, never a raise). *)
 module Effect : sig
   include module type of struct
     include Ui_effect
@@ -84,6 +87,34 @@ module Effect : sig
       a headless test, or after {!start} has returned — there is nothing to quit, so
       performing this logs and does nothing. *)
   val quit : unit t
+
+  (** Resolves after the span on the GLib main loop (one-shot per perform; a negative span
+      behaves as zero). If {!Expert.Driver.stop} ran while it was in flight, the timeout
+      still fires and the continuation still runs — log-and-resolve. The {i cancellable}
+      timer stays app-side: gate what the continuation does on model state, which is the
+      declarative cancel. *)
+  val after : Core.Time_ns.Span.t -> unit t
+
+  (** Resolves on the next GLib idle — "after GTK has finished what it is doing", the
+      sequencing a focus move or a size-dependent read wants. Same teardown contract as
+      {!after}. *)
+  val on_idle : unit t
+
+  module Clipboard : sig
+    (** Writes to the display's clipboard. [get_text] does {b not} ship: the binding has
+        no synchronous read and no bound async one — a documented omission. *)
+    val set_text : string -> unit t
+  end
+
+  module Window : sig
+    (** Presents (raises, focuses) the window keyed [key] in the root
+        {!Bonsai_gtk_vtree.Node.windows} list. A key naming no window, a perform under
+        {!Expert.embed}, and a perform with no running app each log and resolve.
+        [close]/[set_title] from spec §8 do not ship: the node's existence and [~title]
+        {i are} those operations in a declarative tree, and an effect duplicating a prop
+        would be a second writer fighting the patcher. *)
+    val present : Bonsai_gtk_vtree.Key.t -> unit t
+  end
 end
 
 (** Runs [app] as a [GtkApplication] and returns its exit status. Blocks until the last
@@ -151,6 +182,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private : sig
   module Actions = Actions
+  module Gtk_effect = Gtk_effect
   module Attr_apply = Attr_apply
   module Controllers = Controllers
   module Gtk_import = Gtk_import
