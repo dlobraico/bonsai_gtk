@@ -1,0 +1,38 @@
+window created: prefs
+window created: main
+window created: tools
+root_widget is None: true
+keys in model order: prefs,main,tools
+--- prefs ---
+(GtkWindow (title (prefs)) modal not-resizable (transient_for (main))
+ (css (background))
+ (children
+  (GtkEntry (text "") (placeholder search)
+   (children
+    (GtkText (cursor text)
+     (children
+      (GtkLabel (text search) (xalign 0) (ellipsize end) (max-width-chars 3))))))))
+--- main ---
+(GtkWindow (title (main)) (css (background))
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkEntry (text "") (children (GtkText (cursor text))))
+    (GtkLabel (text "the main window"))))))
+--- tools ---
+(GtkWindow (title (tools)) (css (background))
+ (children
+  (GtkButton (label (flip)) (css (text-button))
+   (children (GtkLabel (text flip))))))
+prefs' transient parent is main's GtkWindow: true
+prefs: window focus is inside its autofocused entry: true
+main: window focus is inside its autofocused entry: true
+after the mount burst (prefs,main,tools presented in order): active = prefs:false main:false tools:true
+after re-presenting main: active = prefs:false main:true tools:false
+bonsai_gtk: a close request went unhandled (no Attr.on_close_request on this window's node); the window stays open -- a window closes when its node leaves the tree
+tools after two swallowed close requests: visible=true mapped=true
+prefs after a handled close request: visible=false mapped=false
+keys now: main,tools
+keys after the flip: tools,main
+both windows kept their GObjects across the reorder: true
+after stop: windows = 0, main visible=false
+start over windows [] returned 0 (the declarative quit)

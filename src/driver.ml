@@ -230,17 +230,29 @@ let root_widget t =
     | _ -> Some live.Patcher.widget)
 ;;
 
-(* Read off the live tree rather than the ctx registry, so the answer is in the model's
-   own list order (the registry is a hashtable). Every windows child carries a key -- the
-   constructor and the shared walk both insist -- so the [filter_map] drops nothing. *)
+(* The order comes from the {i node}'s child list and only the widgets from the lives: the
+   patcher's own list keeps insertion order for a [move = None] container (a reorder is a
+   keyed diff that touches nothing), which is the right answer for GTK and the wrong one
+   for an accessor documented as "the model's own list order" -- measured in
+   [live_windows.ml]'s flip block, which is what pins this. Every windows child carries a
+   key (the constructor and the shared walk both insist), so nothing is dropped. *)
 let windows t =
   match t.root with
   | None -> []
   | Some live ->
     (match live.Patcher.node.Node.kind, live.Patcher.children with
      | Windows, Children.List lives ->
-       List.filter_map lives ~f:(fun (l : Patcher.live) ->
-         Option.map l.Patcher.node.Node.key ~f:(fun key -> key, l.Patcher.widget))
+       let by_key =
+         List.filter_map lives ~f:(fun (l : Patcher.live) ->
+           Option.map l.Patcher.node.Node.key ~f:(fun key -> key, l.Patcher.widget))
+       in
+       (match live.Patcher.node.Node.children with
+        | Children.List nodes ->
+          List.filter_map nodes ~f:(fun (n : Node.t) ->
+            Option.bind n.Node.key ~f:(fun key ->
+              Option.map (List.Assoc.find by_key key ~equal:Key.equal) ~f:(fun widget ->
+                key, widget)))
+        | _ -> by_key)
      | _ -> [])
 ;;
 

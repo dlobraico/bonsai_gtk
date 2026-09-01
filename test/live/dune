@@ -16,6 +16,7 @@
   live_menus
   live_text
   live_embed
+  live_windows
   live_input)
  (libraries
   core
@@ -36,7 +37,7 @@
 ; explicitly asked for:
 ;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 ;
-; Thirteen of the seventeen rules carry `(locks x-display)`: every one whose
+; Fourteen of the eighteen rules carry `(locks x-display)`: every one whose
 ; executable presents a toplevel, plus the two dump-only suites
 ; (`live_containers`, `live_chrome`) that create toplevels without presenting
 ; them -- conservatively, since a locked rule that did not need it costs a few
@@ -277,6 +278,19 @@
 ; absolute path, so a dev shell without it fails here, naming xdotool, rather
 ; than inside the test as "no window" -- which is exactly how the by-hand script
 ; this replaces failed. `xdotool` is in the devShell in `flake.nix`.
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_windows.exe)
+ (locks x-display)
+ (action
+  (progn
+   (with-stdout-to
+    output_windows.txt
+    (run %{exe:live_windows.exe}))
+   (diff expected_windows.txt output_windows.txt))))
 
 (rule
  (alias runtest)
