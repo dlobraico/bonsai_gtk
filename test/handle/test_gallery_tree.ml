@@ -347,6 +347,7 @@ let gallery_window ~n ~set_n =
                        ~attrs:
                          [ Attr.test_id "card"
                          ; Attr.cursor_name "pointer"
+                         ; Attr.css_provider ".card-frame { padding: 2px; }"
                          ; Attr.on_click ~button:1 (fun _ -> Click_response.Continue)
                          ]
                        (Node.label "click me")

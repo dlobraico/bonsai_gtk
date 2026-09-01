@@ -1,0 +1,33 @@
+provider holds: label {
+  margin-bottom: 1px;
+  margin-left: 1px;
+  margin-right: 1px;
+  margin-top: 1px;
+}
+provider holds: label {
+  margin-bottom: 2px;
+  margin-left: 2px;
+  margin-right: 2px;
+  margin-top: 2px;
+}
+same provider across the change: true
+no provider
+provider holds: label {
+  margin-bottom: 3px;
+  margin-left: 3px;
+  margin-right: 3px;
+  margin-top: 3px;
+}
+fresh provider after the round trip: true
+an invalid stylesheet did not raise
+per-widget css done
+global provider holds: .bonsai-css-test {
+  margin-bottom: 1px;
+  margin-left: 1px;
+  margin-right: 1px;
+  margin-top: 1px;
+}
+scheme as installed: default
+scheme after prefer-dark flips on: dark
+scheme after prefer-dark flips off: default
+global css done

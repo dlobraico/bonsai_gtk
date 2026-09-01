@@ -126,6 +126,7 @@ let%expect_test "every event attr has an action that fires it" =
        spelled out rather than wildcarded so that a name added to [Attr.Name.t] is a
        compile error here and its author has to say which half it is in. *)
     | Autofocus
+    | Css_provider
     | Margin_start
     | Margin_end
     | Margin_top

@@ -364,7 +364,9 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                                  (children No_children))))))
                             ((kind (Frame ()))
                              (attrs
-                              ((Cursor_name pointer) (Test_id card)
+                              ((Cursor_name pointer)
+                               (Css_provider ".card-frame { padding: 2px; }")
+                               (Test_id card)
                                (On_click (button 1) (phase Bubble)
                                 (handler <handler>))))
                              (children

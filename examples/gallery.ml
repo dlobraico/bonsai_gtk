@@ -902,4 +902,12 @@ let app (graph @ local) =
        ])
 ;;
 
-let () = exit (Bonsai_gtk.start ~application_id:"org.bonsai_gtk.examples.gallery" app)
+(* [?global_css] so the smoke run exercises the activate-time install (Task 11 step 3);
+   the class rides the gallery's own title styling. *)
+let () =
+  exit
+    (Bonsai_gtk.start
+       ~application_id:"org.bonsai_gtk.examples.gallery"
+       ~global_css:".title-2 { letter-spacing: 1px; }"
+       app)
+;;
