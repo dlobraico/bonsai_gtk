@@ -874,6 +874,22 @@ let menu_button ?key ?attrs ?label ?icon_name ?primary ?always_show_arrow ?popov
        "Node.menu_button: ~label and ~icon_name are mutually exclusive (GTK stores one \
         child widget for both)"
    | (Some _ | None), (Some _ | None) -> ());
+  (* The slot's one type, checked where every tree passes: the impl hands the slot child
+     to [set_popover] through an unchecked downcast, so a non-popover here would be a GTK
+     critical and a silently desynchronised shadow tree rather than an error. Rejecting at
+     the constructor kills the mount, patch and kind-change-replace paths at once; the
+     walk-time checks are the backstop for a tree assembled by record update.
+
+     A [Native] node is rejected too, by ruling: [set_popover] needs a real [GtkPopover]
+     and the runtime cannot see inside a payload, so a native popover surface is a native
+     {i menu button}'s business -- one payload owning both halves. *)
+  (match popover with
+   | None | Some { kind = Popover _; _ } -> ()
+   | Some p ->
+     invalid_argf
+       "Node.menu_button: ~popover must be a Node.popover, not a %s"
+       (Kind.name p.kind)
+       ());
   make
     ?key
     ?attrs

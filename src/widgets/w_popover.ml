@@ -29,10 +29,11 @@ let apply_open (w : Widget.t) ~open_ =
 (* [closed] carries nothing and reads nothing back: the popover that closed is the node
    the attr rides on. Two connections on the one signal, deliberately: the first is the
    spec's trampoline (slot-armed, guarded, [in_patch]-dropped), and the second is
-   [W_menu_button.repair_focus_after_popdown] -- the GTK focus bug repair, which must run
-   on {i every} close, the library's own popdowns included, so it cannot live inside the
-   trampoline the guard silences. Both name the popover, so [Patcher.destroy] disconnects
-   both before the popover can be collected. *)
+   [W_menu_button.repair_focus_after_popdown] -- the focus repair (see its doc for what is
+   and is not yet proven about it), which must run on {i every} close, the library's own
+   popdowns included, so it cannot live inside the trampoline the guard silences. Both
+   name the popover, so [Patcher.destroy] disconnects both before the popover can be
+   collected. *)
 let closed : Signals.spec =
   Read_back
     { attr = Attr.Name.On_closed

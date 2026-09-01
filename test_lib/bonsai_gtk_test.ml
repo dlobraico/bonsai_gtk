@@ -136,6 +136,16 @@ let rec require_supported ~path ~parent (node : Node.t) =
        "%s: a Node.popover may only be a Node.menu_button's ~popover slot, not the root"
        path
        ()
+   (* The converse, [Patcher_checks.check_placement]'s string: everything under a menu
+      button is its ~popover slot, and a non-popover there hits an unchecked downcast
+      live. The constructor already rejects it; this is the backstop for a record-update
+      tree, so the handle cannot certify what the runtime would crash on. *)
+   | k, Some (Kind.Menu_button _) ->
+     invalid_argf
+       "%s: Node.menu_button's ~popover slot must hold a Node.popover, not a %s"
+       path
+       (Kind.name k)
+       ()
    | (Window _ | _), _ -> ());
   (* Unlike the event message below, this one is built by [Placement] itself and not
      rebuilt here: it has two shapes and names three things, which is more than two

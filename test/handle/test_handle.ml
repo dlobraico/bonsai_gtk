@@ -2814,6 +2814,27 @@ let%expect_test "a popover outside a menu button is rejected by the handle" =
     |}]
 ;;
 
+(* The converse hole the review found: the constructor rejects a non-popover in the
+   ~popover slot, but a tree assembled by record update never ran the constructor -- and
+   the runtime would hand the impostor to set_popover through an unchecked downcast. The
+   walk is the backstop, with the runtime's string, so the handle cannot certify what GTK
+   would crash on. *)
+let%expect_test "a non-popover smuggled into the slot by record update is rejected" =
+  let smuggled =
+    let mb = Node.menu_button ~label:"menu" () in
+    { mb with children = Children.Slots [ "popover", Single (Some (Node.label "x")) ] }
+  in
+  let app (_graph @ local) = Bonsai.return (Node.window ~title:"pop" smuggled) in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create app in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/popover/0: Node.menu_button's ~popover slot must hold a Node.popover, not a Label")
+    |}]
+;;
+
 (* The popover's controlled ~open_ from the model's side: Close_popover fires
    [Attr.on_closed] and the model that follows flips [open_]; Open_popover fires nothing
    (live, opening emits nothing this library exposes), so the prop stands wherever the

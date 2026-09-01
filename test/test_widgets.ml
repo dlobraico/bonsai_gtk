@@ -403,6 +403,28 @@ let%expect_test "a pack-area child with no key is rejected at the constructor" =
     |}]
 ;;
 
+(* The menu button's two constructor rejections. The slot's type first: the impl hands the
+   ~popover child to [set_popover] through an unchecked downcast, so a non-popover there
+   would be a GTK critical live -- rejected where every tree passes, with the walk-time
+   checks as the record-update backstop. Then the label/icon race: GTK's two setters
+   replace one child widget. *)
+let%expect_test "menu_button rejects a non-popover slot and a label+icon pair" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.menu_button ~popover:(Node.label "not a popover") ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.menu_button: ~popover must be a Node.popover, not a Label")
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.menu_button ~label:"menu" ~icon_name:"open-menu-symbolic" ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.menu_button: ~label and ~icon_name are mutually exclusive (GTK stores one child widget for both)")
+    |}]
+;;
+
 (* Keys are scoped per pack area: the two lists are reconciled independently, so the same
    key in [~start] and [~end_] is two distinct children and is accepted -- and a key
    moving between areas is therefore a remove plus a fresh insert, as the constructor doc

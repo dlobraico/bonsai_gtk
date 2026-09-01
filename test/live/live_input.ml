@@ -1,6 +1,7 @@
 open! Core
 open Bonsai_gtk_vtree
 module Glib = Bonsai_gtk.Private.Gtk_import.Glib
+module Gobject = Bonsai_gtk.Private.Gtk_import.Gobject
 module P = Bonsai_gtk.Private.Patcher
 module Scheduler = Bonsai_gtk.Private.Scheduler
 module W = Bonsai_gtk.Private.Gtk_import.W
@@ -672,10 +673,15 @@ let () =
   (* --- the menu button, end to end: a real click opens the popover, a real Escape
      dismisses it through GTK's autohide (the popover has its own surface, so the window's
      capture-phase Escape handler never sees it -- note no [capture Escape] on the line),
-     [Attr.on_closed] fires, and -- the regression the focus repair exists for
-     (stavekeeper viewer_window.ml:750-797) -- the window's keys still work afterwards:
-     without the repair, focus stays on the popped-down popover's child and every window
-     key goes dead. *)
+     [Attr.on_closed] fires, and the window's keys work afterwards.
+
+     {b What the keys-alive line does and does not prove} (task-5 review, Important 2): it
+     pins the chain around the focus repair -- dismiss, [closed], F1 delivered -- on the
+     {i plain-popover Escape} path, where GTK most likely restores focus itself and the
+     repair's predicate reads false. stavekeeper's actual stranding
+     (viewer_window.ml:750-797) is a [GtkPopoverMenu] after {i item activation}, whose
+     trigger arrives with Task 6's menus; that task must re-prove this line after a real
+     item activation. See [w_menu_button.ml]'s repair doc. *)
   let mx, my, mw, mh = box_of menu_button ~name:"menu-button" in
   let on_menu = target ~x:mx ~y:my ~w:mw ~h:mh in
   let msx, msy = on_menu 0.5 0.5 in
@@ -689,13 +695,13 @@ let () =
   drain ();
   show "Escape dismisses the popover";
   printf "popover mapped after Escape: %b\n" (W.Widget.get_mapped popover);
-  (* The repair's observable half: the window's focus widget is not left inside the
-     popover... *)
+  (* The stranding probe, spelled exactly as the repair's predicate is ([Gobject.same] or
+     descendant), so the two cannot diverge silently. *)
   printf
     "window focus stranded in the popover: %b\n"
     (match W.Window.get_focus (cast window) with
      | None -> false
-     | Some f -> W.Widget.is_ancestor f popover);
+     | Some f -> Gobject.same f popover || W.Widget.is_ancestor f popover);
   (* ...and the proof that matters: a window-level key still reaches its handler. *)
   key ~name:"menu-f1" "F1";
   show "a window key after the menu closed"

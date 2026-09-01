@@ -966,3 +966,14 @@ pointer, is an unbalanced unref that GC turns into a use-after-free — and neit
 nor a short-lived test will show it, because nothing collects before exit.
 `test/live/live_lists.ml`'s first block is the shape of test that does: N frames, a
 `Gc.full_major`, and an assertion that the widgets are still there.
+
+## Recorded during M3, input to the Task 13 rewrite
+
+- **Nothing reports a user {i opening} a popover.** `Attr.on_closed` covers the dismissal
+  direction; the open direction has no signal this library exposes, so a model that
+  renders `~open_:false` forever pops a toggle-opened popover back down on the next frame
+  (documented on `Node.popover`). **`notify::visible` on the popover is the closing
+  hook** — a `Read_back` in `w_popover.ml`'s spec shape, filtered to the opening edge.
+  task-5 review; the constructor doc names this paragraph.
+- **The list-container functorise trigger fired** (three fixes made twice); ruled an
+  early-M4 motion-only task. task-3 report / ledger `629ae6a`.

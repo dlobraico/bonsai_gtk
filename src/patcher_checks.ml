@@ -48,6 +48,22 @@ let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t
           path
           ())
    | _ -> ());
+  (* The converse of the popover rule: everything under a [Menu_button] is its one slot
+     ([~popover]), and the impl hands it to [set_popover] through an unchecked downcast,
+     so a non-popover there would be a GTK critical and a desynchronised shadow tree.
+     [Node.menu_button] already rejects this at the constructor; this is the backstop for
+     a tree assembled by record update, and [Bonsai_gtk_test] walks the same rule with the
+     same string. A [Native] node is rejected too, by ruling -- the runtime cannot see
+     inside a payload, so a native popover surface is a native menu button's business. *)
+  (match parent_kind, node.kind with
+   | Some (Menu_button _), Popover _ -> ()
+   | Some (Menu_button _), k ->
+     invalid_argf
+       "%s: Node.menu_button's ~popover slot must hold a Node.popover, not a %s"
+       path
+       (Kind.name k)
+       ()
+   | _ -> ());
   (* [Placement] rather than a table here: it is pure [Kind.t]/[Attr.Name.t] data, and
      [Bonsai_gtk_test] -- which cannot link ocgtk, so cannot see this file -- runs the
      same check over the same table at handle time. Both raise the string [rejection]

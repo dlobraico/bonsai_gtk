@@ -25,6 +25,17 @@ open Gtk_import
    collected (the dispose rule) -- rather than being connected from this impl's slot
    [set], which teardown could not reach.
 
+   {b What is proven so far is narrower than the bug} (task-5 review, Important 2).
+   stavekeeper's stranding is a [GtkPopoverMenu] after {i item activation}; the trigger
+   for that path does not exist until Task 6 lands menus and actions. [live_input.ml]'s
+   Escape-on-a-plain-popover block proves the surrounding chain (dismiss, [closed], window
+   keys alive afterwards) -- and on that path GTK most likely restores focus itself, so
+   the repair's predicate reads false and the clear never runs. Task 6 must re-prove the
+   keys-alive-afterwards line after a real menu item activation, and design the fallback
+   (a one-shot idle may be short against stavekeeper's 60 ms x 8 window) if the
+   synchronous clear turns out to be too early there. Recorded as a Task 6 carry in the
+   ledger.
+
    Deliberately {i not} behind the [in_patch] guard: a patch-driven [popdown] (the model
    flipping [~open_] to false) strands focus exactly as a user dismissal does, and
    clearing it is an ordinary patch-time write. The whole body is exception-guarded
@@ -43,7 +54,15 @@ let repair_focus_after_popdown (popover : Widget.t) =
          W.Window.set_focus window None
        | Some _ | None -> ())
   with
-  | _ -> ()
+  | _ ->
+    (* Swallowed rather than reported, and silently by necessity: this runs on GTK's C
+       stack with no [Signals.ctx] in reach -- the connection is made in a spec's
+       [connect], which is handed no reporting channel -- and a best-effort repair that
+       failed leaves exactly the state the repair exists to fix, which the user
+       experiences as the pre-repair bug rather than a new one. If the repair ever grows a
+       real failure mode, threading [on_exn] into the spec's [connect] is the change to
+       make. *)
+    ()
 ;;
 
 let apply_label_or_icon (mb : W.Menu_button.t) (p : Kind.menu_button_props) =
