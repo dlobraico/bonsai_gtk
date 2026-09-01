@@ -1,5 +1,6 @@
-; [counter] and [gallery] deliberately link no ocgtk: an application built with
-; bonsai_gtk never has to name it, and these two are where that is demonstrated.
+; [counter], [gallery] and [chrome] deliberately link no ocgtk: an application
+; built with bonsai_gtk never has to name it, and these three are where that is
+; demonstrated.
 ; [embed] is the exception and says why -- it is the example for an app that
 ; already owns its GTK window and main loop, so it necessarily writes both. Two
 ; stanzas in one directory need explicit (modules ...) on each.

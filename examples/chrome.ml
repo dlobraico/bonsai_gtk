@@ -88,7 +88,7 @@ let app (graph @ local) =
                      [ Menu.item ~label:"Increment" ~action:"app.increment" ()
                      ; Menu.item ~label:"Reset…" ~action:"app.reset" ()
                      ; Menu.section
-                         ~label:""
+                         (* No ~label: unlabelled sections render as separators. *)
                          [ Menu.item
                              ~label:"Notes window"
                              ~action:"app.notes"

@@ -893,7 +893,8 @@ let chrome ~set_about_open (graph @ local) =
                 [ Menu.item ~label:"Ping" ~action:"page.ping" ~accel:"<Control>p" ()
                 ; Menu.item ~label:"Bold" ~action:"page.bold" ()
                 ; Menu.section
-                    ~label:""
+                    (* No ~label: an unlabelled section renders as a separator, which is
+                       the idiom -- an empty string would render an empty header row. *)
                     [ Menu.item ~label:"About the gallery" ~action:"page.about" () ]
                 ]
               ()
@@ -1075,6 +1076,10 @@ let app (graph @ local) =
          [ Node.label ~attrs:[ Attr.css_class "title-2" ] "bonsai_gtk gallery"
          ; Node.label "Every widget, driven from one Bonsai model."
          ; Node.entry
+           (* On the dialog deliberately, not a main-window entry: every stack page mounts
+              on frame one, so an autofocus inside a (hidden) page would grab at app
+              start. A window that opens later is the fire-once pattern the attr was built
+              for. *)
              ~attrs:[ Attr.autofocus true ]
              ~placeholder:"autofocused on open"
              ~text:""
