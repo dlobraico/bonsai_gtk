@@ -26,6 +26,10 @@ module Click_response = Bonsai_gtk_vtree.Click_response
 module Keyval = Bonsai_gtk_vtree.Keyval
 module Key_event = Bonsai_gtk_vtree.Key_event
 module Key_response = Bonsai_gtk_vtree.Key_response
+module Action_spec = Bonsai_gtk_vtree.Action_spec
+module Menu = Bonsai_gtk_vtree.Menu
+module Trigger = Bonsai_gtk_vtree.Trigger
+module Position = Bonsai_gtk_vtree.Position
 
 module Native = struct
   module type S = Native_gtk.S

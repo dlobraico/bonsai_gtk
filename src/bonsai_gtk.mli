@@ -51,6 +51,16 @@ module Keyval = Bonsai_gtk_vtree.Keyval
 module Key_event = Bonsai_gtk_vtree.Key_event
 module Key_response = Bonsai_gtk_vtree.Key_response
 
+(* The M3 chrome types, re-exported like the input types above them: an application
+   writing [~menu], [Attr.actions] or [Attr.shortcut] has to name these, and making it
+   reach into [Bonsai_gtk_vtree] for them would break the "an app never names the vtree
+   library" property the examples demonstrate. (Found by Task 12's reconciliation: the
+   gallery could not express the chrome page through this module alone.) *)
+module Action_spec = Bonsai_gtk_vtree.Action_spec
+module Menu = Bonsai_gtk_vtree.Menu
+module Trigger = Bonsai_gtk_vtree.Trigger
+module Position = Bonsai_gtk_vtree.Position
+
 (** The escape hatch, for GTK widgets this library has no {!Node} constructor for. An
     application supplies the module that creates and updates the widget; the patcher
     treats it like any other node, keyed and diffed alongside the rest of the tree. *)
