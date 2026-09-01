@@ -106,3 +106,17 @@ Action_spec + Menu.Item + Attr.actions ~scope, doc completed in the fix round.
 CARRY FOR TASK 13 (review M4): the Down+Return residual — WM-less Xvfb never gives a
 popup surface X focus, so no keyboard path reaches any popover menu (Escape works only
 via the toplevel's own grab); belongs beside the M2 input residual in the rewrite.
+
+### Task 7 — Attr.shortcut, the fourth family: APPROVED (after fix round 1)
+92e5184..e4076ae (headless + live) + fix round `c0532f8`. No slot, no trampoline: firing
+routes GTK → NamedAction → the Actions trampoline; teardown rides the Actions slots.
+Rulings/measurements of record: same-trigger+different-action on one node REJECTED
+(phase-doctrine string, both callers); cross-node order DETERMINISTIC — stable
+(trigger, action) sorted rebuild on any change, Fire_shortcut agrees, contention
+goldened; radio-by-shortcut refused at the walk (menu-radio legal) — targeted shortcuts
+are FEASIBLE (ocgtk binds Shortcut.set_arguments) and deliberately unshipped, backlog
+entry names shipping's exact removals; a chord on a DISABLED action FALLS THROUGH to
+capture handlers and the focused widget (stavekeeper's text_input_active shape,
+goldened, documented at the attr); set_scope LOCAL explicit; attr_phase → attr_phases
+(Key goldens byte-identical). Two comment-only nits fold into Task 8's start
+(live_input probe comment; test_menu.ml:194's stale "cannot be fired").
