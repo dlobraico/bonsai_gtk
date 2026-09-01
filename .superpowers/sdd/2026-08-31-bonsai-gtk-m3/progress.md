@@ -190,3 +190,18 @@ the attr. Minors alongside: lock-taxonomy sentence for live_css's category; one
 to_string dump proving consumption after the dark flip; exercise the direct
 color-scheme knob. Out-of-scope recorded: equal-priority precedence unestablished
 (specificity is the honest tool); prefers-contrast unmirrored.
+
+### Task 12 — gallery, examples, sweeps: APPROVED
+002599f..353cc96 (task-11 items + re-exports + reconciliation + chrome.ml). Discovery of
+record: Bonsai_gtk never re-exported Action_spec/Menu/Trigger/Position — no app could
+use ~menu or Attr.actions without naming the vtree library; the examples-as-consumers
+found it, fixed by module equations, examples now link core+bonsai+bonsai_gtk only.
+Both trees carry every M3 kind (5) and attr (8) — reviewer hand-counted the example
+against the M2 base; sweeps enforce the handle tree. chrome.ml is the M3 counter: one
+Action_spec list serving menu+chords+handlers; ~cancel makes the alert bind total; no
+inert X anywhere. The confessed red-format state is NOT bisect-reachable (reviewer ran
+the fmt gate at each of the four commits). Task 2's gallery-drift carry CLOSED. Minors →
+Task 13 start: autofocus stack-page reasoning into the example comment; Menu.section
+~label:"" → omit ?label (separator idiom) in both examples; examples/dune "these two"
+count. The nothing-sweeps-the-example residual + its stale 36/38 counts go to Task 13's
+rewrite by name.
