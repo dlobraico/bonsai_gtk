@@ -243,20 +243,32 @@ module Alert_dialog = struct
       Hashtbl.set live_alerts ~key:id ~data:d;
       ignore
         (W.Dialog.on_response d ~callback:(fun ~response_id ->
-           (* Every non-button id -- DELETE_EVENT from Escape or the close button (-4;
-              pre-flight 2's measurement), or any other reserved negative -- maps to
-              [cancel], which is what makes the effect total where §8's signature said
-              nothing about dismissal. Destroy before resolving, so a continuation that
-              shows the next dialog never sees this one still up; the table entry goes
-              first so a re-entrant show can never collide with this id. *)
-           let answer =
-             if response_id >= 0 && response_id < List.length buttons
-             then response_id
-             else cancel
-           in
-           Hashtbl.remove live_alerts id;
-           W.Window.destroy win;
-           resolve_from_glib ~name:"Alert_dialog.show" callback answer)
+           (* The whole body under the guard, so no-raise-into-C is syntactic rather than
+              argued: [resolve_from_glib] guards itself, but the remove/destroy steps
+              before it run bare on GTK's emission stack otherwise. *)
+           try
+             (* Every non-button id -- DELETE_EVENT from Escape or the close button (-4;
+                pre-flight 2's measurement), or any other reserved negative -- maps to
+                [cancel], which is what makes the effect total where §8's signature said
+                nothing about dismissal. Destroy before resolving, so a continuation that
+                shows the next dialog never sees this one still up; the table entry goes
+                first so a re-entrant show can never collide with this id. *)
+             let answer =
+               if response_id >= 0 && response_id < List.length buttons
+               then response_id
+               else cancel
+             in
+             Hashtbl.remove live_alerts id;
+             W.Window.destroy win;
+             resolve_from_glib ~name:"Alert_dialog.show" callback answer
+           with
+           | exn ->
+             (try
+                eprintf
+                  "bonsai_gtk: exception in Effect.Alert_dialog.show's response: %s\n%!"
+                  (Exn.to_string exn)
+              with
+              | _ -> ()))
          : Gobject.Signal.handler_id);
       W.Window.present win)
   ;;
@@ -281,19 +293,31 @@ module File_dialog = struct
       Hashtbl.set live_file_choosers ~key:id ~data:chooser;
       ignore
         (W.Native_dialog.on_response nd ~callback:(fun ~response_id ->
-           (* Escape on the fallback dialog delivers DELETE_EVENT (-4), not CANCEL --
-              measured, pre-flight 2 -- and every non-ACCEPT id means "no file". *)
-           let result =
-             if response_id = Gtk_enums.responsetype_to_int `ACCEPT
-             then
-               Option.bind
-                 (W.File_chooser.get_file (W.File_chooser.from_gobject chooser))
-                 ~f:Gio.File.get_path
-             else None
-           in
-           Hashtbl.remove live_file_choosers id;
-           W.Native_dialog.destroy nd;
-           resolve_from_glib ~name callback result)
+           (* The alert trampoline's guard, for its reason: the read-back chain and the
+              destroy run on GTK's emission stack. *)
+           try
+             (* Escape on the fallback dialog delivers DELETE_EVENT (-4), not CANCEL --
+                measured, pre-flight 2 -- and every non-ACCEPT id means "no file". *)
+             let result =
+               if response_id = Gtk_enums.responsetype_to_int `ACCEPT
+               then
+                 Option.bind
+                   (W.File_chooser.get_file (W.File_chooser.from_gobject chooser))
+                   ~f:Gio.File.get_path
+               else None
+             in
+             Hashtbl.remove live_file_choosers id;
+             W.Native_dialog.destroy nd;
+             resolve_from_glib ~name callback result
+           with
+           | exn ->
+             (try
+                eprintf
+                  "bonsai_gtk: exception in Effect.%s's response: %s\n%!"
+                  name
+                  (Exn.to_string exn)
+              with
+              | _ -> ()))
          : Gobject.Signal.handler_id);
       W.Native_dialog.show nd)
   ;;

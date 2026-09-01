@@ -60,7 +60,10 @@ module Alert_dialog : sig
       (DELETE_EVENT, measured) -- the addition that makes the effect {i total} where §8's
       signature said nothing about dismissal (deviation recorded in Task 13). The dialog
       is held by the runtime from show until its response, so the effect value may be
-      dropped freely; two alerts at once are two dialogs. *)
+      dropped freely; two alerts at once are two dialogs. One still up when [Driver.stop]
+      runs simply stays up and resolves whenever it is answered, under the dropped-hooks
+      contract ({!after}'s log-and-resolve) -- nothing leaks: the response empties the
+      table either way. *)
   val show : ?detail:string -> ?cancel:int -> buttons:string list -> string -> int t
 end
 
@@ -73,7 +76,9 @@ end
 module File_dialog : sig
   (** Each resolves with [Some path] on accept and [None] on any dismissal (Escape
       delivers DELETE_EVENT, not CANCEL -- measured). Modal, transient for [start]'s
-      active window when there is one; held by the runtime from show until response.
+      active window when there is one; held by the runtime from show until response (one
+      still up at [Driver.stop] stays up and resolves under the dropped-hooks contract,
+      leaking nothing).
 
       No initial-folder argument on any of them: [Gio.File] has no constructor in the pin
       ([new_for_path] is unbound), so there is nothing to feed [set_initial_folder] -- a
