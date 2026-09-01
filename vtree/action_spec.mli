@@ -11,8 +11,10 @@ open! Core
       { id; label; accel; scope; enabled; run }
     ]}
     , [command.ml:15-22]) map field-for-field onto a spec plus a {!Menu.Item}: [id] is
-    [name], [enabled] is [enabled], [run] is the effect — so one list of commands renders
-    the ⋮ menu, the palette, and (Task 7) the chords. *)
+    [name]; [scope] is {!Attr.actions}' [~scope]; [enabled] is [enabled]; [run] is the
+    effect; and [label]/[accel] are the {!Menu.Item}'s [label]/[accel] (the accel
+    display-only, stavekeeper's own rule) — so one list of commands renders the ⋮ menu,
+    the palette, and (Task 7) the chords. *)
 
 (** [Toggle] and [Radio] are {b controlled} (spec §6.5), told through an action: [state]
     is written to GTK only when it differs from the read-back, and an {i activation} never

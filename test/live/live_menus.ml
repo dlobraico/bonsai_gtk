@@ -206,3 +206,184 @@ let () =
   P.destroy ctx live;
   printf "late actions done\n"
 ;;
+
+(* Task-6 review I1, the measurement: does a {i late} action group (inserted after its
+   widget was rooted -- pre-flight 1's bad ordering) ever reach a PopoverMenu's item
+   tracker, and through which path? Three probes over one tree: the mount-time group's
+   item (control); an item added by an {b in-place menu edit} (remove_all + refill on the
+   same GMenu -- the path the mli's workaround claim named); and the same menu after a
+   {b full model re-set} (None for a frame, then back -- fresh set_menu_model). The golden
+   is the answer, and the mli says whatever it says. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
+  in
+  let pump () =
+    let rec go n =
+      if n > 0 && Bonsai_gtk.Private.Gtk_import.Glib.Main.iteration false then go (n - 1)
+    in
+    go 50
+  in
+  let base_actions =
+    Attr.actions ~scope:"base" [ Action_spec.simple ~name:"x" Ui_effect.Ignore ]
+  in
+  let late_actions =
+    Attr.actions ~scope:"late" [ Action_spec.simple ~name:"y" Ui_effect.Ignore ]
+  in
+  let menu ~with_late =
+    Menu.item ~label:"X" ~action:"base.x" ()
+    :: (if with_late then [ Menu.item ~label:"Y" ~action:"late.y" () ] else [])
+  in
+  let view ~late ~menu_state =
+    Node.window
+      ~title:"rebind"
+      ~attrs:(if late then [ late_actions ] else [])
+      (Node.box
+         ~orientation:Vertical
+         ~attrs:[ base_actions ]
+         [ Node.menu_button
+             ~label:"m"
+             ?menu:
+               (match menu_state with
+                | `Absent -> None
+                | `Base -> Some (menu ~with_late:false)
+                | `Both -> Some (menu ~with_late:true))
+             ()
+         ])
+  in
+  let patch live v =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.patch ctx ~path:"rebind" ~is_root:true live v in
+      P.run_fixups ctx;
+      live)
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live =
+        P.mount ctx ~path:"rebind" ~is_root:true (view ~late:false ~menu_state:`Base)
+      in
+      P.run_fixups ctx;
+      live)
+  in
+  let button (l : P.live) =
+    match l.children with
+    | Single (Some box) ->
+      (match box.P.children with
+       | List [ mb ] -> mb.P.widget
+       | _ -> assert false)
+    | _ -> assert false
+  in
+  let type_name = Bonsai_gtk.Private.Gtk_import.type_name in
+  let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children in
+  let rec find_labelled_model_buttons w acc =
+    let acc =
+      if String.equal (type_name w) "GtkModelButton"
+      then (
+        let rec first_label w =
+          if String.equal (type_name w) "GtkLabel"
+          then Some (W.Label.get_text (cast w))
+          else List.find_map (widget_children w) ~f:first_label
+        in
+        (Option.value (first_label w) ~default:"?", w) :: acc)
+      else acc
+    in
+    List.fold (widget_children w) ~init:acc ~f:(fun acc c ->
+      find_labelled_model_buttons c acc)
+  in
+  let probe label (l : P.live) =
+    let mb : W.Menu_button.t = cast (button l) in
+    W.Menu_button.popup mb;
+    pump ();
+    (match W.Menu_button.get_popover mb with
+     | None -> printf "%s: no internal popover\n" label
+     | Some p ->
+       find_labelled_model_buttons ((p :> Widget.t) : Widget.t) []
+       |> List.sort ~compare:(fun (a, _) (b, _) -> String.compare a b)
+       |> List.iter ~f:(fun (text, w) ->
+         printf "%s: item %s sensitive=%b\n" label text (W.Widget.get_sensitive w)));
+    W.Menu_button.popdown mb;
+    pump ()
+  in
+  probe "mounted (base only)" live;
+  (* The late group arrives on the rooted window, and the menu is EDITED in place. *)
+  let live = patch live (view ~late:true ~menu_state:`Both) in
+  probe "late group + in-place menu edit" live;
+  (* The full re-set: menu absent for one frame, then back -- a fresh set_menu_model. *)
+  let live = patch live (view ~late:true ~menu_state:`Absent) in
+  let live = patch live (view ~late:true ~menu_state:`Both) in
+  probe "late group + full model re-set" live;
+  P.destroy ctx live;
+  printf "rebind measurement done\n"
+;;
+
+(* Task-6 review M5, the measurement: same-scope shadowing. A descendant inserts
+   [~scope:"app" [y]] while an ancestor holds [~scope:"app" [x]]; does GTK's muxer fall
+   through to the ancestor's "app" for a name the nearer group lacks? The probes go
+   through [activate_action_variant] from the innermost widget -- GTK's own walk -- and
+   the golden decides whether the resolution walk's union env is honest or needs the
+   nearest-scope-shadows rule. No menu is involved, so the walk itself is not in the way. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
+  in
+  let view =
+    Node.window
+      ~title:"shadow"
+      (Node.box
+         ~orientation:Vertical
+         ~attrs:
+           [ Attr.actions ~scope:"app" [ Action_spec.simple ~name:"x" Ui_effect.Ignore ] ]
+         [ Node.box
+             ~orientation:Vertical
+             ~attrs:
+               [ Attr.actions
+                   ~scope:"app"
+                   [ Action_spec.simple ~name:"y" Ui_effect.Ignore ]
+               ]
+             [ Node.label "leaf" ]
+         ])
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.mount ctx ~path:"shadow" ~is_root:true view in
+      P.run_fixups ctx;
+      live)
+  in
+  let leaf =
+    match live.children with
+    | Single (Some outer) ->
+      (match outer.P.children with
+       | List [ inner ] ->
+         (match inner.P.children with
+          | List [ l ] -> l.P.widget
+          | _ -> assert false)
+       | _ -> assert false)
+    | _ -> assert false
+  in
+  printf
+    "from the leaf, app.y (the nearer group's own): %b\n"
+    (Widget.activate_action_variant leaf "app.y" None);
+  printf
+    "from the leaf, app.x (only in the ancestor's app): %b\n"
+    (Widget.activate_action_variant leaf "app.x" None);
+  P.destroy ctx live;
+  printf "shadowing measurement done\n"
+;;

@@ -212,8 +212,12 @@ let impl : Widget_impl.t =
             then (
               match new_.menu with
               | None ->
-                W.Menu_button.set_menu_model mb None;
-                Menus.remove w
+                (* Repair first, model second -- the ordering rule every teardown here
+                   follows: [set_menu_model None] destroys the internal popover, and the
+                   repair connection must leave before the object it is connected to can
+                   be disposed ([closed] is a signal dispose can emit). *)
+                Menus.remove w;
+                W.Menu_button.set_menu_model mb None
               | Some m ->
                 (match Menus.find w with
                  | Some entry ->

@@ -214,8 +214,9 @@ let%expect_test "is_event over every name" =
 
    The controller attrs are the third case and are excluded from both halves: they are
    events that appear in no [for_kind] row *by design*, because they are legal everywhere.
-   Excluding them here rather than widening the golden is the point -- a real signal name
-   that fell out of every row would still show up. *)
+   [Actions] is excluded on the identical reason through its own one-constructor
+   carve-out. Excluding them here rather than widening the golden is the point -- a real
+   signal name that fell out of every row would still show up. *)
 let%expect_test "the table and [is_event] cover the same names" =
   let in_table =
     List.concat_map all_kinds ~f:Events.for_kind |> Attr.Name.Set.of_list |> Set.to_list
@@ -233,10 +234,11 @@ let%expect_test "the table and [is_event] cover the same names" =
     List.filter Attr.Name.all ~f:(fun n ->
       Attr.Name.is_event n
       && (not (Events.is_controller_attr n))
+      && (not (Events.is_actions_attr n))
       && not (List.mem in_table n ~equal:Attr.Name.equal))
   in
   print_s [%sexp `signal_names_no_kind_emits (emitted_by_nobody : Attr.Name.t list)];
-  [%expect {| (signal_names_no_kind_emits (Actions)) |}]
+  [%expect {| (signal_names_no_kind_emits ()) |}]
 ;;
 
 (* The other half of the same fact, and the one an application depends on: a controller

@@ -97,3 +97,12 @@ actions round trip done
 late.fire before the attr exists: false
 late.fire after the attr appeared: true (fired 1)
 late actions done
+mounted (base only): item X sensitive=true
+late group + in-place menu edit: item X sensitive=true
+late group + in-place menu edit: item Y sensitive=true
+late group + full model re-set: item X sensitive=true
+late group + full model re-set: item Y sensitive=true
+rebind measurement done
+from the leaf, app.y (the nearer group's own): true
+from the leaf, app.x (only in the ancestor's app): true
+shadowing measurement done

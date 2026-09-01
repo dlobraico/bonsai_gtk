@@ -10,7 +10,11 @@ open! Core
 
    The environment is threaded down the walk: each node's [Attr.actions] extends it for
    the node itself and its subtree -- self-or-ancestor, exactly GTK's path. A sibling's
-   scope is deliberately out of reach.
+   scope is deliberately out of reach. The env is a {i union}, same-scope entries
+   included, and that matches GTK (measured, [test/live/live_menus.ml]'s shadowing block):
+   a nearer group registered under the same scope does {i not} shadow an ancestor's -- the
+   muxer falls through, so a name the nearer "app" lacks still resolves against the
+   ancestor's "app", exactly as this walk says.
 
    The carve-out ruling (§5.4's singular arity, the stack-switcher precedent): a menu is a
    claim about actions the caller can see, so a dangling name is a typo and raises --
