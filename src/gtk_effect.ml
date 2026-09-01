@@ -94,7 +94,7 @@ let hooks () = Option.map !For_runtime.current ~f:snd
    flight drops the hooks, and the timeout fires anyway. The contract is log-and-resolve
    -- the continuation still runs (a ref it writes still moves; injects land in a graph
    nothing will read), a line says the frame is not coming, and nothing raises. *)
-let resolve_from_glib ~name callback =
+let resolve_from_glib ~name callback response =
   let log_exn exn =
     try
       eprintf "bonsai_gtk: exception resolving Effect.%s: %s\n%!" name (Exn.to_string exn)
@@ -105,7 +105,7 @@ let resolve_from_glib ~name callback =
     (try
        Ui_effect.Expert.handle
          ~on_exn:log_exn
-         (Ui_effect.Private.Callback.respond_to callback ())
+         (Ui_effect.Private.Callback.respond_to callback response)
      with
      | exn -> log_exn exn);
     match hooks () with
@@ -138,7 +138,7 @@ let after span =
       (Glib.Timeout.add
          ~ms
          ~callback:(fun () ->
-           resolve_from_glib ~name:"after" callback;
+           resolve_from_glib ~name:"after" callback ();
            false)
          ()
        : Glib.Timeout.id))
@@ -148,7 +148,7 @@ let on_idle =
   Ui_effect.Private.make ~request:() ~evaluator:(fun callback ->
     ignore
       (Glib.Idle.add (fun () ->
-         resolve_from_glib ~name:"on_idle" callback;
+         resolve_from_glib ~name:"on_idle" callback ();
          false)
        : Glib.Idle.id))
 ;;
@@ -170,6 +170,155 @@ module Clipboard = struct
           "bonsai_gtk: Effect.Clipboard.set_text outside a running Bonsai_gtk app; \
            nothing was written\n\
            %!")
+  ;;
+end
+
+(* The dialogs' keep-alive (M3 Task 10): nothing in the application holds a shown dialog
+   -- the effect was performed and the value dropped -- so an ocgtk wrapper left only on
+   the C side would be collected, its finaliser would unref the GObject, and the dialog
+   would vanish mid-show. This is §2.2's ownership rule, discharged for widgets by the
+   shadow tree and here by hand: the wrapper lives in a table from show until its
+   [response] arrives. Tables rather than slots, because both effect families are serially
+   reentrant -- two alerts at once are two dialogs. Insertion-ordered probes for the live
+   suite ride on the monotonic ids. *)
+let dialog_id = ref 0
+
+let next_dialog_id () =
+  incr dialog_id;
+  !dialog_id
+;;
+
+let live_alerts : (int, Gtk_import.W.Dialog.t) Hashtbl.t = Hashtbl.create (module Int)
+
+let live_file_choosers : (int, Gtk_import.W.File_chooser_native.t) Hashtbl.t =
+  Hashtbl.create (module Int)
+;;
+
+module For_live_tests = struct
+  let live_alert_dialogs () =
+    Hashtbl.to_alist live_alerts
+    |> List.sort ~compare:(fun (a, _) (b, _) -> Int.compare a b)
+    |> List.map ~f:snd
+  ;;
+
+  let live_dialog_count () =
+    Hashtbl.length live_alerts + Hashtbl.length live_file_choosers
+  ;;
+end
+
+(* The parent a dialog is transient for: [start]'s active window when there is one, and
+   nothing otherwise (under [Expert.Driver] or [embed] the dialog is a free-standing
+   toplevel, which GTK allows). Read at perform time, like everything here. *)
+let transient_parent () = Option.bind !app ~f:Gtk_import.W.Application.get_active_window
+
+module Alert_dialog = struct
+  let show ?detail ?(cancel = 0) ~buttons message =
+    Ui_effect.Private.make ~request:() ~evaluator:(fun callback ->
+      let open Gtk_import in
+      let d = W.Dialog.new_ () in
+      let win = (d :> W.Window.t) in
+      W.Window.set_transient_for win (transient_parent ());
+      W.Window.set_modal win true;
+      let content = W.Dialog.get_content_area d in
+      (* Plain [set-text-shaped] labels with a css class, never markup: the strings are
+         the application's (and transitively perhaps the user's), and pango markup
+         injection is not a party this dialog hosts. *)
+      let add_label ?(css = []) text =
+        let l = W.Label.new_ (Some text) in
+        let lw = (l :> Widget.t) in
+        List.iter css ~f:(Widget.add_css_class lw);
+        Widget.set_margin_start lw 12;
+        Widget.set_margin_end lw 12;
+        Widget.set_margin_top lw 6;
+        Widget.set_margin_bottom lw 6;
+        W.Box.append content lw
+      in
+      add_label ~css:[ "heading" ] message;
+      Option.iter detail ~f:(fun detail -> add_label detail);
+      List.iteri buttons ~f:(fun i label ->
+        ignore (W.Dialog.add_button d label i : Widget.t));
+      if not (List.is_empty buttons)
+      then W.Dialog.set_default_response d (List.length buttons - 1);
+      let id = next_dialog_id () in
+      Hashtbl.set live_alerts ~key:id ~data:d;
+      ignore
+        (W.Dialog.on_response d ~callback:(fun ~response_id ->
+           (* Every non-button id -- DELETE_EVENT from Escape or the close button (-4;
+              pre-flight 2's measurement), or any other reserved negative -- maps to
+              [cancel], which is what makes the effect total where §8's signature said
+              nothing about dismissal. Destroy before resolving, so a continuation that
+              shows the next dialog never sees this one still up; the table entry goes
+              first so a re-entrant show can never collide with this id. *)
+           let answer =
+             if response_id >= 0 && response_id < List.length buttons
+             then response_id
+             else cancel
+           in
+           Hashtbl.remove live_alerts id;
+           W.Window.destroy win;
+           resolve_from_glib ~name:"Alert_dialog.show" callback answer)
+         : Gobject.Signal.handler_id);
+      W.Window.present win)
+  ;;
+end
+
+module File_dialog = struct
+  (* One builder, three [filechooseraction]s. The fallback under a portal-less display
+     (xvfb included) is a plain GTK dialog window, which is what makes the Escape path
+     live-testable at all; either way [on_response] delivers the id and the path is read
+     back through the [File_chooser] interface cast. *)
+  let file_chooser ~name ~action ?title ?accept_label ?initial_name () =
+    Ui_effect.Private.make ~request:() ~evaluator:(fun callback ->
+      let open Gtk_import in
+      let chooser =
+        W.File_chooser_native.new_ title (transient_parent ()) action accept_label None
+      in
+      let nd = (chooser :> W.Native_dialog.t) in
+      W.Native_dialog.set_modal nd true;
+      Option.iter initial_name ~f:(fun n ->
+        W.File_chooser.set_current_name (W.File_chooser.from_gobject chooser) n);
+      let id = next_dialog_id () in
+      Hashtbl.set live_file_choosers ~key:id ~data:chooser;
+      ignore
+        (W.Native_dialog.on_response nd ~callback:(fun ~response_id ->
+           (* Escape on the fallback dialog delivers DELETE_EVENT (-4), not CANCEL --
+              measured, pre-flight 2 -- and every non-ACCEPT id means "no file". *)
+           let result =
+             if response_id = Gtk_enums.responsetype_to_int `ACCEPT
+             then
+               Option.bind
+                 (W.File_chooser.get_file (W.File_chooser.from_gobject chooser))
+                 ~f:Gio.File.get_path
+             else None
+           in
+           Hashtbl.remove live_file_choosers id;
+           W.Native_dialog.destroy nd;
+           resolve_from_glib ~name callback result)
+         : Gobject.Signal.handler_id);
+      W.Native_dialog.show nd)
+  ;;
+
+  let open_file ?title ?accept_label () =
+    file_chooser ~name:"File_dialog.open_file" ~action:`OPEN ?title ?accept_label ()
+  ;;
+
+  let save_file ?title ?accept_label ?initial_name () =
+    file_chooser
+      ~name:"File_dialog.save_file"
+      ~action:`SAVE
+      ?title
+      ?accept_label
+      ?initial_name
+      ()
+  ;;
+
+  let select_folder ?title ?accept_label () =
+    file_chooser
+      ~name:"File_dialog.select_folder"
+      ~action:`SELECT_FOLDER
+      ?title
+      ?accept_label
+      ()
   ;;
 end
 

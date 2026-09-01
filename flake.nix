@@ -84,6 +84,14 @@
           # during `opam install`; without it in the shell that check fails
           # and takes the whole opam install transaction down with it.
           buildInputs = gtkStack ++ [ pkgs.gobject-introspection pkgs.gmp ];
+          # GtkFileChooserNative reads org.gtk.gtk4.Settings.FileChooser at
+          # construction and aborts the whole process with GLib-GIO-ERROR when
+          # no schema source is found (pre-flight correction 2, measured under
+          # this shell). Nix does not compose XDG_DATA_DIRS for a dev shell, so
+          # the dialog effects point GSettings at gtk4's own compiled schemas
+          # explicitly.
+          GSETTINGS_SCHEMA_DIR =
+            "${pkgs.gtk4}/share/gsettings-schemas/${pkgs.gtk4.name}/glib-2.0/schemas";
           shellHook = ''
             if [ -d "$PWD/_opam" ]; then
               eval "$(opam env --switch=. --set-switch 2>/dev/null || true)"

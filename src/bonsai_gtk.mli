@@ -115,6 +115,34 @@ module Effect : sig
         would be a second writer fighting the patcher. *)
     val present : Bonsai_gtk_vtree.Key.t -> unit t
   end
+
+  module Alert_dialog : sig
+    (** A modal alert (a real [GtkDialog] — the §8 contingency; [AlertDialog] has no
+        constructor in the binding): [message] as a plain-text heading, an optional
+        [detail] line, one button per label. Resolves with the {b index} of the button
+        pressed; every dismissal (Escape, the close button) resolves [cancel] (default 0),
+        which is what makes the effect total. The runtime holds the dialog from show to
+        response; two alerts at once are two dialogs. *)
+    val show : ?detail:string -> ?cancel:int -> buttons:string list -> string -> int t
+  end
+
+  module File_dialog : sig
+    (** File pickers on [GtkFileChooserNative] ([GtkFileDialog] cannot be launched in the
+        binding). Each resolves [Some path] on accept and [None] on any dismissal. No
+        initial-folder argument: [Gio.File] has no constructor in the binding — a
+        documented omission. *)
+    val open_file : ?title:string -> ?accept_label:string -> unit -> string option t
+
+    (** [initial_name] pre-fills the name entry — the "Untitled document" affordance. *)
+    val save_file
+      :  ?title:string
+      -> ?accept_label:string
+      -> ?initial_name:string
+      -> unit
+      -> string option t
+
+    val select_folder : ?title:string -> ?accept_label:string -> unit -> string option t
+  end
 end
 
 (** Runs [app] as a [GtkApplication] and returns its exit status. Blocks until the last

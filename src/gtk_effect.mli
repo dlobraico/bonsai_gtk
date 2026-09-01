@@ -44,6 +44,54 @@ module Clipboard : sig
   val set_text : string -> unit t
 end
 
+(** Spec §8's alert, on the path the binding actually has: {b a real [GtkDialog]} --
+    deprecated in GTK 4.10, present and functional in 4.22 -- because [AlertDialog] cannot
+    be constructed in the pin ([gtk_alert_dialog_new] is varargs and there is no generic
+    [g_object_new]); the §8 contingency, exercised and documented here so Task 13's spec
+    amendment can quote it. *)
+module Alert_dialog : sig
+  (** Shows a modal alert -- transient for [start]'s active window when there is one --
+      with [message] (a plain-text heading; never markup, the strings are not this
+      dialog's to interpret), an optional [detail] line, and one button per label.
+      Resolves with the {b index} of the button pressed.
+
+      [cancel] (default 0) is the index answered on dismissal -- Escape, Alt+F4, the
+      window close button, all of which deliver a reserved negative response id
+      (DELETE_EVENT, measured) -- the addition that makes the effect {i total} where §8's
+      signature said nothing about dismissal (deviation recorded in Task 13). The dialog
+      is held by the runtime from show until its response, so the effect value may be
+      dropped freely; two alerts at once are two dialogs. *)
+  val show : ?detail:string -> ?cancel:int -> buttons:string list -> string -> int t
+end
+
+(** Spec §8's file dialogs, on the path the binding actually has:
+    {b [GtkFileChooserNative]} -- because [GtkFileDialog] cannot be {i launched} in the
+    pin (its async [open]/[save]/[select_folder] are all unbound; only the [*_finish]
+    halves exist). Under a portal-less display the native chooser falls back to a plain
+    GTK dialog window, which is what makes it live-testable. Also the quotable half of the
+    §8 contingency, with {!Alert_dialog}'s. *)
+module File_dialog : sig
+  (** Each resolves with [Some path] on accept and [None] on any dismissal (Escape
+      delivers DELETE_EVENT, not CANCEL -- measured). Modal, transient for [start]'s
+      active window when there is one; held by the runtime from show until response.
+
+      No initial-folder argument on any of them: [Gio.File] has no constructor in the pin
+      ([new_for_path] is unbound), so there is nothing to feed [set_initial_folder] -- a
+      documented omission. *)
+  val open_file : ?title:string -> ?accept_label:string -> unit -> string option t
+
+  (** [initial_name] pre-fills the name entry ([set_current_name]) -- the "Untitled
+      document" affordance. *)
+  val save_file
+    :  ?title:string
+    -> ?accept_label:string
+    -> ?initial_name:string
+    -> unit
+    -> string option t
+
+  val select_folder : ?title:string -> ?accept_label:string -> unit -> string option t
+end
+
 module Window : sig
   (** Presents (raises, focuses) the window keyed [key] in the root [Node.windows] list —
       "raise the window that already has this score". A key naming no window, a perform
@@ -100,4 +148,16 @@ module For_runtime : sig
 
   (** A no-op if a later {!register} has already displaced this registration. *)
   val unregister : registration -> unit
+end
+
+(** Test-only probes into the dialog keep-alive tables (see the impl's §2.2 note):
+    reachable through [Bonsai_gtk.Private], read by [test/live/live_dialogs.ml] to drive
+    an alert programmatically and to prove the mid-show [Gc.full_major] cannot take one
+    down. *)
+module For_live_tests : sig
+  (** The live alerts, oldest first. *)
+  val live_alert_dialogs : unit -> Gtk_import.W.Dialog.t list
+
+  (** Alerts plus file choosers still awaiting a response. *)
+  val live_dialog_count : unit -> int
 end
