@@ -1,0 +1,10 @@
+resolved in order: after(16ms),on_idle
+set_text: ok
+before present: active = a:false b:true
+after Window.present "a": active = a:true b:false
+bonsai_gtk: Effect.Window.present: no window is keyed "zzz" (the key must name a child of the root Node.windows)
+stopped with a 40 ms after in flight; resolved yet: false
+bonsai_gtk: Effect.after resolved after the runtime's hooks were dropped (Driver.stop); no frame was requested
+the in-flight after resolved after stop: true
+a displaced registration's drop left the replacement armed: frame requests = 1
+done

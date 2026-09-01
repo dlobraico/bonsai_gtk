@@ -17,6 +17,7 @@
   live_text
   live_embed
   live_windows
+  live_effects
   live_input)
  (libraries
   core
@@ -37,7 +38,7 @@
 ; explicitly asked for:
 ;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 ;
-; Fourteen of the eighteen rules carry `(locks x-display)`: every one whose
+; Fifteen of the nineteen rules carry `(locks x-display)`: every one whose
 ; executable presents a toplevel, plus the two dump-only suites
 ; (`live_containers`, `live_chrome`) that create toplevels without presenting
 ; them -- conservatively, since a locked rule that did not need it costs a few
@@ -291,6 +292,19 @@
     output_windows.txt
     (run %{exe:live_windows.exe}))
    (diff expected_windows.txt output_windows.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_effects.exe)
+ (locks x-display)
+ (action
+  (progn
+   (with-stdout-to
+    output_effects.txt
+    (run %{exe:live_effects.exe}))
+   (diff expected_effects.txt output_effects.txt))))
 
 (rule
  (alias runtest)
