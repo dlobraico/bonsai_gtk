@@ -58,7 +58,7 @@ let stop t =
       t.backstop <- None)
 ;;
 
-let create ?time_source ?optimize ?(target_frames_per_second = 60.) app =
+let create ?time_source ?optimize ?(target_frames_per_second = 60.) ?global_css app =
   (* {b Why there is a wrapper.}
 
      The obvious design hands the caller the root widget itself. It is wrong, and silently
@@ -96,6 +96,14 @@ let create ?time_source ?optimize ?(target_frames_per_second = 60.) app =
      page does -- it is [GtkBinLayout] under a public name. All four forward
      [hexpand]/[vexpand] from the child correctly; only the overlay also forwards
      alignment. It draws nothing and adds no CSS. *)
+  (* Same provider [Loop.start] installs, and necessarily the {i default} display -- the
+     only one the fork's [Style_display] stub reaches; an embedder on a second display
+     styles that one itself. The caller has initialised GTK by this function's contract
+     (it is about to build widgets), so the raises-before-init hazard the activate
+     placement dodges does not arise here. Two embeds with [?global_css] add two providers
+     -- GTK accumulates; the mli says so. *)
+  Option.iter global_css ~f:(fun css ->
+    ignore (Global_css.install ~css : Gtk_import.W.Css_provider.t));
   let wrapper = W.Overlay.new_ () in
   let driver =
     Driver.create

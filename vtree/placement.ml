@@ -61,6 +61,7 @@ let reader : Attr.Name.t -> string option = function
   | Can_focus
   | Widget_name
   | Cursor_name
+  | Css_provider
   | Test_id
   | On_clicked
   | On_toggled

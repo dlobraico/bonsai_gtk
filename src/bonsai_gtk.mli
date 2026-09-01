@@ -177,6 +177,7 @@ val start
   -> ?time_source:Bonsai.Time_source.t
   -> ?optimize:bool
   -> ?target_frames_per_second:float
+  -> ?global_css:string
   -> (local_ Bonsai.graph -> Node.t Bonsai.t)
   -> int
 
@@ -203,6 +204,7 @@ module Expert : sig
     :  ?time_source:Bonsai.Time_source.t
     -> ?optimize:bool
     -> ?target_frames_per_second:float
+    -> ?global_css:string
     -> (local_ Bonsai.graph -> Node.t Bonsai.t)
     -> Embedded.t
 end
@@ -210,6 +212,7 @@ end
 (** No stability promise: this is what the library's own tests reach through. *)
 module Private : sig
   module Actions = Actions
+  module Global_css = Global_css
   module Gtk_effect = Gtk_effect
   module Attr_apply = Attr_apply
   module Controllers = Controllers

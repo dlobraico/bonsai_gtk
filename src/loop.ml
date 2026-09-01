@@ -13,6 +13,7 @@ let start
   ?time_source
   ?optimize
   ?(target_frames_per_second = 60.)
+  ?global_css
   app
   =
   let gapp = W.Application.new_ (Some application_id) [ `DEFAULT_FLAGS ] in
@@ -36,6 +37,12 @@ let start
           GTK; GTK re-presents the existing window itself. *)
        | Some _ -> ()
        | None ->
+         (* Before the driver and its first frame, and inside activate because
+            [Style_display.add_provider_for_default_display] raises before GTK init --
+            activate is the first moment there is a display to add to. The provider is for
+            the whole run; only the returned test probe is dropped. *)
+         Option.iter global_css ~f:(fun css ->
+           ignore (Global_css.install ~css : Gtk_import.W.Css_provider.t));
          (match
             (* Named rather than defaulted: [start] and [Expert.embed] are the two callers
                of [Driver.create] and they want opposite rules, so both say which they

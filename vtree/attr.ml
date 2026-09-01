@@ -23,6 +23,7 @@ module Name = struct
       | Actions
       | Widget_name
       | Cursor_name
+      | Css_provider
       | Test_id
       | Measure_overlay
       | Grid_cell
@@ -129,6 +130,7 @@ module Name = struct
       | Autofocus
       | Widget_name
       | Cursor_name
+      | Css_provider
       | Test_id
       | Measure_overlay
       | Grid_cell
@@ -204,6 +206,10 @@ module Private = struct
         }
     | Widget_name of string
     | Cursor_name of string
+    (* A per-widget stylesheet, applied through this widget's own style context. A prop in
+       spirit (equalable string, diffed frame to frame); the provider object it becomes is
+       the runtime's ([src/attr_apply.ml] owns it, §2.2). *)
+    | Css_provider of string
     | Test_id of string
     | Measure_overlay of bool
     | Grid_cell of Grid_cell.t
@@ -380,6 +386,7 @@ let name = function
   | Actions _ -> Some Actions
   | Widget_name _ -> Some Widget_name
   | Cursor_name _ -> Some Cursor_name
+  | Css_provider _ -> Some Css_provider
   | Test_id _ -> Some Test_id
   | Measure_overlay _ -> Some Measure_overlay
   | Grid_cell _ -> Some Grid_cell
@@ -424,6 +431,7 @@ let rec equal a b =
   | Test_id a, Test_id b
   | Widget_name a, Widget_name b
   | Cursor_name a, Cursor_name b
+  | Css_provider a, Css_provider b
   | Page_title a, Page_title b
   | Tab_label a, Tab_label b -> String.equal a b
   | Margin_start a, Margin_start b
@@ -544,6 +552,7 @@ let actions ~scope specs =
 
 let widget_name s = Widget_name s
 let cursor_name s = Cursor_name s
+let css_provider s = Css_provider s
 let test_id s = Test_id s
 
 (* A setting the *overlay* holds about this child, not a property of the child, so it is

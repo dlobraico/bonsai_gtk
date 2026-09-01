@@ -32,5 +32,6 @@ val start
   -> ?time_source:Bonsai.Time_source.t
   -> ?optimize:bool
   -> ?target_frames_per_second:float
+  -> ?global_css:string
   -> (local_ Bonsai.graph -> Node.t Bonsai.t)
   -> int

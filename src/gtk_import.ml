@@ -41,6 +41,12 @@ module Gvariant_type = Gvariant_type
    clipboard is reached ([Gdk.Clipboard.set_value] is the one write the binding has --
    fact table), and no widget impl should have to remember it lives in [ocgtk.gdk]. *)
 module Gdk = Ocgtk_gdk.Gdk.Wrappers
+
+(* The fork's hand-written display-wide style hook, at the top level of [Ocgtk_gtk] rather
+   than under [Wrappers] (fact table): [add_provider_for_default_display] raises [Failure]
+   before GTK init, and [settings_default] is the [GtkSettings] the color-scheme mirror
+   reads. *)
+module Style_display = Ocgtk_gtk.Style_display
 module Widget = W.Widget
 module Gobject = Gobject
 module Glib = Glib

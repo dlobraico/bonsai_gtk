@@ -36,3 +36,8 @@ val apply : defaults:defaults -> Widget.t -> Attrs.op -> unit
 (** Applies every attribute of [t] to a freshly created widget. Equivalent to [apply]ing
     [Set] for each attr in [Attrs.to_list], which includes the css classes. *)
 val apply_all : Widget.t -> Attrs.t -> unit
+
+(** The provider [Attr.css_provider] attached to [w], if any -- the live suite's
+    structural probe ([Css_provider.to_string] is the honest read-back the pin has; no
+    computed style is bound). *)
+val live_css_provider : Widget.t -> W.Css_provider.t option

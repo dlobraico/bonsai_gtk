@@ -79,6 +79,45 @@ let set_height (w : Widget.t) height =
   Widget.set_size_request w width height
 ;;
 
+(* The per-widget css providers ([Attr.css_provider]), keyed weakly on the widget: the
+   provider must live exactly as long as the widget does (§2.2 -- a collected wrapper
+   would unref a provider the style context still consults), and this module has no
+   per-widget state anywhere else, so the table lives here rather than in a [live] field.
+   A changed string reloads the {i same} provider -- GTK restyles in place -- and only an
+   [Unset] removes it from the style context. *)
+module Css_providers = Stdlib.Ephemeron.K1.Make (struct
+    type t = Widget.t
+
+    let equal = Gobject.same
+    let hash = Stdlib.Hashtbl.hash
+  end)
+
+let css_providers : W.Css_provider.t Css_providers.t = Css_providers.create 8
+let live_css_provider w = Css_providers.find_opt css_providers w
+
+let set_css_provider (w : Widget.t) css =
+  match Css_providers.find_opt css_providers w with
+  | Some provider -> W.Css_provider.load_from_string provider css
+  | None ->
+    let provider = W.Css_provider.new_ () in
+    W.Css_provider.load_from_string provider css;
+    W.Style_context.add_provider
+      (W.Widget.get_style_context w)
+      (W.Style_provider.from_gobject provider)
+      Style_display.priority_application;
+    Css_providers.replace css_providers w provider
+;;
+
+let unset_css_provider (w : Widget.t) =
+  match Css_providers.find_opt css_providers w with
+  | None -> ()
+  | Some provider ->
+    W.Style_context.remove_provider
+      (W.Widget.get_style_context w)
+      (W.Style_provider.from_gobject provider);
+    Css_providers.remove css_providers w
+;;
+
 let set (w : Widget.t) (attr : Attr.t) =
   match (attr :> Attr.Private.t) with
   | Css_class c -> Widget.add_css_class w c
@@ -100,6 +139,7 @@ let set (w : Widget.t) (attr : Attr.t) =
   | Can_focus b -> Widget.set_can_focus w b
   | Widget_name s -> Widget.set_name w (Some s)
   | Cursor_name s -> Widget.set_cursor_from_name w (Some s)
+  | Css_provider css -> set_css_provider w css
   (* [Test_id] is inert at runtime; the [On_*] attrs are handled by [Signals]. [Many] is
      flattened away by [Attrs.of_list] and never reaches here.
 
@@ -182,6 +222,9 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Can_focus -> Widget.set_can_focus w d.can_focus
   | Widget_name -> Widget.set_name w (Some d.widget_name)
   | Cursor_name -> Widget.set_cursor w d.cursor
+  (* No snapshot field: the un-styled state is the absence of the provider, and removing
+     it is exact. *)
+  | Css_provider -> unset_css_provider w
   | Autofocus
   | Actions
   | Test_id

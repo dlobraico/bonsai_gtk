@@ -150,6 +150,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | Can_focus
   | Widget_name
   | Cursor_name
+  | Css_provider
   | Test_id
   | Autofocus
   | Measure_overlay
@@ -255,6 +256,7 @@ let attr_phases (attr : Attr.t) =
   | Autofocus _
   | Widget_name _
   | Cursor_name _
+  | Css_provider _
   | Test_id _
   | Measure_overlay _
   | Grid_cell _

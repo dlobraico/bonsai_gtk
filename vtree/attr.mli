@@ -32,6 +32,7 @@ module Name : sig
     | Actions
     | Widget_name
     | Cursor_name
+    | Css_provider
     | Test_id
     | Measure_overlay
     | Grid_cell
@@ -149,6 +150,7 @@ module Private : sig
         }
     | Widget_name of string
     | Cursor_name of string
+    | Css_provider of string
     | Test_id of string
     | Measure_overlay of bool
     | Grid_cell of Grid_cell.t
@@ -335,6 +337,19 @@ val widget_name : string -> t
 (** A CSS cursor name — ["pointer"], ["text"], ["not-allowed"], ["default"]. An unknown
     name is GTK's problem, not ours: it logs and falls back. *)
 val cursor_name : string -> t
+
+(** A per-widget stylesheet: one [GtkCssProvider] on this widget's own style context
+    ([Widget.get_style_context] + [Style_context.add_provider] -- deprecated since GTK
+    4.10, functional in 4.22, and the only per-widget path the binding has). Setting it
+    loads and attaches a provider the runtime owns for as long as the widget lives (§2.2);
+    a changed string reloads the {i same} provider, and GTK restyles; dropping the attr
+    removes the provider, restoring the un-styled state. Invalid CSS never raises -- GTK
+    reports it through its own log and keeps the previous ruleset.
+
+    Scope the selectors to the widget (a css class of your own via {!css_class} is the
+    usual key): the provider is attached to this widget's style context, which GTK 4 also
+    consults for the widget's {i descendants}. *)
+val css_provider : string -> t
 
 val test_id : string -> t
 
