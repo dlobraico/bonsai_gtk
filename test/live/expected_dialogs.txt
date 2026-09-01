@@ -1,0 +1,18 @@
+alert up (visible=true); answering button 0
+resolved 0; destroyed=true; live alerts=0
+alert up (visible=true); answering button 1
+resolved 1; destroyed=true; live alerts=0
+alert up (visible=true); answering button 2
+resolved 2; destroyed=true; live alerts=0
+frame requests so far: 3
+after a full major mid-show: alive=true visible=true
+resolved 0
+post-response full major: live alerts=0
+DELETE_EVENT with ~cancel:2 resolved 2
+Window.close with the default cancel resolved 0
+live alerts at the end: 0
+two alerts live at once
+second answered 1: first=pending second=1
+first answered 0: first=0 second=1
+no criticals above this line is the teardown assertion
+done

@@ -909,3 +909,47 @@ let () =
   printf "gated handler fired: %d times\n" !gated;
   printf "entry 1 text after the disabled chord: %S\n" (W.Editable.get_text (cast entry1))
 ;;
+
+(* --- the dialog-dismiss block (M3 Task 10 step 3): [Effect.File_dialog.select_folder]
+   under a portal-less xvfb falls back to a plain GTK dialog window -- which is exactly
+   what makes it reachable by a real keystroke at all -- and a real XTEST Escape delivers
+   DELETE_EVENT (-4, not CANCEL; pre-flight 2 measured it), which the effect resolves as
+   [None]. Only the dismissal half is drivable: the ACCEPT half needs a click inside
+   GTK-internal chooser furniture whose geometry nothing here can name, so choosing a real
+   file stays untested -- the gap the plan says to state in the golden.
+
+   A freshly mapped toplevel takes the input focus on this WM-less display (the lock
+   census's whole premise), so the Escape aims itself; the retry loop below is for the
+   arrival race between [show] and the map, bounded by its own iteration cap and the
+   golden's TIMED OUT line. *)
+let () =
+  let module For_runtime = Bonsai_gtk.Private.Gtk_effect.For_runtime in
+  let module For_live_tests = Bonsai_gtk.Private.Gtk_effect.For_live_tests in
+  let reg =
+    For_runtime.register ~request_frame:(fun () -> ()) ~context_widget:(fun () -> None) ()
+  in
+  let resolved = ref None in
+  Ui_effect.Expert.handle
+    ~on_exn:(fun exn -> printf "EXN: %s\n" (Exn.to_string exn))
+    (let open Ui_effect.Let_syntax in
+     let%bind path = Bonsai_gtk.Effect.File_dialog.select_folder ~title:"pick" () in
+     Ui_effect.of_thunk (fun () -> resolved := Some path));
+  printf "select_folder shown: live dialogs = %d\n" (For_live_tests.live_dialog_count ());
+  let attempts = ref 0 in
+  while Option.is_none !resolved && !attempts < 40 do
+    incr attempts;
+    drain ();
+    xdotool [ "key"; "Escape" ];
+    let settle = ref 0 in
+    while Option.is_none !resolved && !settle < 200 do
+      ignore (Glib.Main.iteration false : bool);
+      incr settle
+    done
+  done;
+  (match !resolved with
+   | Some None -> printf "Escape resolved None (attempts: bounded)\n"
+   | Some (Some p) -> printf "Escape resolved Some %S ??\n" p
+   | None -> printf "select_folder: TIMED OUT\n");
+  printf "live dialogs after: %d\n" (For_live_tests.live_dialog_count ());
+  For_runtime.unregister reg
+;;
