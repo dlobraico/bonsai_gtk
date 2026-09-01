@@ -3,8 +3,19 @@ set_text: ok
 before present: active = a:false b:true
 after Window.present "a": active = a:true b:false
 bonsai_gtk: Effect.Window.present: no window is keyed "zzz" (the key must name a child of the root Node.windows)
+pre-boom reached
+bonsai_gtk: exception resolving Effect.on_idle: (src/exn.ml.Reraised "Unhandled exception raised in effect"
+  (Failure "boom in the continuation"))
+the loop survived a raising continuation, and the next effect resolved: survivor
 stopped with a 40 ms after in flight; resolved yet: false
 bonsai_gtk: Effect.after resolved after the runtime's hooks were dropped (Driver.stop); no frame was requested
+bonsai_gtk: Effect.Window.present outside a running Bonsai_gtk app
+bonsai_gtk: Effect.Clipboard.set_text outside a running Bonsai_gtk app; nothing was written
 the in-flight after resolved after stop: true
 a displaced registration's drop left the replacement armed: frame requests = 1
+after (-5 ms) resolved: true
+pre-boom-2 reached
+perform-time on_exn saw: (Failure "boom under a re-raising on_exn")
+bonsai_gtk: exception resolving Effect.on_idle: (Failure "boom under a re-raising on_exn")
+frame requested despite the raise: true
 done

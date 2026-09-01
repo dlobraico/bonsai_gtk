@@ -80,7 +80,14 @@ end
     stays reachable for the process's life, the [on_root_widget_changed] leak shape
     (docs/m2-backlog.md). Registration is last-wins; {!unregister} is identity-guarded
     (the stack registry's discipline), so the first of two embeds stopping cannot take the
-    second one's hooks down. *)
+    second one's hooks down.
+
+    The slot is single, and the converse of that guard is real: the most recent registrant
+    owns effect resolution for the whole process, and its stop leaves any {i earlier}
+    still-live driver hookless -- that driver's async resolutions then log as outside a
+    running app while its app still runs. Observable only under [fps <= 0] (the default 60
+    fps tick flushes injects regardless); a real multi-driver hook story is on the backlog
+    (docs/m2-backlog.md, "Recorded during M3"). *)
 module For_runtime : sig
   type registration
 

@@ -983,3 +983,11 @@ nor a short-lived test will show it, because nothing collects before exit.
   resolution walk refuses a shortcut resolving to a `Radio` spec). Shipping them removes
   both rejections and adds the argument to `Controllers.make_shortcut`. task-7 review
   I2/I3.
+- **The effect-hook slot is single, and the last registrant owns resolution.** With two
+  live drivers (two embeds, or embed-inside-`start`), the earlier one's async effects
+  resolve through the later one's hooks while both live, and the later one's stop leaves
+  the survivor hookless — its resolutions then log as outside a running app while its
+  app still runs. Masked at the default 60 fps tick, real under `fps <= 0` — which is
+  also the only regime where the pattern's frame-request is more than advisory. A real
+  multi-driver hook story (per-driver hooks resolved at perform time?) is the fix shape,
+  if ever wanted. task-9 review, Minor 1 + Out-of-scope 5.

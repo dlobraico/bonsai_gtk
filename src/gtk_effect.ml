@@ -75,29 +75,47 @@ let hooks () = Option.map !For_runtime.current ~f:snd
    into the Bonsai graph exactly as a signal handler's would) and then asking the
    registered frame-requester for the frame that will flush them.
 
-   This runs on a C-called frame, so nothing may escape: [Expert.handle] routes the
-   continuation's exceptions to [on_exn], the log writes are swallow-guarded, and the
-   whole body is wrapped once more as a backstop.
+   {b [respond_to callback ()] IS the continuation run}: in this ui_effect, [on_response]
+   invokes the perform-time callback chain before returning [Ignore], so by the time
+   [Expert.handle] is applied there is nothing left to evaluate. Two consequences, both
+   load-bearing (task-9-review Important 1). A raise in application bind code routes to
+   the {i perform-time} on_exn -- for every production perform path that is
+   [Bonsai_driver]'s, which re-raises -- and so arrives here
+   {i out of [respond_to] itself}; the inner [try] below is what catches it, logs it by
+   name (report-then-swallow, the codebase's shape everywhere else), and
+   {b still falls through to the frame request}: injects that landed before the raise
+   deserve their flushing frame. [Expert.handle]'s own [~on_exn] stays as a backstop for a
+   ui_effect whose [respond_to] defers.
+
+   This runs on a C-called frame, so nothing may escape: every log write is
+   swallow-guarded and the whole body is wrapped once more as a backstop.
 
    The frame-requester can legitimately be gone: [Driver.stop] with an [after] still in
    flight drops the hooks, and the timeout fires anyway. The contract is log-and-resolve
    -- the continuation still runs (a ref it writes still moves; injects land in a graph
    nothing will read), a line says the frame is not coming, and nothing raises. *)
 let resolve_from_glib ~name callback =
+  let log_exn exn =
+    try
+      eprintf "bonsai_gtk: exception resolving Effect.%s: %s\n%!" name (Exn.to_string exn)
+    with
+    | _ -> ()
+  in
   try
-    Ui_effect.Expert.handle
-      ~on_exn:(fun exn ->
-        try
-          eprintf
-            "bonsai_gtk: exception resolving Effect.%s: %s\n%!"
-            name
-            (Exn.to_string exn)
-        with
-        | _ -> ())
-      (Ui_effect.Private.Callback.respond_to callback ());
+    (try
+       Ui_effect.Expert.handle
+         ~on_exn:log_exn
+         (Ui_effect.Private.Callback.respond_to callback ())
+     with
+     | exn -> log_exn exn);
     match hooks () with
     | Some h -> h.request_frame ()
     | None ->
+      (* "No hooks at all", not "this effect's driver is gone": if a {i later} driver's
+         hooks are current when an orphaned effect fires, the arm above requests a frame
+         on that driver instead and prints nothing -- harmless ([request_frame] is guarded
+         and cheap; the injects went to the dead graph), and single-slot by design (the
+         mli's For_runtime paragraph). *)
       (try
          eprintf
            "bonsai_gtk: Effect.%s resolved after the runtime's hooks were dropped \
