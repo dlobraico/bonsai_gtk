@@ -90,9 +90,19 @@ let () =
      | Some a, Some b -> not (Gobject.same a b)
      | _ -> false);
   (* Invalid CSS: GTK reports a parsing warning through its own log (not this golden) and
-     keeps the previous ruleset; the frame must not raise. *)
+     the frame must not raise -- but the recovery story is a strip, not a keep: GTK clears
+     the provider on every load before parsing (the binding's own [load_from_string] doc
+     says so), so the widget is left un-styled. The dump is the pin; the first draft of
+     the attr's mli claimed "keeps the previous ruleset" and this line is what would have
+     caught it (task-11-review Important 1). *)
   let live = patch live (view ~css:"label { this is not css !!" ()) in
   printf "an invalid stylesheet did not raise\n";
+  (match provider () with
+   | None -> printf "no provider\n"
+   | Some p ->
+     printf
+       "after the invalid load the provider holds: %S (cleared, not the previous sheet)\n"
+       (W.Css_provider.to_string p));
   P.destroy ctx live;
   printf "per-widget css done\n"
 ;;
@@ -120,10 +130,35 @@ let () =
     | `UNSUPPORTED -> "unsupported"
   in
   printf "scheme as installed: %s\n" (scheme ());
+  (* The consumption, not just the write (task-11-review minor 5): [to_string] renders the
+     rules for the provider's current scheme, so the dark flip materialises the dark
+     block's margin and the flip back removes it -- the strongest structural proof the pin
+     has. *)
+  let dark_rules () =
+    if String.is_substring
+         (W.Css_provider.to_string provider)
+         ~substring:"margin-top: 2px"
+    then "the dark block's rules are in force"
+    else "the light rules are in force"
+  in
   let settings = Style_display.settings_default () in
   W.Settings.set_gtk_application_prefer_dark_theme settings true;
-  printf "scheme after prefer-dark flips on: %s\n" (scheme ());
+  printf "scheme after prefer-dark flips on: %s (%s)\n" (scheme ()) (dark_rules ());
   W.Settings.set_gtk_application_prefer_dark_theme settings false;
-  printf "scheme after prefer-dark flips off: %s\n" (scheme ());
+  printf "scheme after prefer-dark flips off: %s (%s)\n" (scheme ()) (dark_rules ());
+  (* The primary knob (task-11-review minor 6): [gtk-interface-color-scheme] drives the
+     first arm of the mirror and the first of its two notify connections -- and takes
+     precedence over prefer-dark when both are set. *)
+  W.Settings.set_gtk_interface_color_scheme settings `DARK;
+  printf "scheme after interface-color-scheme dark: %s (%s)\n" (scheme ()) (dark_rules ());
+  W.Settings.set_gtk_application_prefer_dark_theme settings true;
+  W.Settings.set_gtk_interface_color_scheme settings `LIGHT;
+  printf
+    "interface-color-scheme light beats prefer-dark true: %s (%s)\n"
+    (scheme ())
+    (dark_rules ());
+  W.Settings.set_gtk_application_prefer_dark_theme settings false;
+  W.Settings.set_gtk_interface_color_scheme settings `DEFAULT;
+  printf "back to default: %s (%s)\n" (scheme ()) (dark_rules ());
   printf "global css done\n"
 ;;

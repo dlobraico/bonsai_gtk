@@ -20,6 +20,7 @@ provider holds: label {
 }
 fresh provider after the round trip: true
 an invalid stylesheet did not raise
+after the invalid load the provider holds: "" (cleared, not the previous sheet)
 per-widget css done
 global provider holds: .bonsai-css-test {
   margin-bottom: 1px;
@@ -28,6 +29,9 @@ global provider holds: .bonsai-css-test {
   margin-top: 1px;
 }
 scheme as installed: default
-scheme after prefer-dark flips on: dark
-scheme after prefer-dark flips off: default
+scheme after prefer-dark flips on: dark (the dark block's rules are in force)
+scheme after prefer-dark flips off: default (the light rules are in force)
+scheme after interface-color-scheme dark: dark (the dark block's rules are in force)
+interface-color-scheme light beats prefer-dark true: light (the light rules are in force)
+back to default: default (the light rules are in force)
 global css done

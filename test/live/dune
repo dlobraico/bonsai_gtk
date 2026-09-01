@@ -44,7 +44,10 @@
 ; executable presents a toplevel, plus the two dump-only suites
 ; (`live_containers`, `live_chrome`) that create toplevels without presenting
 ; them -- conservatively, since a locked rule that did not need it costs a few
-; seconds of serialisation while an unlocked one that did costs a flaky golden.
+; seconds of serialisation while an unlocked one that did costs a flaky golden --
+; plus `live_css`, which presents nothing but MUTATES the default display's
+; `GtkSettings`, and a neighbour suite restyling mid-run is exactly the
+; interference the lock exists for.
 ; One `xvfb-run` gives every executable below the same X display, and a window
 ; mapping on a display takes the input focus off whichever window held it -- so a
 ; neighbour starting up mid-test is indistinguishable, to

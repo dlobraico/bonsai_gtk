@@ -171,7 +171,18 @@ end
     returns a non-zero status. A frame is not atomic — the patcher mutates GTK as it goes
     and records what it did only on success — so continuing after one raised would mean
     diffing against a tree that no longer describes GTK. A raising frame is an application
-    bug to fix, not a condition to recover from. *)
+    bug to fix, not a condition to recover from.
+
+    [global_css] installs one application-wide stylesheet: a [GtkCssProvider] on the
+    default display at application priority, added when the application activates (the
+    first moment GTK has a display). Dark-mode blocks work: the runtime mirrors the
+    desktop's color scheme ([gtk-interface-color-scheme], falling back to
+    [gtk-application-prefer-dark-theme]) onto the provider and follows changes, so
+    [@media (prefers-color-scheme: dark)] matches when the desktop is dark — GTK 4.20+
+    evaluates that query per provider, and an unmirrored provider would never match it.
+    The provider is never removed: a second [start] in one process adds another (the same
+    situation the one-app-per-process warning covers). Per-widget styling is
+    {!Bonsai_gtk_vtree.Attr.css_provider}'s job. *)
 val start
   :  ?application_id:string
   -> ?time_source:Bonsai.Time_source.t
@@ -199,7 +210,13 @@ module Expert : sig
 
       {!Embedded} documents the contract — what the root may be, what you parent, what
       {!Embedded.stop} does and does not do, and the one obligation embedding adds — and
-      is the copy to keep up to date. *)
+      is the copy to keep up to date.
+
+      [global_css] is {!start}'s (see there: application-wide provider, mirrored color
+      scheme, never removed — two embeds with one each add two), with one limit of its
+      own: it styles the {b default} display, the only one the binding's display-wide hook
+      reaches, so an embedder rendering onto another display styles that one itself.
+      Installed at [create]; the caller's GTK is up by this function's contract. *)
   val embed
     :  ?time_source:Bonsai.Time_source.t
     -> ?optimize:bool

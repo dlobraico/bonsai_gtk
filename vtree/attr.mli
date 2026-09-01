@@ -344,7 +344,16 @@ val cursor_name : string -> t
     loads and attaches a provider the runtime owns for as long as the widget lives (§2.2);
     a changed string reloads the {i same} provider, and GTK restyles; dropping the attr
     removes the provider, restoring the un-styled state. Invalid CSS never raises -- GTK
-    reports it through its own log and keeps the previous ruleset.
+    reports it through its own log -- but note the recovery story: GTK
+    {b clears the provider on every load} before parsing, so a frame that changes this
+    attr to an invalid string leaves the widget un-styled, not styled by the previous
+    sheet (the live suite dumps the emptied provider).
+
+    Media queries in a per-widget sheet evaluate against {i this provider's own}
+    preference properties, which nothing sets -- GTK 4.20+ resolves
+    [@media (prefers-color-scheme)] per provider -- so a dark block here is effectively
+    always light. Scheme-dependent styling belongs in [?global_css], whose provider the
+    runtime mirrors from [GtkSettings].
 
     Scope the selectors to the widget (a css class of your own via {!css_class} is the
     usual key): the provider is attached to this widget's style context, which GTK 4 also

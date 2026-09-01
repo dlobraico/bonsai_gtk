@@ -107,7 +107,14 @@ type t
     constructor, a window at the root, a misplaced placement attr — having first torn down
     whatever the failed mount had built ({!Bonsai_gtk.Private.Patcher.mount} is
     exception-safe) and stopped the scheduler, since a caller that got an exception
-    instead of a [t] has no handle to {!stop}. *)
+    instead of a [t] has no handle to {!stop}.
+
+    [global_css] is [Bonsai_gtk.start]'s (application-wide provider on the {b default}
+    display -- the only one the binding's display-wide hook reaches -- with the color
+    scheme mirrored from [GtkSettings]; never removed, so two embeds with one each add
+    two). Installed here at [create]: the caller's GTK is up by this function's contract,
+    so the raises-before-init hazard [start] dodges by waiting for activate does not
+    arise. *)
 val create
   :  ?time_source:Bonsai.Time_source.t
   -> ?optimize:bool
