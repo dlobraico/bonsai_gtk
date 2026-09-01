@@ -39,3 +39,6 @@ a real click on the item activates it: (picked)
 popover menu mapped after activation: false
 window focus stranded in the popover menu: false
 a window key after item activation: (capture F1 mods=none)
+focus back in entry 1 for the chord: (focus-enter e1)
+Ctrl+k with an entry focused: (capture Control_L mods=none entry1 Control_L chord)
+entry 1 text after the chord: "x"

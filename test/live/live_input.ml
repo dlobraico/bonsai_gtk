@@ -72,6 +72,7 @@ let keys = ref 0
 let focuses = ref 0
 let closes = ref 0
 let picks = ref 0
+let chords = ref 0
 let record s = log := s :: !log
 
 (* What the nested claim target answers, flipped by the driver between blocks: [Claim] for
@@ -289,6 +290,29 @@ let view =
   Node.window
     ~title
     ~default_size:(640, 560)
+      (* The window-level chord (Task 7): a capture-phase <Control>k firing a named
+         action, with its group on this same node -- the case stavekeeper's arm_keys
+         ordering dance exists for, and the shape its 8 hand-built chords port to. *)
+    ~attrs:
+      [ Attr.actions
+          ~scope:"win"
+          [ Action_spec.simple
+              ~name:"chord"
+              (Ui_effect.of_sync_fun
+                 (fun () ->
+                   incr chords;
+                   record "chord")
+                 ())
+          ]
+      ; Attr.shortcut
+          ~phase:Capture
+          ~trigger:
+            (Trigger.create
+               ~modifiers:{ Modifiers.none with control = true }
+               (Keyval.of_char 'k'))
+          ~action:"win.chord"
+          ()
+      ]
     (Node.box
        ~orientation:Vertical
          (* 40 px of nothing under each child, which is where the "miss" block aims: 10 px
@@ -801,5 +825,29 @@ let () =
      | Some f ->
        Gobject.same f internal_popover || W.Widget.is_ancestor f internal_popover);
   key ~name:"popovermenu-f1" "F1";
-  show "a window key after item activation"
+  show "a window key after item activation";
+  (* --- the chord, end to end (Task 7 step 5): with an entry focused, a real XTEST Ctrl+k
+     fires the window's capture-phase shortcut, which fires the named action through GTK's
+     own routing (ShortcutController -> NamedAction -> the group's activate trampoline) --
+     the whole chain no other suite can see. The capture phase is the point: the window's
+     controller sees the chord before the focused entry's [GtkText] can eat the [k], which
+     is stavekeeper's arm_keys ordering made declarative. The [keydown ctrl] is a real key
+     press and reaches the key controllers first, as in the ctrl-click block. *)
+  let before_focus = !focuses in
+  let okc, ex, ey = W.Widget.translate_coordinates entry1 window 0. 0. in
+  ignore (okc : bool);
+  let esx = Int.of_float (ex +. (Float.of_int (W.Widget.get_width entry1) /. 2.))
+  and esy = Int.of_float (ey +. (Float.of_int (W.Widget.get_height entry1) /. 2.)) in
+  xdotool [ "mousemove"; Int.to_string esx; Int.to_string esy; "click"; "1" ];
+  pump_until ~label:"chord-refocus" ~ready:(fun () -> !focuses > before_focus);
+  drain ();
+  show "focus back in entry 1 for the chord";
+  let before = !chords in
+  xdotool [ "keydown"; "ctrl" ];
+  xdotool [ "key"; "k" ];
+  xdotool [ "keyup"; "ctrl" ];
+  pump_until ~label:"chord" ~ready:(fun () -> !chords > before);
+  drain ();
+  show "Ctrl+k with an entry focused";
+  printf "entry 1 text after the chord: %S\n" (W.Editable.get_text (cast entry1))
 ;;

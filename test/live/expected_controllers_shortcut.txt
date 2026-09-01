@@ -1,0 +1,12 @@
+two chords mounted: gtk=(bonsai_gtk.shortcut) bonsai=1 total=2 armed=(Shortcut)
+two chords mounted: phase=BUBBLE shortcuts=2
+one swapped: gtk=(bonsai_gtk.shortcut) bonsai=1 total=2 armed=(Shortcut)
+one swapped: phase=BUBBLE shortcuts=2
+moved to capture: phase=CAPTURE shortcuts=2
+all chords dropped: gtk=() bonsai=0 total=1 armed=()
+all chords dropped: no shortcut controller of ours
+one chord back: gtk=(bonsai_gtk.shortcut) bonsai=1 total=2 armed=(Shortcut)
+one chord back: phase=CAPTURE shortcuts=1
+shortcut plumbing done
+exact duplicate collapsed: phase=BUBBLE shortcuts=1
+shortcut duplicates done

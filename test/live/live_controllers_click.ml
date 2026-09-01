@@ -93,6 +93,14 @@ let each_controller_attr : (Attr.Name.t * Attr.t) list =
   ; On_contains_focus_changed, Attr.on_contains_focus_changed (fun _ -> Ui_effect.Ignore)
   ; On_key_pressed, Attr.on_key_pressed (fun _ -> Key_response.Propagate)
   ; On_key_released, Attr.on_key_released (fun _ -> Ui_effect.Ignore)
+  ; ( Shortcut
+    , Attr.shortcut
+        ~trigger:
+          (Trigger.create
+             ~modifiers:{ Modifiers.none with control = true }
+             (Keyval.of_char 'k'))
+        ~action:"sweep.noop"
+        () )
   ]
 ;;
 
@@ -120,7 +128,23 @@ let () =
   List.iter each_controller_attr ~f:(fun (name, attr) ->
     (* A label again: it emits nothing, so anything attached came from the attr, and the
        node is accepted at all only because controller attrs are legal on every kind. *)
-    let live = P.mount ctx ~path:"sweep" ~is_root:true (Node.label ~attrs:[ attr ] "x") in
+    (* The actions attr rides along on every row: the shortcut row's reference must
+       resolve or the mount wrapper's walk refuses the tree, and it is inert beside every
+       other attr (it attaches no controller, so the [attached=] lists are untouched). *)
+    let live =
+      P.mount
+        ctx
+        ~path:"sweep"
+        ~is_root:true
+        (Node.label
+           ~attrs:
+             [ attr
+             ; Attr.actions
+                 ~scope:"sweep"
+                 [ Action_spec.simple ~name:"noop" Ui_effect.Ignore ]
+             ]
+           "x")
+    in
     P.run_fixups ctx;
     printf
       !"%{sexp: Attr.Name.t} -> family=%{sexp: Events.Family.t option} attached=%{sexp: \

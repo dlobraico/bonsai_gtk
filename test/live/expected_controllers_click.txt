@@ -8,4 +8,5 @@ On_focus_leave -> family=(Focus) attached=(bonsai_gtk.focus)
 On_contains_focus_changed -> family=(Focus) attached=(bonsai_gtk.focus)
 On_key_pressed -> family=(Key) attached=(bonsai_gtk.key)
 On_key_released -> family=(Key) attached=(bonsai_gtk.key)
+Shortcut -> family=(Shortcut) attached=(bonsai_gtk.shortcut)
 every controller attr attaches a controller

@@ -32,6 +32,14 @@ let () =
   check "page_up" Keyval.page_up K.key_page_up;
   check "page_down" Keyval.page_down K.key_page_down;
   check "slash" Keyval.slash K.key_slash;
+  (* The Task 7 chord punctuation, pinned like the rest. *)
+  check "comma" Keyval.comma K.key_comma;
+  check "question" Keyval.question K.key_question;
+  check "grave" Keyval.grave K.key_grave;
+  check "bracketleft" Keyval.bracketleft K.key_bracketleft;
+  check "bracketright" Keyval.bracketright K.key_bracketright;
+  check "minus" Keyval.minus K.key_minus;
+  check "equal" Keyval.equal K.key_equal;
   (* [f] is a function, so the ends of its range are what there is to pin; every value
      between them is [key_f1 + n - 1] by construction and GDK's own table is contiguous
      across it (65470..65481). *)

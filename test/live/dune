@@ -10,6 +10,7 @@
   live_controllers_click
   live_controllers_focus
   live_controllers_key
+  live_controllers_shortcut
   live_keyvals
   live_lists
   live_menus
@@ -35,7 +36,7 @@
 ; explicitly asked for:
 ;   BONSAI_GTK_LIVE_TESTS=1 xvfb-run -a dune build @test/live/runtest
 ;
-; Thirteen of the sixteen rules carry `(locks x-display)`: every one whose
+; Thirteen of the seventeen rules carry `(locks x-display)`: every one whose
 ; executable presents a toplevel, plus the two dump-only suites
 ; (`live_containers`, `live_chrome`) that create toplevels without presenting
 ; them -- conservatively, since a locked rule that did not need it costs a few
@@ -63,8 +64,9 @@
 ; `live_events` and `live_keyvals` deliberately have no lock: neither calls
 ; `GMain.init` and both run to completion with DISPLAY unset. They live here
 ; because `test/` links only `bonsai_gtk.vtree` and they need ocgtk, not because
-; they touch X. `live_controllers_click` initialises GTK but presents no
-; toplevel -- its two blocks mount bare labels -- so it takes no lock either.
+; they touch X. `live_controllers_click` and `live_controllers_shortcut`
+; initialise GTK but present no toplevel -- their blocks mount bare labels --
+; so they take no lock either.
 
 (rule
  (alias runtest)
@@ -193,6 +195,18 @@
     output_controllers_key.txt
     (run %{exe:live_controllers_key.exe}))
    (diff expected_controllers_key.txt output_controllers_key.txt))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{env:BONSAI_GTK_LIVE_TESTS=0} 1))
+ (deps live_controllers_shortcut.exe)
+ (action
+  (progn
+   (with-stdout-to
+    output_controllers_shortcut.txt
+    (run %{exe:live_controllers_shortcut.exe}))
+   (diff expected_controllers_shortcut.txt output_controllers_shortcut.txt))))
 
 (rule
  (alias runtest)
