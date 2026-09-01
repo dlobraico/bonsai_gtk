@@ -191,8 +191,10 @@ let%expect_test "shortcuts accumulate, sexp, and diff structurally" =
   in
   print_s [%sexp (Attrs.diff ~old:attrs ~new_:same : Attrs.op list)];
   [%expect {| () |}];
-  (* A "::target" is rejected at the constructor: GtkNamedAction passes no parameter, so a
-     radio cannot be fired by a shortcut and the syntax would promise otherwise. *)
+  (* A "::target" is rejected at the constructor: the shipped path activates through a
+     parameterless GtkNamedAction, so the syntax would promise a parameter it cannot pass.
+     Targeted shortcuts are feasible (ocgtk binds [Shortcut.set_arguments]) and
+     deliberately unshipped -- see docs/m2-backlog.md. *)
   Expect_test_helpers_core.require_does_raise (fun () ->
     Attr.shortcut ~trigger:(ctrl 't') ~action:"app.theme::dark" ());
   [%expect

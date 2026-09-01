@@ -894,9 +894,12 @@ let () =
      position, which is the whole cross-node ordering rule. *)
   printf "the contending inner shortcut fired: %d times\n" !chords2;
   (* --- the disabled-action chord (fix round minor): does a matching shortcut whose
-     action is disabled consume the key or let it fall through to the focused entry? No
-     counter can move, so the probe is the entry's text: consumed leaves it alone,
-     fall-through inserts the g. The F1 sentinel bounds the wait, as in the miss block. *)
+     action is disabled consume the key or let it fall through? No counter can move, and
+     the entry's text cannot tell either -- a Control-modified key never inserts a
+     character -- so the probe is the log line: fall-through means the capture handler and
+     entry 1's key controller both see the g, where a consuming shortcut would stop the
+     event before them. The text line only pins that nothing strayed in. The F1 sentinel
+     bounds the wait, as in the miss block. *)
   let before_keys = !keys in
   xdotool [ "keydown"; "ctrl" ];
   xdotool [ "key"; "g" ];
