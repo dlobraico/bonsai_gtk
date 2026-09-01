@@ -269,6 +269,14 @@ module Action : sig
         (the resolution walk has already certified any menu references against ancestors;
         this action addresses the group directly, as [Action_group.activate_action] does
         live). *)
+    | Fire_shortcut of string * Trigger.t
+    (** test_id of the node carrying the [Attr.shortcut], and the trigger the user
+        pressed. Resolves the trigger against that node's shortcut attrs and fires the
+        named action's handler — the action found on the node or an ancestor, the union
+        GTK's muxer implements. Pure table lookups; like [Key_press], this models
+        {b no routing}: who sees the chord first is [?phase]'s business, real only in
+        [test/live/live_input.ml]. A radio action fails loudly (a shortcut passes no
+        parameter). *)
   [@@deriving sexp_of]
 end
 

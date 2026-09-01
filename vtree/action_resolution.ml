@@ -34,13 +34,23 @@ let node_actions (node : Node.t) =
   | Some _ | None -> None
 ;;
 
-(* The references this node's own props make. Today that is a menu button's menu; Task 7's
-   [Attr.shortcut] joins here, which is why the walk asks a function rather than matching
-   inline. *)
+(* The references this node's own props and attrs make: a menu button's menu items, and
+   the node's shortcuts -- one function, so the walk (and its message) covers both. A
+   shortcut reference carries no "::" (the constructor rejects it), so nothing needs
+   stripping on that side. *)
 let node_references (node : Node.t) =
-  match node.kind with
-  | Menu_button { menu = Some menu; _ } -> Menu.action_references menu
-  | _ -> []
+  let from_menu =
+    match node.kind with
+    | Menu_button { menu = Some menu; _ } -> Menu.action_references menu
+    | _ -> []
+  in
+  let from_shortcuts =
+    match (Attrs.find node.attrs Shortcut :> Attr.Private.t option) with
+    | Some (Shortcut shortcuts) ->
+      List.map shortcuts ~f:(fun (s : Attr.shortcut) -> s.action)
+    | Some _ | None -> []
+  in
+  from_menu @ from_shortcuts
 ;;
 
 let check ~path (root : Node.t) =

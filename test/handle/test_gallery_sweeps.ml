@@ -114,6 +114,7 @@ let%expect_test "every event attr has an action that fires it" =
     | On_cursor_moved -> Some "Move_cursor"
     | On_closed -> Some "Close_popover"
     | Actions -> Some "Activate_action"
+    | Shortcut -> Some "Fire_shortcut"
     | On_click -> Some "Click_at"
     | On_focus_enter -> Some "Focus_enter"
     | On_focus_leave -> Some "Focus_leave"

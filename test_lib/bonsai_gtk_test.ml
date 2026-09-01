@@ -30,8 +30,30 @@ module Action = struct
     | Open_popover of string
     | Close_popover of string
     | Activate_action of string * string
+    | Fire_shortcut of string * Trigger.t
   [@@deriving sexp_of]
 end
+
+(* The target and its ancestor chain (outermost first), for the actions that resolve names
+   the way GTK does -- from the node upward. Same duplicate-id rejection as
+   [find_by_test_id], through it. *)
+let node_with_ancestors_exn (root : Node.t) id =
+  (* [find_by_test_id] settles existence and uniqueness; the walk below re-finds the path
+     to collect the chain. *)
+  (match Node.find_by_test_id root id with
+   | Some _ -> ()
+   | None -> failwithf "Bonsai_gtk_test: no node with test_id %s" id ());
+  let result = ref None in
+  let rec go ancestors (node : Node.t) =
+    if Option.equal String.equal (Attrs.test_id node.attrs) (Some id)
+    then result := Some (node, List.rev ancestors)
+    else
+      Children.iteri node.children ~path:"" ~f:(fun _ child ->
+        go (node :: ancestors) child)
+  in
+  go [] root;
+  Option.value_exn !result
+;;
 
 let node_exn (node : Node.t) id =
   match Node.find_by_test_id node id with
@@ -650,6 +672,61 @@ module Result_spec = struct
            scope
            ()
        | _ -> failwithf "Bonsai_gtk_test: node %s carries no Attr.actions" id ())
+    (* The user pressed the chord. Pure table lookups, per the design: the trigger is
+       matched against the node's own shortcut attrs, and the named action is resolved
+       against the node and its ancestors -- the union GTK's muxer implements (measured,
+       Task 6). The mli repeats M2's honesty paragraph: this models no routing at all --
+       who sees the chord first is [?phase]'s business and [live_input.ml]'s to prove. *)
+    | Fire_shortcut (id, trigger) ->
+      let n, ancestors = node_with_ancestors_exn node id in
+      let action_ref =
+        match (Attrs.find n.attrs Shortcut :> Attr.Private.t option) with
+        | Some (Shortcut shortcuts) ->
+          (match
+             List.find shortcuts ~f:(fun (s : Attr.shortcut) ->
+               Trigger.equal s.trigger trigger)
+           with
+           | Some s -> s.action
+           | None ->
+             failwithf
+               !"Bonsai_gtk_test: node %s has no shortcut for %{sexp: Trigger.t}"
+               id
+               trigger
+               ())
+        | Some _ | None ->
+          failwithf "Bonsai_gtk_test: node %s carries no Attr.shortcut" id ()
+      in
+      let scope, name =
+        match String.index action_ref '.' with
+        | None ->
+          failwithf "Bonsai_gtk_test: shortcut action %S has no scope" action_ref ()
+        | Some i -> String.prefix action_ref i, String.drop_prefix action_ref (i + 1)
+      in
+      let spec =
+        List.find_map (n :: List.rev ancestors) ~f:(fun holder ->
+          match (Attrs.find holder.attrs Actions :> Attr.Private.t option) with
+          | Some (Actions { scope = s; specs }) when String.equal s scope ->
+            List.find specs ~f:(fun (spec : Action_spec.t) -> String.equal spec.name name)
+          | Some _ | None -> None)
+      in
+      (match spec with
+       | None ->
+         (* Unreachable through [create]: the resolution walk certified every shortcut
+            reference before any action could be dispatched. Kept loud for a tree built
+            behind its back. *)
+         failwithf
+           "Bonsai_gtk_test: shortcut action %S resolves to nothing (the walk should \
+            have refused this tree)"
+           action_ref
+           ()
+       | Some { kind = Simple eff; _ } -> eff
+       | Some { kind = Toggle { on_activate; _ }; _ } -> on_activate
+       | Some { kind = Radio _; name; _ } ->
+         failwithf
+           "Bonsai_gtk_test: %S is a radio action, which a shortcut cannot fire (no \
+            parameter)"
+           name
+           ())
   ;;
 end
 

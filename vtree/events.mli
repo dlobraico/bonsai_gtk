@@ -28,6 +28,10 @@ module Family : sig
     | Click (** [GtkGestureClick] *)
     | Focus (** [GtkEventControllerFocus] *)
     | Key (** [GtkEventControllerKey] *)
+    | Shortcut
+    (** [GtkShortcutController] — the family with no slot and no trampoline: its shortcuts
+        fire {i named actions} (GTK → [GtkNamedAction] → the action group's activate,
+        which has the trampoline), so the family's whole job is attach/detach/diff. *)
   [@@deriving sexp_of, equal, compare, enumerate]
 end
 

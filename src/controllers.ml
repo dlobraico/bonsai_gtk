@@ -12,6 +12,17 @@ type 'a attached =
   ; connections : Signals.connection list
   }
 
+(* The Shortcut family's live state, and it is not an [attached]: there is
+   {b no slot and no trampoline} -- a shortcut fires a {i named action}, so the firing
+   path is GTK -> [GtkNamedAction] -> the [Actions] group's activate trampoline, which
+   already obeys the five rules. This family's whole job is attach/detach/diff, and
+   [installed] is the diff's memory: [remove_shortcut] needs the very [Shortcut.t] that
+   was added, keyed here by the (trigger, action) pair the vtree spelled. *)
+type shortcut_family =
+  { controller : W.Shortcut_controller.t
+  ; mutable installed : ((Trigger.t * string) * W.Shortcut.t) list
+  }
+
 type t =
   { ctx : Signals.ctx
   ; node_path : string
@@ -19,10 +30,11 @@ type t =
   ; mutable click : W.Gesture_click.t attached option
   ; mutable focus : W.Event_controller_focus.t attached option
   ; mutable key : W.Event_controller_key.t attached option
+  ; mutable shortcut : shortcut_family option
   }
 
 let create ctx ~node_path widget =
-  { ctx; node_path; widget; click = None; focus = None; key = None }
+  { ctx; node_path; widget; click = None; focus = None; key = None; shortcut = None }
 ;;
 
 (* GTK's own debugging label, and the only way to tell a controller this library attached
@@ -65,6 +77,9 @@ let attached t (family : Events.Family.t) =
   | Click -> Option.map t.click ~f:(fun a -> a.slots)
   | Focus -> Option.map t.focus ~f:(fun a -> a.slots)
   | Key -> Option.map t.key ~f:(fun a -> a.slots)
+  (* No slots to clear or arm: the shortcut family holds no handlers (see
+     [shortcut_family]), so for slot-shaped questions it does not exist. *)
+  | Shortcut -> None
 ;;
 
 let clear t =
@@ -73,10 +88,17 @@ let clear t =
 ;;
 
 let armed t =
-  List.concat_map Events.Family.all ~f:(fun family ->
-    match attached t family with
-    | None -> []
-    | Some slots -> Signals.armed slots)
+  (List.concat_map Events.Family.all ~f:(fun family ->
+     match attached t family with
+     | None -> []
+     | Some slots -> Signals.armed slots)
+   @
+   (* The shortcut family has no slots, so "armed" is answered from its own state: the
+      name is listed exactly while shortcuts are installed, which is what the live dumps
+      read. *)
+   match t.shortcut with
+   | Some { installed = _ :: _; _ } -> [ Attr.Name.Shortcut ]
+   | Some { installed = []; _ } | None -> [])
   |> List.sort ~compare:Attr.Name.compare
 ;;
 
@@ -348,6 +370,95 @@ let configure_click (gc : W.Gesture_click.t) attrs =
   | Some _ | None -> ()
 ;;
 
+(* The node's shortcut list, merged and deduplicated. Exact duplicates (same trigger, same
+   action) collapse to one installed [Shortcut.t] -- two identical entries would be one
+   assoc key anyway, and GTK running the action twice per press is nothing a caller can
+   want. *)
+let wanted_shortcuts attrs =
+  match (Attrs.find attrs Attr.Name.Shortcut :> Attr.Private.t option) with
+  | Some (Shortcut shortcuts) ->
+    List.dedup_and_sort shortcuts ~compare:(fun (a : Attr.shortcut) b ->
+      [%compare: Trigger.t * string] (a.trigger, a.action) (b.trigger, b.action))
+  | Some _ | None -> []
+;;
+
+(* One GTK shortcut from vtree data: the trigger through [Keyval_trigger.new_] -- never
+   [Shortcut_trigger.parse_string], whose non-option return wraps NULL on garbage
+   (pre-flight correction 7) -- and the action through [Named_action.new_], which is the
+   whole reason shortcuts route through the action system: the binding cannot build a
+   [CallbackAction], so a shortcut cannot hold a closure. *)
+let make_shortcut (s : Attr.shortcut) =
+  let trigger =
+    W.Keyval_trigger.new_ s.trigger.key (gdk_of_modifiers s.trigger.modifiers)
+  in
+  let action = W.Named_action.new_ s.action in
+  W.Shortcut.new_
+    (Some (trigger :> W.Shortcut_trigger.t))
+    (Some (action :> W.Shortcut_action.t))
+;;
+
+(* The family's own sync: attach on the first shortcut, detach on the last, and diff by
+   (trigger, action) in between -- remove departed, add new, leave survivors alone (a
+   [GtkShortcut] is immutable in everything the vtree can say about it). The phase is
+   re-applied from the attrs like the key family's, and the same
+   [Events.family_phase_rejection] refuses a disagreement -- every entry shares this one
+   controller. *)
+let sync_shortcuts t attrs =
+  Option.iter
+    (Events.family_phase_rejection ~path:t.node_path Shortcut attrs)
+    ~f:invalid_arg;
+  let wanted = wanted_shortcuts attrs in
+  match t.shortcut, wanted with
+  | None, [] -> ()
+  | Some f, [] ->
+    W.Widget.remove_controller t.widget (f.controller :> W.Event_controller.t);
+    t.shortcut <- None
+  | None, wanted ->
+    let controller = W.Shortcut_controller.new_ () in
+    set_name (controller :> W.Event_controller.t) "shortcut";
+    (match Events.family_phase Shortcut attrs with
+     | Some phase ->
+       W.Event_controller.set_propagation_phase
+         (controller :> W.Event_controller.t)
+         (propagation_phase phase)
+     | None -> ());
+    let installed =
+      List.map wanted ~f:(fun s ->
+        let sc = make_shortcut s in
+        W.Shortcut_controller.add_shortcut controller sc;
+        (s.trigger, s.action), sc)
+    in
+    W.Widget.add_controller t.widget (controller :> W.Event_controller.t);
+    t.shortcut <- Some { controller; installed }
+  | Some f, wanted ->
+    (match Events.family_phase Shortcut attrs with
+     | Some phase ->
+       W.Event_controller.set_propagation_phase
+         (f.controller :> W.Event_controller.t)
+         (propagation_phase phase)
+     | None -> ());
+    let wanted_keys =
+      List.map wanted ~f:(fun (s : Attr.shortcut) -> s.trigger, s.action)
+    in
+    let keep, drop =
+      List.partition_tf f.installed ~f:(fun (key, _) ->
+        List.mem wanted_keys key ~equal:[%equal: Trigger.t * string])
+    in
+    List.iter drop ~f:(fun (_, sc) ->
+      W.Shortcut_controller.remove_shortcut f.controller sc);
+    let added =
+      List.filter_map wanted ~f:(fun s ->
+        let key = s.trigger, s.action in
+        if List.Assoc.mem keep key ~equal:[%equal: Trigger.t * string]
+        then None
+        else (
+          let sc = make_shortcut s in
+          W.Shortcut_controller.add_shortcut f.controller sc;
+          Some (key, sc)))
+    in
+    f.installed <- keep @ added
+;;
+
 (* One [sync] per family, dispatched from an exhaustive match on [Events.Family.t].
 
    The match is the point. [Events.controller_family] is what makes a controller attr
@@ -412,7 +523,13 @@ let update t attrs =
         ~configure:(fun kc attrs ->
           configure_phase (kc :> W.Event_controller.t) Key attrs ~node_path:t.node_path)
         ~name:"key"
-        attrs)
+        attrs
+    | Shortcut ->
+      (* Its own sync, not the generic one: no slots, no specs, and the diff is over a
+         list of GTK objects rather than a handler cell. [wanted] is unused because the
+         family decides from the merged list itself. *)
+      ignore (wanted : bool);
+      sync_shortcuts t attrs)
 ;;
 
 (* Slots first, for every controller, and only then the disconnecting and detaching:
@@ -440,13 +557,22 @@ let release t =
       t.focus <- None
     | Key ->
       Option.iter t.key ~f:(fun a -> detach a (fun c -> (c :> W.Event_controller.t)));
-      t.key <- None)
+      t.key <- None
+    | Shortcut ->
+      (* Nothing to disconnect: the family holds no signal connections (the firing path is
+         GTK's, into [Actions]' trampoline), so detaching is the whole teardown. *)
+      Option.iter t.shortcut ~f:(fun f ->
+        W.Widget.remove_controller t.widget (f.controller :> W.Event_controller.t));
+      t.shortcut <- None)
 ;;
 
 (* Derived from the same [Events.Family.t] match as everything else here, so a family that
    is added and then not counted is not a possible state. *)
 let attached_count t =
-  List.count Events.Family.all ~f:(fun family -> Option.is_some (attached t family))
+  List.count Events.Family.all ~f:(fun family ->
+    match family with
+    | Shortcut -> Option.is_some t.shortcut
+    | Click | Focus | Key -> Option.is_some (attached t family))
 ;;
 
 let is_ours (c : W.Event_controller.t) =

@@ -20,6 +20,7 @@ module Modifiers = Modifiers
 module Click_event = Click_event
 module Click_response = Click_response
 module Keyval = Keyval
+module Trigger = Trigger
 module Key_event = Key_event
 module Key_response = Key_response
 module Handler = Handler

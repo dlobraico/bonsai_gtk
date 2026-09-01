@@ -36,6 +36,16 @@ let of_list attrs =
     | Many _ ->
       (* [Attr.flatten] removed them. *)
       t
+    (* The one repeatable keyed attr: later [Attr.shortcut]s accumulate onto the node's
+       single [Shortcut] entry rather than replacing it, so all of a node's shortcuts
+       reach its one controller together. *)
+    | Shortcut _ ->
+      { t with
+        by_name =
+          Map.update t.by_name Attr.Name.Shortcut ~f:(function
+            | None -> attr
+            | Some existing -> Attr.merge_shortcuts existing attr)
+      }
     | _ ->
       (match Attr.name attr with
        | None -> t

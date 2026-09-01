@@ -123,3 +123,103 @@ let%expect_test "action references resolve against self and ancestors only" =
   print_s [%sexp "radio resolves"];
   [%expect {| "radio resolves" |}]
 ;;
+
+(* The trigger is plain data with a display label -- GTK's accelerator spelling, never
+   parsed by anything ([Shortcut_trigger.parse_string] wraps NULL on garbage; pre-flight
+   correction 7 is why the runtime builds triggers from this record instead). *)
+let%expect_test "a trigger sexps and labels" =
+  let t =
+    Trigger.create ~modifiers:{ Modifiers.none with control = true } (Keyval.of_char 'k')
+  in
+  print_s [%sexp (t : Trigger.t)];
+  [%expect
+    {|
+    ((key 107)
+     (modifiers
+      ((shift false) (control true) (alt false) (super false) (hyper false)
+       (meta false))))
+    |}];
+  printf "%s\n" (Trigger.to_label t);
+  [%expect {| <Control>k |}];
+  printf
+    "%s\n"
+    (Trigger.to_label
+       (Trigger.create
+          ~modifiers:{ Modifiers.none with shift = true; alt = true }
+          Keyval.escape));
+  [%expect {| <Shift><Alt>Escape |}];
+  printf "%s\n" (Trigger.to_label (Trigger.create Keyval.comma));
+  [%expect {| , |}]
+;;
+
+(* The attr is repeatable: every [Attr.shortcut] on a node accumulates into one keyed
+   entry, which is what lets them share the node's one controller and lets the phase
+   rejection see them all. The whole record is structural (an action is a name, not a
+   closure), so an unchanged frame diffs to nothing -- unlike every other event attr. *)
+let%expect_test "shortcuts accumulate, sexp, and diff structurally" =
+  let ctrl c =
+    Trigger.create ~modifiers:{ Modifiers.none with control = true } (Keyval.of_char c)
+  in
+  let attrs =
+    Attrs.of_list
+      [ Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.pick" ()
+      ; Attr.shortcut ~phase:Capture ~trigger:(ctrl 'o') ~action:"app.open" ()
+      ]
+  in
+  print_s [%sexp (attrs : Attrs.t)];
+  [%expect
+    {|
+    ((Shortcut
+      (((trigger
+         ((key 107)
+          (modifiers
+           ((shift false) (control true) (alt false) (super false) (hyper false)
+            (meta false)))))
+        (phase Bubble) (action app.pick))
+       ((trigger
+         ((key 111)
+          (modifiers
+           ((shift false) (control true) (alt false) (super false) (hyper false)
+            (meta false)))))
+        (phase Capture) (action app.open)))))
+    |}];
+  let same =
+    Attrs.of_list
+      [ Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.pick" ()
+      ; Attr.shortcut ~phase:Capture ~trigger:(ctrl 'o') ~action:"app.open" ()
+      ]
+  in
+  print_s [%sexp (Attrs.diff ~old:attrs ~new_:same : Attrs.op list)];
+  [%expect {| () |}];
+  (* A "::target" is rejected at the constructor: GtkNamedAction passes no parameter, so a
+     radio cannot be fired by a shortcut and the syntax would promise otherwise. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Attr.shortcut ~trigger:(ctrl 't') ~action:"app.theme::dark" ());
+  [%expect
+    {|
+    (Invalid_argument
+     "Attr.shortcut: action \"app.theme::dark\" carries a \"::target\", but a shortcut activates through GtkNamedAction, which passes no parameter -- a radio action cannot be fired by a shortcut")
+    |}]
+;;
+
+(* A shortcut's reference goes through the same walk, and the same string, as a menu
+   item's. *)
+let%expect_test "a shortcut naming a missing action is rejected by the walk" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Action_resolution.check
+      ~path:"root"
+      (Node.window
+         (Node.label
+            ~attrs:
+              [ Attr.shortcut
+                  ~trigger:(Trigger.create Keyval.escape)
+                  ~action:"app.missing"
+                  ()
+              ]
+            "sheet")));
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: menu item action \"app.missing\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
+    |}]
+;;

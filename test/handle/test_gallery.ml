@@ -265,7 +265,14 @@ let%expect_test "every M1 and M2 widget builds a legal node" =
                            ((icon_name (open-menu-symbolic)) (primary true))))
                          (attrs
                           ((Actions (scope gallery)
-                            (specs (((name noop) (Simple <effect>)))))))
+                            (specs (((name noop) (Simple <effect>)))))
+                           (Shortcut
+                            (((trigger
+                               ((key 107)
+                                (modifiers
+                                 ((shift false) (control true) (alt false)
+                                  (super false) (hyper false) (meta false)))))
+                              (phase Bubble) (action gallery.noop))))))
                          (children
                           (Slots
                            ((popover

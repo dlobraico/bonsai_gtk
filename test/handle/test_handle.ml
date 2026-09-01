@@ -2931,6 +2931,95 @@ let%expect_test "a dangling menu action reference is rejected by the handle" =
     |}]
 ;;
 
+(* The fourth family's phase story is the key family's: every shortcut on a node shares
+   one GtkShortcutController, so two entries asking for different phases are rejected with
+   the family message -- and the same attr name appears on both sides, because the
+   repeatable attr is one keyed entry. *)
+let%expect_test "two shortcuts with different phases are rejected by the handle" =
+  let ctrl c =
+    Trigger.create ~modifiers:{ Modifiers.none with control = true } (Keyval.of_char c)
+  in
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"chords"
+         (Node.label
+            ~attrs:
+              [ Attr.actions
+                  ~scope:"app"
+                  [ Action_spec.simple ~name:"a" Ui_effect.Ignore
+                  ; Action_spec.simple ~name:"b" Ui_effect.Ignore
+                  ]
+              ; Attr.shortcut ~phase:Capture ~trigger:(ctrl 'a') ~action:"app.a" ()
+              ; Attr.shortcut ~phase:Bubble ~trigger:(ctrl 'b') ~action:"app.b" ()
+              ]
+            "sheet"))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create app in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: Attr.shortcut asks for Capture and Attr.shortcut for Bubble, but they share one GtkShortcutController and so one propagation phase")
+    |}]
+;;
+
+(* Fire_shortcut: the trigger resolves on the node, the named action on the node or an
+   ancestor (the union GTK's muxer implements), and the effect is the evidence. *)
+let%expect_test "Fire_shortcut reaches the named action's handler" =
+  let ctrl c =
+    Trigger.create ~modifiers:{ Modifiers.none with control = true } (Keyval.of_char c)
+  in
+  let app (graph @ local) =
+    let log, set_log = Bonsai.state [] graph in
+    let%arr log and set_log in
+    Node.window
+      ~title:"chords"
+      (Node.box
+         ~orientation:Vertical
+         ~attrs:
+           [ Attr.actions
+               ~scope:"app"
+               [ Action_spec.simple ~name:"pick" (set_log ("picked" :: log)) ]
+           ]
+         [ Node.label
+             ~attrs:
+               [ Attr.test_id "sheet"
+               ; Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.pick" ()
+               ]
+             "sheet"
+         ; Node.label ~attrs:[ Attr.test_id "log" ] (String.concat ~sep:"," log)
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.store_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Fire_shortcut ("sheet", ctrl 'k') ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+         (((kind (Box ((orientation Vertical))))
+           (attrs
+            ((Actions (scope app) (specs (((name pick) (Simple <effect>)))))))
+           (children
+            (List
+             (((kind (Label ((text sheet))))
+               (attrs
+                ((Test_id sheet)
+                 (Shortcut
+                  (((trigger
+                     ((key 107)
+                      (modifiers
+                       ((shift false) (control true) (alt false) (super false)
+                        (hyper false) (meta false)))))
+                    (phase Bubble) (action app.pick))))))
+               (children No_children))
+    -|        ((kind (Label ((text "")))) (attrs ((Test_id log)))
+    +|        ((kind (Label ((text picked)))) (attrs ((Test_id log)))
+               (children No_children))))))))))
+    |}]
+;;
+
 (* The popover's controlled ~open_ from the model's side: Close_popover fires
    [Attr.on_closed] and the model that follows flips [open_]; Open_popover fires nothing
    (live, opening emits nothing this library exposes), so the prop stands wherever the

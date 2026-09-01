@@ -58,6 +58,7 @@ module Name = struct
       | On_contains_focus_changed
       | On_key_pressed
       | On_key_released
+      | Shortcut
     [@@deriving sexp_of, compare, equal, enumerate]
 
     (* Exhaustive on purpose, never [_ -> false]: every widget task adds [On_*] names, and
@@ -97,7 +98,11 @@ module Name = struct
       | On_focus_leave
       | On_contains_focus_changed
       | On_key_pressed
-      | On_key_released -> true
+      | On_key_released
+      (* Carries no handler -- the action it names does -- but it is behaviour a widget
+         delivers and a controller family owns, so the event diagnostics apply exactly as
+         they do to [On_click]. *)
+      | Shortcut -> true
       (* Carries handlers, so a mistake around it deserves the event diagnostics -- but
          like the controller attrs it is no impl's signal: [Events.is_actions_attr] is the
          carve-out that makes it legal on every kind, and [src/actions.ml] is what builds
@@ -152,6 +157,17 @@ end
    without spelling the coercion [(a :> Attr.Private.t)] -- which is what makes the seal
    compiler-enforced rather than merely documented. The coercion runs one way, which is
    why [flatten] below exists. *)
+(* One shortcut: what fires ([trigger]), where it runs ([phase]), and the {i name} of what
+   it does ([action], "scope.name" -- resolved exactly as a menu item's is). No handler
+   anywhere, so the whole record is structural data and a shortcuts diff fires only on
+   real changes. *)
+type shortcut =
+  { trigger : Trigger.t
+  ; phase : Phase.t
+  ; action : string
+  }
+[@@deriving sexp_of, equal, compare]
+
 module Private = struct
   type t =
     | Css_class of string
@@ -313,6 +329,11 @@ module Private = struct
         { phase : Phase.t
         ; handler : Key_event.t Handler.t
         }
+    (* A {i list}, because the attr is repeatable: [Attrs.of_list] merges every
+       [Attr.shortcut] on one node into this single keyed entry (the css-class
+       accumulation, keyed), so all of a node's shortcuts reach the one
+       [GtkShortcutController] together and the phase rejection can see them all. *)
+    | Shortcut of shortcut list
     | Many of t list
   [@@deriving sexp_of]
 end
@@ -386,6 +407,7 @@ let name = function
   | On_contains_focus_changed _ -> Some On_contains_focus_changed
   | On_key_pressed _ -> Some On_key_pressed
   | On_key_released _ -> Some On_key_released
+  | Shortcut _ -> Some Shortcut
 ;;
 
 let rec equal a b =
@@ -461,6 +483,9 @@ let rec equal a b =
     Phase.equal a.phase b.phase && phys_equal a.handler b.handler
   | On_key_released a, On_key_released b ->
     Phase.equal a.phase b.phase && Handler.equal a.handler b.handler
+  (* Fully structural -- a shortcut names its action rather than carrying a closure -- so
+     unlike every other event attr this one diffs to nothing on an unchanged frame. *)
+  | Shortcut a, Shortcut b -> List.equal equal_shortcut a b
   | Many a, Many b -> List.equal equal a b
   | _ -> false
 ;;
@@ -566,5 +591,31 @@ let on_focus_leave ?(phase = Phase.Bubble) f = On_focus_leave { phase; handler =
 let on_contains_focus_changed f = On_contains_focus_changed f
 let on_key_pressed ?(phase = Phase.Bubble) handler = On_key_pressed { phase; handler }
 let on_key_released ?(phase = Phase.Bubble) handler = On_key_released { phase; handler }
+
+(* Repeatable: each call is one entry, and [Attrs.of_list] merges a node's entries into
+   one keyed list (see [Private.Shortcut]). A "::target" is rejected here because a
+   [GtkNamedAction] activates with {i no} parameter -- a radio (whose parameter type is
+   "s") cannot be fired by a shortcut at all, and the target syntax would promise
+   otherwise; see [Attr.shortcut]'s doc. *)
+let shortcut ?(phase = Phase.Bubble) ~trigger ~action () =
+  if String.is_substring action ~substring:"::"
+  then
+    invalid_argf
+      "Attr.shortcut: action %S carries a \"::target\", but a shortcut activates through \
+       GtkNamedAction, which passes no parameter -- a radio action cannot be fired by a \
+       shortcut"
+      action
+      ();
+  Shortcut [ { trigger; phase; action } ]
+;;
+
+(* For [Attrs.of_list] only: the merge that makes the attr repeatable. [Attr.t] is a
+   private abbreviation outside this file, so the merged value can only be built here. *)
+let merge_shortcuts a b =
+  match a, b with
+  | Shortcut a, Shortcut b -> Shortcut (a @ b)
+  | _ -> invalid_arg "Attr.merge_shortcuts: both arguments must be Shortcut attrs"
+;;
+
 let many l = Many l
 let empty = Many []

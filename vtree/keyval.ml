@@ -21,6 +21,18 @@ let end_ = 0xff57
 let page_up = 0xff55
 let page_down = 0xff56
 let slash = 0x02f
+
+(* The punctuation the downstream chords need (Task 7): all printable ASCII, so each is
+   its own codepoint ([of_char]'s contract) -- named anyway, because a chord table that
+   reads [Keyval.comma] is checkable against keysymdef.h at a glance where [0x2c] is not.
+   Pinned against the binding in [test/live/live_keyvals.ml] like the rest. *)
+let comma = 0x02c
+let question = 0x03f
+let grave = 0x060
+let bracketleft = 0x05b
+let bracketright = 0x05d
+let minus = 0x02d
+let equal = 0x03d
 let f1 = 0xffbe
 
 (* F1..F12 are contiguous from [f1], which is what makes this a function rather than

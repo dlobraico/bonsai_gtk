@@ -43,6 +43,19 @@ val page_up : int
 val page_down : int
 val slash : int
 
+(** The punctuation the downstream chord tables need — all printable ASCII, each its own
+    codepoint, named so a chord table reads as prose. The table stays curated: anything
+    else printable is {!of_char}, and the rest of X11 is a raw [int]
+    ([docs/m2-backlog.md:114-115]'s rule, kept). *)
+val comma : int
+
+val question : int
+val grave : int
+val bracketleft : int
+val bracketright : int
+val minus : int
+val equal : int
+
 (** [f n] is the keysym of function key [n], for [n] in [1] .. [12]. Raises
     [Invalid_argument] outside that range: F13 and beyond exist in X11 but are not
     contiguous with the rest on every keyboard, and returning a guess would be worse than

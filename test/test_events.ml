@@ -193,7 +193,7 @@ let%expect_test "is_event over every name" =
       On_child_activated On_selected_children_changed On_page_changed
       On_selected_changed On_day_selected On_editing_changed On_cursor_moved
       On_closed On_click On_focus_enter On_focus_leave On_contains_focus_changed
-      On_key_pressed On_key_released))
+      On_key_pressed On_key_released Shortcut))
     |}];
   print_s [%sexp `plain (plain : Attr.Name.t list)];
   [%expect
@@ -252,7 +252,7 @@ let%expect_test "every controller attr is supported on every kind" =
   [%expect
     {|
     (On_click On_focus_enter On_focus_leave On_contains_focus_changed
-     On_key_pressed On_key_released)
+     On_key_pressed On_key_released Shortcut)
     |}];
   let refused =
     List.concat_map all_kinds ~f:(fun kind ->

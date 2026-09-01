@@ -87,6 +87,21 @@ let modifiers_of_gdk (state : Gdk_enums.modifiertype) : Bonsai_gtk_vtree.Modifie
       | `BUTTON5_MASK -> acc)
 ;;
 
+(* The inverse of [modifiers_of_gdk], for the boundary that hands GDK a modifier set -- a
+   shortcut trigger. Only the six real modifiers exist on the vtree side, so nothing here
+   can produce the lock/button flags the forward direction drops. *)
+let gdk_of_modifiers (m : Bonsai_gtk_vtree.Modifiers.t) : Gdk_enums.modifiertype =
+  List.filter_map
+    [ m.shift, `SHIFT_MASK
+    ; m.control, `CONTROL_MASK
+    ; m.alt, `ALT_MASK
+    ; m.super, `SUPER_MASK
+    ; m.hyper, `HYPER_MASK
+    ; m.meta, `META_MASK
+    ]
+    ~f:(fun (on, flag) -> if on then Some flag else None)
+;;
+
 (* [GtkOrientable]'s enum, shared by the five kinds that take an orientation ([Box],
    [Separator], [Scale], [Paned], [Flow_box]). It was a private four-line copy in each of
    the first four before the fifth arrived, which is one copy past the point where the

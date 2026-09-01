@@ -65,6 +65,7 @@ module Name : sig
     | On_contains_focus_changed
     | On_key_pressed
     | On_key_released
+    | Shortcut
   [@@deriving sexp_of, compare, equal, enumerate]
 
   (** [true] for the handler-carrying names.
@@ -88,6 +89,14 @@ module Name : sig
 
   include Comparable.S_plain with type t := t
 end
+
+(* One shortcut: what fires, where it runs, and the {i name} of what it does. *)
+type shortcut = private
+  { trigger : Trigger.t
+  ; phase : Phase.t
+  ; action : string
+  }
+[@@deriving sexp_of, equal, compare]
 
 module Private : sig
   (** {b No stability promise.} The constructors of {!t}, for the library's own runtime
@@ -188,6 +197,7 @@ module Private : sig
         { phase : Phase.t
         ; handler : Key_event.t Handler.t
         }
+    | Shortcut of shortcut list
     | Many of t list
 
   val sexp_of_t : t -> Sexp.t
@@ -210,6 +220,10 @@ val flatten : t list -> t list
 
 (** [None] for [Css_class] (accumulates, not keyed) and [Many]. *)
 val name : t -> Name.t option
+
+(** For [Attrs.of_list] only: merges two [Shortcut] attrs into one (the repeatable-attr
+    accumulation); raises on anything else. Applications have no reason to call this. *)
+val merge_shortcuts : t -> t -> t
 
 (** Structural, except handlers compare physically. *)
 val equal : t -> t -> bool
@@ -819,6 +833,29 @@ val on_key_pressed : ?phase:Phase.t -> (Key_event.t -> Key_response.t) -> t
     [unit], so there is nothing to answer and no [Key_response.t] to return. A release
     cannot be consumed — by the time it happens the press has already been routed. *)
 val on_key_released : ?phase:Phase.t -> Key_event.t Handler.t -> t
+
+(** A keyboard shortcut: [trigger] fires the action named [action] — ["scope.name"],
+    resolved against {!actions} on this node or an ancestor exactly as a menu item's
+    reference is, same check, same message. The firing path is GTK's own
+    ([GtkShortcutController] → [GtkNamedAction] → the action group's activate), so
+    shortcuts and menus share one handler table — stavekeeper's single-source-of-truth
+    shape, and also the binding's only option: a [CallbackAction] cannot be built (fact
+    table), so a shortcut {i cannot} invoke an OCaml closure directly.
+
+    {b Repeatable} — each call is one shortcut, and every [Attr.shortcut] on a node
+    accumulates (the css-class rule): all of them share the node's one
+    [GtkShortcutController], and therefore one [?phase] ({!Phase.Bubble} default); asking
+    for two different phases is [Invalid_argument] on the key attrs' terms
+    ([Events.family_phase_rejection], at mount, at patch, and headlessly).
+
+    {b Scope is local}: the shortcut fires while focus is inside this widget's subtree, so
+    a window-wide chord is a shortcut attr on the window node ({!Phase.Capture} if it must
+    beat the children — stavekeeper's [dialog.ml] rule).
+
+    A ["::target"] in [action] is rejected at the constructor: a [GtkNamedAction]
+    activates with no parameter, so a {!Action_spec.Radio} cannot be fired by a shortcut
+    at all — give the radio a wrapping [Simple] action if a chord must set it. *)
+val shortcut : ?phase:Phase.t -> trigger:Trigger.t -> action:string -> unit -> t
 
 val many : t list -> t
 val empty : t

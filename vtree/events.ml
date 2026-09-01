@@ -117,6 +117,7 @@ module Family = struct
     | Click
     | Focus
     | Key
+    | Shortcut (** [GtkShortcutController] *)
   [@@deriving sexp_of, equal, compare, enumerate]
 end
 
@@ -124,6 +125,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_click -> Some Click
   | On_focus_enter | On_focus_leave | On_contains_focus_changed -> Some Focus
   | On_key_pressed | On_key_released -> Some Key
+  | Shortcut -> Some Shortcut
   | Margin_start
   | Margin_end
   | Margin_top
@@ -213,17 +215,19 @@ let family_attrs family =
    certify a view that raises the moment it is shown -- which is the whole point of
    putting these tables in [vtree]. Both callers render {!family_phase_rejection}'s
    string, so the two messages are identical outright rather than by convention. *)
-(* Exhaustive with no wildcard, on the neighbouring tables' rule: a future phase-carrying
-   controller attr (Task 7's shortcut family is already planned) must be classified here
-   or nothing compiles -- a wildcard would silently drop its phase from the family's vote
-   instead. *)
-let attr_phase (attr : Attr.t) =
+(* Exhaustive with no wildcard, on the neighbouring tables' rule: a phase-carrying
+   controller attr must be classified here or nothing compiles -- a wildcard would
+   silently drop its phase from the family's vote instead (which is what one would have
+   done to [Shortcut], the attr this returns a {i list} for -- a repeatable attr carries
+   one phase per entry). *)
+let attr_phases (attr : Attr.t) =
   match (attr :> Attr.Private.t) with
   | On_click { phase; _ }
   | On_focus_enter { phase; _ }
   | On_focus_leave { phase; _ }
   | On_key_pressed { phase; _ }
-  | On_key_released { phase; _ } -> Some phase
+  | On_key_released { phase; _ } -> [ phase ]
+  | Shortcut shortcuts -> List.map shortcuts ~f:(fun (s : Attr.shortcut) -> s.phase)
   | Css_class _
   | Margin_start _
   | Margin_end _
@@ -273,16 +277,16 @@ let attr_phase (attr : Attr.t) =
   | On_closed _
   | On_contains_focus_changed _
   | Actions _
-  | Many _ -> None
+  | Many _ -> []
 ;;
 
 (* The phased attrs of [family] that are present, in [Attr.Name] order -- which is what
    makes "the first two that disagree" a stable answer. *)
 let family_phases family attrs =
-  List.filter_map (family_attrs family) ~f:(fun name ->
+  List.concat_map (family_attrs family) ~f:(fun name ->
     match Attrs.find attrs name with
-    | None -> None
-    | Some attr -> Option.map (attr_phase attr) ~f:(fun phase -> name, phase))
+    | None -> []
+    | Some attr -> List.map (attr_phases attr) ~f:(fun phase -> name, phase))
 ;;
 
 let family_phase family attrs =
@@ -306,6 +310,7 @@ let controller_class : Family.t -> string = function
   | Click -> "GtkGestureClick"
   | Focus -> "GtkEventControllerFocus"
   | Key -> "GtkEventControllerKey"
+  | Shortcut -> "GtkShortcutController"
 ;;
 
 let family_phase_rejection ~path (family : Family.t) attrs =

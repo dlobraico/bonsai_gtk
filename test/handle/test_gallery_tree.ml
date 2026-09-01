@@ -271,6 +271,13 @@ let gallery_tree ~n ~set_n =
                          [ Attr.actions
                              ~scope:"gallery"
                              [ Action_spec.simple ~name:"noop" Ui_effect.Ignore ]
+                         ; Attr.shortcut
+                             ~trigger:
+                               (Trigger.create
+                                  ~modifiers:{ Modifiers.none with control = true }
+                                  (Keyval.of_char 'k'))
+                             ~action:"gallery.noop"
+                             ()
                          ]
                        ~icon_name:"open-menu-symbolic"
                        ~primary:true
