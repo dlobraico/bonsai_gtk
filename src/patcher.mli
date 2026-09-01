@@ -11,10 +11,10 @@ type ctx = private
   (** Called once per {!Bonsai_gtk_vtree.Kind.Window} node, after its subtree is attached
       — for every keyed child of a {!Bonsai_gtk_vtree.Node.windows} root as much as for a
       single window root, and never for the windows root itself (its anchor is not a
-      window). The runtime uses it to present the window (and to hold onto it: GTK
-      windows are not owned by a parent widget). Called at mount only — a patched window
-      is the same window. Mutable so {!Driver.stop} can drop it: under [Bonsai_gtk.start]
-      it closes over the [GtkApplication], and a stopped driver is never collectable. *)
+      window). The runtime uses it to present the window (and to hold onto it: GTK windows
+      are not owned by a parent widget). Called at mount only — a patched window is the
+      same window. Mutable so {!Driver.stop} can drop it: under [Bonsai_gtk.start] it
+      closes over the [GtkApplication], and a stopped driver is never collectable. *)
   ; report : node_path:string -> string -> unit
   (** Where a diagnostic that is {i not} an exception goes: the model asked for something
       the widget cannot hold, the frame carries on, and somebody has to be told. Every
@@ -74,15 +74,15 @@ and stack_claim = private
   ; claimant : Widget.t
   }
 
-(** [report] defaults to an [eprintf] on the library's usual [bonsai_gtk: ] channel; pass
-    one to capture the messages instead. The trailing [unit] is what makes the optional
-    argument reachable. *)
 (** Replaces [ctx.on_window_created] with a no-op. {!Driver.stop} calls it beside its
     [on_root_widget_changed] drop, and for the same reason: under [Bonsai_gtk.start] the
     callback closes over the [GtkApplication], and a stopped driver is never collectable,
     so leaving it would keep the application alive for the process's life. *)
 val drop_on_window_created : ctx -> unit
 
+(** [report] defaults to an [eprintf] on the library's usual [bonsai_gtk: ] channel; pass
+    one to capture the messages instead. The trailing [unit] is what makes the optional
+    argument reachable. *)
 val create_ctx
   :  ?report:(node_path:string -> string -> unit)
   -> signals:Signals.ctx

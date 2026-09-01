@@ -6,6 +6,10 @@ let app (graph @ local) =
   let count, set_count = Bonsai.state 0 graph in
   let%arr count and set_count in
   Node.window
+  (* Since M3 the runtime vetoes every close request -- a window closes only when its node
+     leaves the tree -- so the X button needs a handler to mean anything. For a one-window
+     app, quitting is what the user asked for. *)
+    ~attrs:[ Attr.on_close_request Effect.quit ]
     ~title:"bonsai_gtk counter"
     ~default_size:(240, 120)
     (Node.box

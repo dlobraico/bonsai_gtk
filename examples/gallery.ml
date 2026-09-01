@@ -832,6 +832,9 @@ let app (graph @ local) =
   and dates
   and input in
   Node.window
+  (* The counter's close handler, for the counter's reason: the runtime vetoes every close
+     request, so the X button quits only because this says so. *)
+    ~attrs:[ Attr.on_close_request Effect.quit ]
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
     (* Both the sidebar and the switcher are declared *above* the stack they drive, and
