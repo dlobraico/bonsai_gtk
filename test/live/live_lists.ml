@@ -2191,3 +2191,65 @@ let () =
     Node.notebook ~current_page:(List.hd_exn keys) (List.map keys ~f:tab));
   printf "child_keys length done\n"
 ;;
+
+(* --- the Update kind-change discipline (Task 8 step 6, the m2-backlog latent one-liner).
+   A keyed list child whose kind changes takes the reconciler's [Update] op, and the
+   patcher's arm now runs it in M2's Remove-op order -- mount the replacement, disarm,
+   remove, {i then} destroy -- where it used to destroy through [patch]'s kind-change arm
+   before the remove. For a box child the two orders are observably identical (destroying
+   a non-window live only disconnects it), which is what this block pins: the reorder
+   changed nothing here, and the order itself is what a [Window] in a list would need. The
+   siblings' identity across the swap is the other half of the claim -- the fix must not
+   have turned an in-place kind change into a rebuild of the list. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun _ -> ())
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun _ -> ())
+      ()
+  in
+  let view middle =
+    Node.window
+      ~title:"kind-change"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.label ~key:"before" "before"; middle; Node.label ~key:"after" "after" ])
+  in
+  let live =
+    P.mount ctx ~path:"kind-change" ~is_root:true (view (Node.label ~key:"mid" "mid"))
+  in
+  P.run_fixups ctx;
+  let box_children (live : P.live) =
+    match live.children with
+    | Single (Some box) -> Bonsai_gtk.Private.Gtk_import.widget_children box.P.widget
+    | _ -> assert false
+  in
+  let outer = box_children live in
+  print_s (Live_tree.dump live.widget);
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      P.patch
+        ctx
+        ~path:"kind-change"
+        ~is_root:true
+        live
+        (view (Node.button ~key:"mid" ~label:"mid, reborn" ())))
+  in
+  P.run_fixups ctx;
+  print_s (Live_tree.dump live.widget);
+  (match box_children live, outer with
+   | [ b0; m1; a2 ], [ ob0; om1; oa2 ] ->
+     printf
+       "siblings kept their widgets across the kind change: %b\n"
+       (Gobject.same b0 ob0 && Gobject.same a2 oa2);
+     printf "the changed child is a fresh widget: %b\n" (not (Gobject.same m1 om1))
+   | _ -> printf "unexpected child count\n");
+  P.destroy ctx live;
+  printf "kind-change block done\n"
+;;

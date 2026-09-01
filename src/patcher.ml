@@ -657,31 +657,49 @@ and patch_list
          would silently stop updating. *)
       let old_node = l.node in
       let l' =
-        patch
-          ctx
-          ~path:(child_path path index)
-          ~is_root:false
-          ~parent_kind:(Some parent_kind)
-          l
-          item
+        if Kind.same_kind l.node.kind item.kind
+        then (
+          let l' =
+            patch
+              ctx
+              ~path:(child_path path index)
+              ~is_root:false
+              ~parent_kind:(Some parent_kind)
+              l
+              item
+          in
+          child_op ~path:(child_path path index) (fun () ->
+            ops.updated parent ~old:old_node ~node:item l'.widget);
+          l')
+        else (
+          (* The kind changed. This used to route through [patch]'s own kind-change arm,
+             which destroys the old live {i before} the [remove] that takes its widget out
+             of the container -- harmless for the widgets M0 could hold here (destroying a
+             non-window live only disconnects it), and wrong the moment a [Window] sits in
+             a list, whose [destroy] destroys for real (docs/m2-backlog.md's latent
+             one-liner; a [Node.windows] child cannot in fact change kind, but the fix is
+             general and the window was just the finder). So the arm is spelled out here
+             in M2's Remove-op discipline -- disarm, remove, destroy -- with the mount
+             first, as [patch]'s arm orders it, so the old subtree stays alive and
+             parented until its replacement exists. [live_lists.ml]'s kind-change block is
+             the regression pin. *)
+          drop_stack_names ctx l;
+          let l' =
+            mount
+              ctx
+              ~path:(child_path path index)
+              ~is_root:false
+              ~parent_kind:(Some parent_kind)
+              item
+          in
+          disarm l;
+          let without = List.filteri !cur ~f:(fun i _ -> i <> index) in
+          child_op ~path:(child_path path index) (fun () -> ops.remove parent l.widget);
+          destroy ctx l;
+          child_op ~path:(child_path path index) (fun () ->
+            ops.insert parent ~after:(after_of without index) ~node:item l'.widget);
+          l')
       in
-      if phys_equal l l'
-      then
-        child_op ~path:(child_path path index) (fun () ->
-          ops.updated parent ~old:old_node ~node:item l'.widget)
-      else (
-        (* The kind changed, so [patch] mounted a replacement and destroyed [l]; [l]'s
-           widget is still parented here. Remove it, then place the replacement where it
-           was — [after] over the list with [l] taken out. ([l]'s widget was still
-           parented while it was destroyed, which is what we want for the widgets M0 can
-           hold here: destroying a non-window live only disconnects it. A [Window] live in
-           a list would be destroyed for real before this [remove], which is fine — its
-           own [destroy] unparents it — but is worth re-checking if windows ever become
-           list children.) *)
-        let without = List.filteri !cur ~f:(fun i _ -> i <> index) in
-        child_op ~path:(child_path path index) (fun () ->
-          ops.remove parent l.widget;
-          ops.insert parent ~after:(after_of without index) ~node:item l'.widget));
       cur := List.mapi !cur ~f:(fun i x -> if i = index then l' else x));
   !cur
 

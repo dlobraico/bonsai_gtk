@@ -344,3 +344,18 @@ notebook tracks 5 keys after mounting 5
 notebook tracks 3 keys after removing 2
 notebook tracks 0 keys after the teardown
 child_keys length done
+(GtkWindow (title (kind-change)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text before)) (GtkLabel (text mid))
+    (GtkLabel (text after))))))
+(GtkWindow (title (kind-change)) (css (background)) hidden
+ (children
+  (GtkBox (spacing 0) (css (vertical))
+   (children (GtkLabel (text before))
+    (GtkButton (label ("mid, reborn")) (css (text-button))
+     (children (GtkLabel (text "mid, reborn"))))
+    (GtkLabel (text after))))))
+siblings kept their widgets across the kind change: true
+the changed child is a fresh widget: true
+kind-change block done
