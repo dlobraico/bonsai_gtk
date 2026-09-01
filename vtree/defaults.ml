@@ -213,6 +213,14 @@ module Menu_button = struct
   let always_show_arrow = false
 end
 
+(* GTK's own: a fresh [GtkWindow] is resizable and not modal, and is transient for
+   nothing. [~transient_for] has no default here because [None] is not a value the model
+   picked -- it is the absence of the prop, an ordinary option. *)
+module Window = struct
+  let modal = false
+  let resizable = true
+end
+
 module Paned = struct
   let wide_handle = false
   let resize_start = true

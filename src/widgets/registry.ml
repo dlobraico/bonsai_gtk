@@ -42,5 +42,6 @@ let for_kind : Kind.t -> Widget_impl.t = function
   | Popover _ -> W_popover.impl
   | Menu_button _ -> W_menu_button.impl
   | Window _ -> W_window.impl
+  | Windows -> W_windows.impl
   | Native n -> Native_gtk.impl_of_payload n
 ;;

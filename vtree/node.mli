@@ -1554,13 +1554,50 @@ val action_bar
   -> unit
   -> t
 
+(** A [GtkWindow]: a toplevel, legal only as the root node or as a keyed child of the root
+    {!windows}.
+
+    [~title] is the string GTK shows when no {!header_bar} title widget is set;
+    [~default_size] is the initial request ([None] leaves the current size alone rather
+    than fighting the window manager). [~modal] ([false]) and [~resizable] ([true], both
+    GTK's own) are plain props.
+
+    [~transient_for] names {b another window in the same {!windows} list} by its [~key]
+    and makes this one transient for it (the window-manager grouping a dialog wants; pair
+    it with [~modal:true] for a real modal). It is resolved after the whole list exists —
+    a dialog may precede its parent in the list — and a key that resolves to no window is
+    [Invalid_argument] naming the keys that do exist, the single-referent rule (spec
+    §5.4). A window transient for itself is rejected here, at the constructor.
+
+    Closing: the X button (and everything else that requests a close) is {b always vetoed}
+    by the runtime — a window closes when, and only when, the model stops rendering its
+    node. {!Attr.on_close_request} is how the model hears the request; a window without it
+    swallows the request and reports once. *)
 val window
   :  ?key:Key.t
   -> ?attrs:Attr.t list
   -> ?title:string
   -> ?default_size:int * int
+  -> ?transient_for:Key.t
+  -> ?modal:bool
+  -> ?resizable:bool
   -> t
   -> t
+
+(** A virtual root holding keyed {!window}s (spec §4.1/§5.1): many toplevels, one tree.
+
+    Legal only as the root node, and only under [Bonsai_gtk.start] — an embedded tree is
+    parented into a container, which no toplevel can be. Every child must be a
+    [Node.window] with a [~key]; both are rejected from this constructor, naming the
+    child's index (and again by the shared walk, for a tree assembled by record update).
+    Children are reconciled by key, so a window keeps its identity — its GtkWindow, its
+    focus, its window-manager placement — across reorders of the list; the list order
+    itself is not a GTK ordering (toplevels have no z-order the application controls).
+
+    Rendering [windows []] lets the application exit: with no windows left,
+    [GtkApplication] releases and [Bonsai_gtk.start] returns — which is the declarative
+    [Effect.quit]. *)
+val windows : t list -> t
 
 val native : ?key:Key.t -> ?attrs:Attr.t list -> Native.t -> t
 

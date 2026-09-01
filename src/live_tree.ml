@@ -745,7 +745,18 @@ let rec dump (w : Widget.t) : Sexp.t =
        let l : W.Editable_label.t = cast w in
        [ [%sexp `text (W.Editable.get_text (W.Editable.from_gobject w) : string)] ]
        @ flag_prop "editing" (W.Editable_label.get_editing l)
-     | "GtkWindow" -> [ [%sexp `title (W.Window.get_title (cast w) : string option)] ]
+     | "GtkWindow" ->
+       let win : W.Window.t = cast w in
+       [ [%sexp `title (W.Window.get_title win : string option)] ]
+       @ flag_prop "modal" (W.Window.get_modal win)
+       @ (if W.Window.get_resizable win then [] else [ Sexp.Atom "not-resizable" ])
+       (* The transient parent by its title: identity would be honest but unprintable, and
+          a dump that names the wrong window is exactly what the live suite wants to see
+          fail. *)
+       @
+         (match W.Window.get_transient_for win with
+         | None -> []
+         | Some p -> [ [%sexp `transient_for (W.Window.get_title p : string option)] ])
      | "GtkBox" -> [ [%sexp `spacing (W.Box.get_spacing (cast w) : int)] ]
      | _ -> [])
     @ (match Array.to_list (Widget.get_css_classes w) with

@@ -31,6 +31,7 @@ module Action = struct
     | Close_popover of string
     | Activate_action of string * string
     | Fire_shortcut of string * Trigger.t
+    | Close_request of Key.t
   [@@deriving sexp_of]
 end
 
@@ -139,9 +140,28 @@ let rec require_supported ~path ~parent (node : Node.t) =
      is in the package this library cannot link. [~parent] is [None] at the root only,
      which is exactly the distinction the rule needs. *)
   (match node.kind, parent with
+   (* [Some Windows] implies "child of the root", exactly as it does at the runtime's copy
+      of this check: a [Windows] below the root is itself rejected two arms down. The key
+      requirement rides the same arm -- one [match] cannot say "legal here" and then
+      re-inspect the pair below the way the runtime's two blocks do. *)
+   | Window _, Some Kind.Windows ->
+     if Option.is_none node.key
+     then
+       invalid_argf
+         "%s: a Node.windows child carries no ~key (the window's identity: what \
+          ~transient_for names and what keeps the GtkWindow across reorders)"
+         path
+         ()
    | Window _, Some _ ->
      invalid_argf
-       "%s: a Node.window may only be the root node, not a child of another node"
+       "%s: a Node.window may only be the root node or a child of the root Node.windows, \
+        not a child of any other node"
+       path
+       ()
+   | Windows, Some _ ->
+     invalid_argf
+       "%s: a Node.windows may only be the root node (the one virtual root holding every \
+        toplevel), not a child of another node"
        path
        ()
    (* The popover's one legal position, [Patcher_checks.check_placement]'s strings copied
@@ -169,6 +189,19 @@ let rec require_supported ~path ~parent (node : Node.t) =
        path
        (Kind.name k)
        ()
+   (* The windows root's converse, [Patcher_checks.check_placement]'s string: the
+      constructor rejects it, and this is the record-update backstop, so the handle cannot
+      certify what the runtime would crash on (an unchecked downcast to [W.Window.t] at
+      teardown). The keyless-window half of that backstop rides the window arm above. *)
+   | k, Some Kind.Windows ->
+     (match k with
+      | Window _ -> ()
+      | k ->
+        invalid_argf
+          "%s: Node.windows children must all be Node.window, not a %s"
+          path
+          (Kind.name k)
+          ())
    | (Window _ | _), _ -> ());
   (* Unlike the event message below, this one is built by [Placement] itself and not
      rebuilt here: it has two shapes and names three things, which is more than two
@@ -239,8 +272,10 @@ let current_root_kind = ref `Window
    handle counts it as firing again; a kind change at the same path with a steady [true]
    is a remount that re-fires live but is no edge to the path, so it goes uncounted here.
    No tree in this repository does either; if one ever does, this is the comment to
-   revisit. Per toplevel is per {i tree} here, because a handle's tree has one root --
-   [Node.windows] (Task 8) is where that widens.
+   revisit. Per toplevel is per {i window}: under a [Node.windows] root each keyed child
+   is its own toplevel (the runtime groups grabs by [Widget.get_root], and a windows
+   child's root is itself), so the grouping key is the child's path prefix ["root/i"];
+   under any other root the whole tree is one toplevel, as it was before Task 8.
 
    A global beside [current_root_kind], for its reasons and with its caveat: the state is
    the most recently created handle's, and interleaving two handles would confuse them.
@@ -257,11 +292,28 @@ let autofocus_paths (node : Node.t) =
   List.rev !acc
 ;;
 
-let check_autofocus node =
+let check_autofocus (node : Node.t) =
   let requested = autofocus_paths node in
-  (match List.filter requested ~f:(fun path -> not (Set.mem !autofocus_fired path)) with
-   | [] | [ _ ] -> ()
-   | first :: second :: _ -> invalid_arg (Events.autofocus_rejection ~first ~second));
+  let toplevel_of path =
+    match node.kind with
+    | Windows ->
+      (match String.split path ~on:'/' with
+       | root :: child :: _ -> root ^ "/" ^ child
+       | _ -> path)
+    | _ -> "root"
+  in
+  let fresh =
+    List.filter requested ~f:(fun path -> not (Set.mem !autofocus_fired path))
+  in
+  (* Walk order, as the runtime's claim queue is: the first pair that shares a toplevel is
+     the pair the fixup pass would name. *)
+  List.iteri fresh ~f:(fun i second ->
+    match
+      List.find (List.take fresh i) ~f:(fun first ->
+        String.equal (toplevel_of first) (toplevel_of second))
+    with
+    | Some first -> invalid_arg (Events.autofocus_rejection ~first ~second)
+    | None -> ());
   autofocus_fired := String.Set.of_list requested
 ;;
 
@@ -270,21 +322,47 @@ let check_autofocus node =
    keeps the two spellings the same. *)
 let check_root (node : Node.t) =
   match !current_root_kind, node.kind with
-  | `Window, Window _ -> ()
+  | `Window, (Window _ | Windows) -> ()
   | `Window, k ->
     invalid_argf
-      "Bonsai_gtk: the root node must be a Node.window, got %s. A tree started this way \
-       shows its own root, and a GtkWindow is the only thing GTK can show on its own. \
-       Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own."
+      "Bonsai_gtk: the root node must be a Node.window or a Node.windows, got %s. A tree \
+       started this way shows its own root, and a GtkWindow is the only thing GTK can \
+       show on its own (Node.windows is the virtual root holding several of them). Use \
+       Bonsai_gtk.Expert.embed for a tree parented into a container you already own."
       (Kind.name k)
       ()
-  | `Not_window, Window _ ->
+  | `Not_window, (Window _ | Windows) ->
     invalid_arg
-      "Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is \
-       parented into a container the caller owns and a GtkWindow is a toplevel that \
-       cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make \
-       the root a container."
+      "Bonsai_gtk.embed: the root node is a Node.window (or a Node.windows), but an \
+       embedded tree is parented into a container the caller owns and a GtkWindow is a \
+       toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its \
+       windows, or make the root a container."
   | `Not_window, _ -> ()
+;;
+
+(* The [~transient_for] resolutions, from the same tree the runtime's fixup resolves from
+   its registry: under a [Node.windows] root the registry holds exactly the keyed
+   children, so the two walks reject the same trees with the same [Events] strings. The
+   self-reference is the record-update backstop ([Node.window] rejects the pair at the
+   constructor). *)
+let check_window_refs (root : Node.t) =
+  let existing =
+    match root.kind, root.children with
+    | Windows, Children.List cs -> List.filter_map cs ~f:(fun (c : Node.t) -> c.key)
+    | _ -> []
+  in
+  let sorted = List.sort existing ~compare:Key.compare in
+  let rec go ~path (n : Node.t) =
+    (match n.kind with
+     | Window { transient_for = Some key; _ } ->
+       if Option.exists n.key ~f:(Key.equal key)
+       then invalid_arg (Events.transient_for_self_rejection ~path ~key)
+       else if not (List.mem existing key ~equal:Key.equal)
+       then invalid_arg (Events.transient_for_rejection ~path ~key ~existing:sorted)
+     | _ -> ());
+    Children.iteri n.children ~path ~f:(fun path child -> go ~path child)
+  in
+  go ~path:"root" root
 ;;
 
 module Result_spec = struct
@@ -307,6 +385,9 @@ module Result_spec = struct
        same string. *)
     Action_resolution.check ~path:"root" node;
     require_supported ~path:"root" ~parent:None node;
+    (* After the walk and before autofocus, as at runtime: the transient resolutions ride
+       the generic fixup queue, which [run_fixups] drains before [apply_autofocus]. *)
+    check_window_refs node;
     check_autofocus node
   ;;
 
@@ -737,6 +818,42 @@ module Result_spec = struct
             M3"
            name
            ())
+    (* The user asked the window to close (the X button, Alt+F4) -- which live is a
+       [close-request] the runtime always vetoes; fires [Attr.on_close_request]'s effect.
+       By {i key} rather than test_id, because the key is the window's identity in the
+       [Node.windows] list (a [Node.window] root joins in when it carries one). A window
+       with no handler fails like every other action: live, the runtime swallows the
+       request and reports once, so the model heard nothing and the test asked to exercise
+       a handler that is not there. *)
+    | Close_request key ->
+      let windows =
+        match node.kind, node.children with
+        | Windows, Children.List cs ->
+          List.filter_map cs ~f:(fun (c : Node.t) -> Option.map c.key ~f:(fun k -> k, c))
+        | Window _, _ ->
+          (match node.key with
+           | Some k -> [ k, node ]
+           | None -> [])
+        | _ -> []
+      in
+      (match List.Assoc.find windows key ~equal:Key.equal with
+       | None ->
+         failwithf
+           "Bonsai_gtk_test: no window is keyed %S (keys that exist: %s)"
+           (key : Key.t)
+           (match List.map windows ~f:fst with
+            | [] -> "none"
+            | keys -> String.concat ~sep:", " (List.map keys ~f:(sprintf "%S")))
+           ()
+       | Some (w : Node.t) ->
+         (match (Attrs.find w.attrs On_close_request :> Attr.Private.t option) with
+          | Some (On_close_request h) -> h ()
+          | _ ->
+            failwithf
+              "Bonsai_gtk_test: window %S has no on_close_request handler (live, the \
+               runtime swallows the request and reports once -- the window stays open)"
+              (key : Key.t)
+              ()))
   ;;
 end
 

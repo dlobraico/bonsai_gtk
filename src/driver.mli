@@ -13,16 +13,17 @@ type t
     allowed to be. The two entry points are the two constructors, so neither can pass the
     other's rule by accident and each rejection message is written exactly once.
 
-    - [`Window] — {!Bonsai_gtk.start}'s. The root {i must} be a [Node.window]: the
-      application adds it and presents it, and nothing else can be shown on its own.
-    - [`Not_window] — {!Bonsai_gtk.Expert.embed}'s. The root must be anything {i but} a
-      [Node.window]: the result is parented into a container the caller owns, and a
-      [GtkWindow] is a toplevel that cannot be parented. So the rule inverts rather than
-      relaxes.
+    - [`Window] — {!Bonsai_gtk.start}'s. The root {i must} be a [Node.window] or a
+      [Node.windows]: the application adds and presents each window, and nothing else can
+      be shown on its own.
+    - [`Not_window] — {!Bonsai_gtk.Expert.embed}'s. The root must be anything {i but}
+      those two: the result is parented into a container the caller owns, and a
+      [GtkWindow] is a toplevel that cannot be parented (a [Node.windows] is nothing but
+      toplevels). So the rule inverts rather than relaxes.
 
     Below the root the rule is the same for both and is the patcher's: a [Node.window]
-    that is not the root is [Invalid_argument] wherever it appears — which, for a
-    [`Not_window] tree, means anywhere at all. *)
+    anywhere but the root or the root [Node.windows]'s child list is [Invalid_argument]
+    wherever it appears — which, for a [`Not_window] tree, means anywhere at all. *)
 type root_kind =
   [ `Window
   | `Not_window
@@ -95,8 +96,19 @@ val frame : t -> unit
     what was queued. *)
 val schedule_event : t -> unit Ui_effect.t -> unit
 
-(** The root widget, or [None] before the first {!frame} (and after {!stop}). *)
+(** The root widget, or [None] before the first {!frame} (and after {!stop}).
+
+    {b Also [None] for a [Node.windows] root} — a breaking change of M3 Task 8. The widget
+    such a root holds is a never-shown anchor, useful to nobody; the real toplevels are
+    {!windows}'s answer. Every M2 caller rendered a [Node.window] root and still gets
+    [Some]. *)
 val root_widget : t -> Widget.t option
+
+(** The live [GtkWindow]s of a [Node.windows] root, [(key, widget)] in the model's own
+    list order — what a test dumps and what [Effect.Window.present] (Task 9) resolves.
+    Empty for a [Node.window] root (use {!root_widget}), before the first {!frame}, and
+    after {!stop}. *)
+val windows : t -> (Key.t * Widget.t) list
 
 (** Starts running a frame [fps] times a second, which is what services [Bonsai.Clock] and
     any after-display handlers.
@@ -140,9 +152,9 @@ val broken : t -> bool
 val mark_broken : t -> unit
 
 (** Stops the scheduler, tears the widget tree down, invalidates the Bonsai computation's
-    incremental observers, and drops [on_root_widget_changed]. The driver is dead
-    afterwards: {!root_widget} is [None] and {!frame} raises. Build a new driver to render
-    again. Idempotent.
+    incremental observers, and drops [on_root_widget_changed] {i and} [on_window_created].
+    The driver is dead afterwards: {!root_widget} is [None] and {!frame} raises. Build a
+    new driver to render again. Idempotent.
 
     Dropping the callback matters because the driver itself is not collectable — its
     Bonsai graph stays reachable from Incremental's global state for the life of the

@@ -483,6 +483,9 @@ type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
 type window_props =
   { title : string option [@sexp_drop_if Option.is_none]
   ; default_size : (int * int) option [@sexp_drop_if Option.is_none]
+  ; transient_for : Key.t option [@sexp_drop_if Option.is_none]
+  ; modal : bool [@sexp_drop_if Bool.equal Defaults.Window.modal]
+  ; resizable : bool [@sexp_drop_if Bool.equal Defaults.Window.resizable]
   }
 [@@deriving sexp_of, equal]
 
@@ -527,6 +530,11 @@ type t =
   | Popover of popover_props
   | Menu_button of menu_button_props
   | Window of window_props
+  (* Carries nothing: the windows root is a virtual node -- one never-shown anchor widget
+     holding the keyed toplevels -- and everything it could say (the children, their keys)
+     lives on the node, not the kind. The one nullary constructor, because OCaml has no
+     empty record and a [unit] payload would be a third spelling of "nothing". *)
+  | Windows
   | Native of Native.t
 [@@deriving sexp_of, variants]
 
@@ -571,6 +579,7 @@ let name = function
   | Popover _ -> "Popover"
   | Menu_button _ -> "MenuButton"
   | Window _ -> "Window"
+  | Windows -> "Windows"
   | Native n -> "Native:" ^ n.name
 ;;
 
@@ -645,6 +654,7 @@ let equal_props a b =
   | Popover a, Popover b -> equal_popover_props a b
   | Menu_button a, Menu_button b -> equal_menu_button_props a b
   | Window a, Window b -> equal_window_props a b
+  | Windows, Windows -> true
   | Native a, Native b -> String.equal a.name b.name && phys_equal a.payload b.payload
   (* The one wildcard left in this file, and it is guarded rather than silent.
 

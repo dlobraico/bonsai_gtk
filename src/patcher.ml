@@ -10,12 +10,13 @@ open Gtk_import
 
 type ctx = Patcher_fixups.ctx =
   { signals : Signals.ctx
-  ; on_window_created : Widget.t -> unit
+  ; mutable on_window_created : Widget.t -> unit
   ; report : node_path:string -> string -> unit
   ; stacks : (string, Widget.t) Hashtbl.t
   ; stack_claims : stack_claim Queue.t
   ; fixups : (unit -> unit) Queue.t
   ; autofocus_claims : autofocus_claim Queue.t
+  ; windows : (Key.t, Widget.t) Hashtbl.t
   }
 
 and autofocus_claim = Patcher_fixups.autofocus_claim =
@@ -31,6 +32,7 @@ and stack_claim = Patcher_fixups.stack_claim =
   }
 
 let create_ctx = Patcher_fixups.create_ctx
+let drop_on_window_created = Patcher_fixups.drop_on_window_created
 let run_fixups = Patcher_fixups.run_fixups
 let abandon_fixups = Patcher_fixups.abandon_fixups
 let child_path = Patcher_checks.child_path
@@ -57,10 +59,16 @@ type live =
    and they must not drift: a kind that acquires something at mount has to release it on
    both paths, and a single exhaustive match is what makes adding one a compile error in
    the one place rather than a silent leak in the other. *)
-let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
-  match kind with
-  (* A window has no parent to unparent it, so it must be destroyed explicitly. *)
-  | Window _ -> W.Window.destroy (cast widget)
+let release_kind ctx ~(node : Node.t) ~(widget : Widget.t) =
+  match node.kind with
+  (* A window has no parent to unparent it, so it must be destroyed explicitly. The
+     registry entry goes first (guarded by widget identity, so a window that was never
+     registered -- a [Window] root -- is a no-op): a destroyed window must not stay
+     resolvable by a sibling's [~transient_for]. The whole function takes the {i node}
+     rather than the kind for this arm's sake -- the key lives on the node. *)
+  | Window _ ->
+    Option.iter node.key ~f:(fun key -> Patcher_fixups.unregister_window ctx ~key widget);
+    W.Window.destroy (cast widget)
   | Stack { name; _ } -> Patcher_fixups.unregister_stack ctx ~name widget
   | Native n -> Native_gtk.destroy_payload n widget
   (* The rows never pass through [list_ops.remove] on this path -- the patcher tears a
@@ -109,6 +117,9 @@ let release_kind ctx ~(kind : Kind.t) ~(widget : Widget.t) =
   | Grid _
   | Stack_switcher _
   | Stack_sidebar _
+  (* The anchor was never parented and never presented; dropping the [live] is the whole
+     of its teardown. *)
+  | Windows
   | Box _ -> ()
 ;;
 
@@ -162,7 +173,7 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
     Option.iter !built_actions ~f:Actions.release;
     Signals.disconnect !built_connections;
     Option.iter !built_children ~f:(Children.iter ~f:(destroy ctx));
-    release_kind ctx ~kind:node.kind ~widget
+    release_kind ctx ~node ~widget
   in
   match
     (* After [create] has applied the kind's props but before any attribute touches it:
@@ -211,6 +222,14 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
        produces, which is a fresh widget and so a fresh "frame this widget mounts". *)
     if Events.autofocus_requested node.attrs
     then Patcher_fixups.claim_autofocus ctx ~path widget;
+    (* A [Node.windows] child registers under its key as it mounts (every child has one:
+       the constructor and the shared walk both insist), so a sibling's [~transient_for]
+       can resolve it from the fixup queue whichever of them the walk reached first. The
+       teardown half is [release_kind]'s Window arm. Only windows-list children register:
+       a [Window] root has no siblings to be transient for. *)
+    (match parent_kind, node.key with
+     | Some Kind.Windows, Some key -> Patcher_fixups.register_window ctx ~path ~key widget
+     | _ -> ());
     Patcher_fixups.note_interest
       ctx
       ~path
@@ -386,7 +405,7 @@ and destroy ctx (live : live) =
   (* Per child rather than around the loop: a raise on the third child must not strand the
      fourth, which is the whole point. *)
   Children.iter live.children ~f:(fun c -> step (fun () -> destroy ctx c));
-  step (fun () -> release_kind ctx ~kind:live.node.kind ~widget:live.widget);
+  step (fun () -> release_kind ctx ~node:live.node ~widget:live.widget);
   Option.iter !first ~f:(fun (exn, backtrace) ->
     Stdlib.Printexc.raise_with_backtrace exn backtrace)
 
@@ -430,7 +449,7 @@ and drop_stack_names ctx (live : live) =
   (match Patcher_fixups.interest_of_kind live.node.kind with
    | Stack { name; _ } -> Patcher_fixups.unregister_stack ctx ~name live.widget
    | Nothing
-   | Window
+   | Window _
    | Stack_ref _
    | List_box _
    | Flow_box _

@@ -440,6 +440,9 @@ type stack_ref_props = { stack : string } [@@deriving sexp_of, equal]
 type window_props =
   { title : string option [@sexp_drop_if Option.is_none]
   ; default_size : (int * int) option [@sexp_drop_if Option.is_none]
+  ; transient_for : Key.t option [@sexp_drop_if Option.is_none]
+  ; modal : bool [@sexp_drop_if Bool.equal Defaults.Window.modal]
+  ; resizable : bool [@sexp_drop_if Bool.equal Defaults.Window.resizable]
   }
 [@@deriving sexp_of, equal]
 
@@ -484,6 +487,11 @@ type t =
   | Popover of popover_props
   | Menu_button of menu_button_props
   | Window of window_props
+  (* Carries nothing: the windows root is a virtual node -- one never-shown anchor widget
+     holding the keyed toplevels -- and everything it could say (the children, their keys)
+     lives on the node, not the kind. The one nullary constructor, because OCaml has no
+     empty record and a [unit] payload would be a third spelling of "nothing". *)
+  | Windows
   | Native of Native.t
 (* [variants] is here for exactly one thing: [Kind.Variants.descriptions] is a
    compiler-derived list of every constructor, so a test that must cover them all can

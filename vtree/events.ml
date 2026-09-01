@@ -75,12 +75,18 @@ let for_kind : Kind.t -> Attr.Name.t list = function
   | Editable_label _ -> [ On_changed; On_editing_changed ]
   (* The popover's one exposed signal; [activate-default] waits for a consumer. *)
   | Popover _ -> [ On_closed ]
+  (* [close-request] is the window's one exposed signal, and it is a veto: the runtime
+     always answers GTK "handled" and this attr is how the model hears about the request.
+     See [Attr.on_close_request]. *)
+  | Window _ -> [ On_close_request ]
   (* A [GtkMenuButton]'s [activate] (the button was popped open programmatically or by
      mnemonic) is deliberately unexposed in M3: nothing reports a {i user} open either
      (see [Node.popover]), and half an opening story is worse than none. *)
   | Menu_button _
-  (* [GtkHeaderBar] and [GtkActionBar] declare no signals at all -- pure structure. *)
-  | Window _
+  (* [GtkHeaderBar] and [GtkActionBar] declare no signals at all -- pure structure. And
+     the windows root is a virtual node whose anchor widget is never realized, so nothing
+     could ever emit from it. *)
+  | Windows
   | Box _
   | Grid _
   | Center_box _
@@ -169,6 +175,7 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_editing_changed
   | On_cursor_moved
   | On_closed
+  | On_close_request
   | Actions
   | Row_selectable
   | Row_activatable
@@ -275,6 +282,7 @@ let attr_phases (attr : Attr.t) =
   | On_editing_changed _
   | On_cursor_moved _
   | On_closed _
+  | On_close_request _
   | On_contains_focus_changed _
   | Actions _
   | Many _ -> []
@@ -393,4 +401,29 @@ let autofocus_rejection ~first ~second =
      autofocus may fire per frame per toplevel"
     first
     second
+;;
+
+(* The [~transient_for] rejections, in [vtree] on the autofocus strings' reasoning: the
+   patcher resolves the key at fixup time against the windows its walk registered, and
+   [Bonsai_gtk_test] resolves the same key against the same tree headlessly -- both render
+   these, so the two messages are identical by construction. *)
+let transient_for_rejection ~path ~key ~existing =
+  sprintf
+    "%s: ~transient_for names no window: no Node.windows child is keyed %S (keys that \
+     exist: %s; a window may only be transient for another window in the same \
+     Node.windows list)"
+    path
+    (key : Key.t)
+    (match existing with
+     | [] -> "none"
+     | keys ->
+       String.concat ~sep:", " (List.map keys ~f:(fun k -> sprintf "%S" (k : Key.t))))
+;;
+
+let transient_for_self_rejection ~path ~key =
+  sprintf
+    "%s: ~transient_for is this window's own ~key %S (a window cannot be transient for \
+     itself)"
+    path
+    (key : Key.t)
 ;;

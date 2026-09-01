@@ -22,9 +22,22 @@ let child_op ~path f =
    [Bonsai_gtk_vtree.Placement], which holds the table and the message. *)
 let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t) =
   (match node.kind with
+   (* [Some Windows] implies "child of the root": a [Windows] anywhere below the root is
+      itself rejected two arms down, so by the time a window's parent is one, that parent
+      passed this same check as the root. *)
    | Window _ when not is_root ->
+     (match parent_kind with
+      | Some Kind.Windows -> ()
+      | Some _ | None ->
+        invalid_argf
+          "%s: a Node.window may only be the root node or a child of the root \
+           Node.windows, not a child of any other node"
+          path
+          ())
+   | Windows when not is_root ->
      invalid_argf
-       "%s: a Node.window may only be the root node, not a child of another node"
+       "%s: a Node.windows may only be the root node (the one virtual root holding every \
+        toplevel), not a child of another node"
        path
        ()
    (* The one place a popover is legal in M3, and [Bonsai_gtk_test] refuses the same trees
@@ -60,6 +73,28 @@ let check_placement ~path ~is_root ~(parent_kind : Kind.t option) (node : Node.t
    | Some (Menu_button _), k ->
      invalid_argf
        "%s: Node.menu_button's ~popover slot must hold a Node.popover, not a %s"
+       path
+       (Kind.name k)
+       ()
+   | _ -> ());
+  (* The windows root's converse, on the menu button's arrangement: [Node.windows] rejects
+     both mistakes at the constructor (the children are in hand there), and this is the
+     backstop for a tree assembled by record update -- a non-window child would reach
+     [W.Window.destroy] through an unchecked downcast at teardown, and an unkeyed one
+     could never be named by [~transient_for] or reconciled by identity. [Bonsai_gtk_test]
+     walks the same rule with the same strings. *)
+  (match parent_kind, node.kind with
+   | Some Windows, Window _ ->
+     if Option.is_none node.key
+     then
+       invalid_argf
+         "%s: a Node.windows child carries no ~key (the window's identity: what \
+          ~transient_for names and what keeps the GtkWindow across reorders)"
+         path
+         ()
+   | Some Windows, k ->
+     invalid_argf
+       "%s: Node.windows children must all be Node.window, not a %s"
        path
        (Kind.name k)
        ()

@@ -1512,3 +1512,97 @@ let%expect_test "editable label props take part in equal_props" =
   print_s [%sexp (Kind.same_kind (props ()) (props ~editing:true ()) : bool)];
   [%expect {| true |}]
 ;;
+
+(* ---------- Task 8: Node.windows and the grown window props ---------- *)
+
+let%expect_test "window constructor, defaults, and the sexp's drops" =
+  (* Every default dropped from the sexp, so a golden stays about what the model said. *)
+  print_s [%sexp (Node.window (Node.label "x") : Node.t)];
+  [%expect
+    {|
+    ((kind (Window ())) (attrs ())
+     (children
+      (Single (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}];
+  print_s
+    [%sexp
+      (Node.window
+         ~key:"dialog"
+         ~title:"prefs"
+         ~transient_for:"main"
+         ~modal:true
+         ~resizable:false
+         (Node.label "x")
+       : Node.t)];
+  [%expect
+    {|
+    ((kind
+      (Window
+       ((title (prefs)) (transient_for (main)) (modal true) (resizable false))))
+     (key dialog) (attrs ())
+     (children
+      (Single (((kind (Label ((text x)))) (attrs ()) (children No_children))))))
+    |}]
+;;
+
+let%expect_test "window props take part in equal_props" =
+  let props ?transient_for ?(modal = false) ?(resizable = true) () =
+    (Node.window ~key:"k" ?transient_for ~modal ~resizable (Node.label "x")).kind
+  in
+  print_s
+    [%sexp
+      (( Kind.equal_props (props ()) (props ())
+       , Kind.equal_props (props ()) (props ~transient_for:"main" ())
+       , Kind.equal_props (props ()) (props ~modal:true ())
+       , Kind.equal_props (props ()) (props ~resizable:false ()) )
+       : bool * bool * bool * bool)];
+  [%expect {| (true false false false) |}]
+;;
+
+let%expect_test "a window transient for itself is rejected at the constructor" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.window ~key:"main" ~transient_for:"main" (Node.label "x"));
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.window: ~transient_for \"main\" names this window's own ~key (a window cannot be transient for itself)")
+    |}]
+;;
+
+let%expect_test "a windows child that is not a window is rejected, naming the index" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.windows [ Node.window ~key:"a" (Node.label "x"); Node.label ~key:"b" "y" ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.windows: child 1 is a Label, not a Node.window (a windows root holds only toplevels)")
+    |}]
+;;
+
+let%expect_test "a windows child without a key is rejected, naming the index" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.windows [ Node.window ~key:"a" (Node.label "x"); Node.window (Node.label "y") ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.windows: child 1 has no ~key (the window's identity: what ~transient_for and Effect.Window.present name, and what keeps the GtkWindow across reorders)")
+    |}]
+;;
+
+(* [Node.windows []] is a legal value -- rendering it is the declarative quit (the mli's
+   claim; the live suite is where the GtkApplication release is real). *)
+let%expect_test "windows constructor and the empty list" =
+  print_s [%sexp (Node.windows [] : Node.t)];
+  [%expect {| ((kind Windows) (attrs ()) (children (List ()))) |}];
+  print_s [%sexp (Node.windows [ Node.window ~key:"main" (Node.label "x") ] : Node.t)];
+  [%expect
+    {|
+    ((kind Windows) (attrs ())
+     (children
+      (List
+       (((kind (Window ())) (key main) (attrs ())
+         (children
+          (Single
+           (((kind (Label ((text x)))) (attrs ()) (children No_children))))))))))
+    |}]
+;;

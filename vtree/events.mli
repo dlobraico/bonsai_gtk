@@ -130,3 +130,16 @@ val autofocus_requested : Attrs.t -> bool
     and [Bonsai_gtk_test]'s headless one are identical by construction. [first] and
     [second] are the two node paths. *)
 val autofocus_rejection : first:string -> second:string -> string
+
+(** The [Invalid_argument] message for a [~transient_for] naming a key no [Node.windows]
+    child carries -- the single-referent rule (spec §5.4), as the stack switcher's is.
+    Rendered here so the patcher's fixup-time raise and [Bonsai_gtk_test]'s headless one
+    are identical by construction. [existing] is every key that does resolve, sorted, so
+    the message names what the caller could have said. *)
+val transient_for_rejection : path:string -> key:Key.t -> existing:Key.t list -> string
+
+(** The [Invalid_argument] message for a window transient for itself. [Node.window]
+    rejects the pair at the constructor; this string is the walk-time backstop for a tree
+    assembled by record update, rendered by the patcher's fixup and by [Bonsai_gtk_test]
+    alike. *)
+val transient_for_self_rejection : path:string -> key:Key.t -> string

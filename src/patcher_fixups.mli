@@ -12,12 +12,13 @@ open Gtk_import
     re-export it by equation; nothing outside the library can see this module. *)
 type ctx =
   { signals : Signals.ctx
-  ; on_window_created : Widget.t -> unit
+  ; mutable on_window_created : Widget.t -> unit
   ; report : node_path:string -> string -> unit
   ; stacks : (string, Widget.t) Hashtbl.t
   ; stack_claims : stack_claim Queue.t
   ; fixups : (unit -> unit) Queue.t
   ; autofocus_claims : autofocus_claim Queue.t
+  ; windows : (Key.t, Widget.t) Hashtbl.t
   }
 
 and autofocus_claim =
@@ -32,6 +33,11 @@ and stack_claim =
   ; claimant : Widget.t
   }
 
+(** Replaces [ctx.on_window_created] with a no-op. [Driver.stop]'s: the callback closes
+    over the [GtkApplication] under [Bonsai_gtk.start], and a stopped driver is never
+    collectable, so leaving it would keep the application alive for the process's life. *)
+val drop_on_window_created : ctx -> unit
+
 val create_ctx
   :  ?report:(node_path:string -> string -> unit)
   -> signals:Signals.ctx
@@ -43,6 +49,19 @@ val create_ctx
     the name during the same pass owns it now, and dropping the one it displaced must not
     unregister it. *)
 val unregister_stack : ctx -> name:string -> Widget.t -> unit
+
+(** Records a [Node.windows] child in [ctx.windows] as it mounts, so a sibling's
+    [~transient_for] can resolve it from the fixup queue whichever of them the walk
+    reached first. Unlike the stack names these need no claims pass: a child's key never
+    changes while it lives (the reconciler matches by key, so a renamed child is a
+    remove-plus-insert), and duplicate keys were already rejected by
+    [Reconcile.check_unique_keys]. The [`Duplicate] arm is the same defensive raise the
+    stack registry keeps. *)
+val register_window : ctx -> path:string -> key:Key.t -> Widget.t -> unit
+
+(** {!unregister_stack}'s guard, over the window registry: removes [key] only while the
+    entry is still [widget]'s. Safe to call for any keyed window, registered or not. *)
+val unregister_window : ctx -> key:Key.t -> Widget.t -> unit
 
 (** Applies the pass's collected {!stack_claim}s to [ctx.stacks] — every give-up first,
     then every take, so that two stacks may exchange names in one frame — and empties the
@@ -68,7 +87,7 @@ val abandon_fixups : ctx -> unit
     with a registration or a fixup cannot be added without the compiler asking. *)
 type interest =
   | Nothing
-  | Window
+  | Window of Kind.window_props
   | Stack of Kind.stack_props
   | Stack_ref of [ `Switcher | `Sidebar ] * string
   | List_box of Kind.list_box_props

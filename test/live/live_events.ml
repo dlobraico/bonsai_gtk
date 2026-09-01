@@ -66,6 +66,7 @@ let all_kinds : Kind.t list =
   ; (Node.popover (child ())).kind
   ; (Node.menu_button ()).kind
   ; (Node.window (child ())).kind
+  ; (Node.windows []).kind
   ; (Native_gtk.node thing_impl ()).kind
   ]
 ;;

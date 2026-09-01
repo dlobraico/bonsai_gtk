@@ -277,6 +277,14 @@ module Action : sig
         {b no routing}: who sees the chord first is [?phase]'s business, real only in
         [test/live/live_input.ml]. A radio action fails loudly (a shortcut passes no
         parameter). *)
+    | Close_request of Key.t
+    (** ~key of a window in the root [Node.windows] list (or of a keyed [Node.window]
+        root) — the user asked it to close (X button, Alt+F4), which live is a
+        [close-request] the runtime {b always vetoes}. Fires [Attr.on_close_request]'s
+        effect; a model that drops the window's node follows the user, and one that does
+        not shows the window standing in the diff, which is the veto in headless form. A
+        window with no handler fails loudly: live, the request would be swallowed and
+        reported once, so the model heard nothing. *)
   [@@deriving sexp_of]
 end
 

@@ -931,8 +931,57 @@ let overlay ?key ?attrs ?(overlays = []) child =
     (Slots [ "child", Single (Some child); "overlays", List overlays ])
 ;;
 
-let window ?key ?attrs ?title ?default_size child =
-  make ?key ?attrs (Window { title; default_size }) (Single (Some child))
+let window
+  ?key
+  ?attrs
+  ?title
+  ?default_size
+  ?transient_for
+  ?(modal = Defaults.Window.modal)
+  ?(resizable = Defaults.Window.resizable)
+  child
+  =
+  (* The one reference no fixup could ever make good: [set_transient_for] on the window
+     itself is a GTK critical, and no later frame can change what the key names. The
+     record-update backstop for the same mistake is [Events.transient_for_self_rejection],
+     raised by the runtime's fixup and by [Bonsai_gtk_test]. *)
+  (match key, transient_for with
+   | Some k, Some t when Key.equal k t ->
+     invalid_argf
+       "Node.window: ~transient_for %S names this window's own ~key (a window cannot be \
+        transient for itself)"
+       (t : Key.t)
+       ()
+   | _ -> ());
+  make
+    ?key
+    ?attrs
+    (Window { title; default_size; transient_for; modal; resizable })
+    (Single (Some child))
+;;
+
+let windows children =
+  (* Both rejections live here because the constructor has the children in hand (the
+     [require_child_keys] reasoning above); the shared walk rejects the same trees again
+     for the record-update case, with the patcher's strings. Kind first: a non-window
+     child's missing key is the lesser half of what is wrong with it. *)
+  List.iteri children ~f:(fun i (c : t) ->
+    match c.kind with
+    | Window _ -> ()
+    | k ->
+      invalid_argf
+        "Node.windows: child %d is a %s, not a Node.window (a windows root holds only \
+         toplevels)"
+        i
+        (Kind.name k)
+        ());
+  require_child_keys
+    ~which:"Node.windows"
+    ~why:
+      "the window's identity: what ~transient_for and Effect.Window.present name, and \
+       what keeps the GtkWindow across reorders"
+    children;
+  make Windows (List children)
 ;;
 
 let native ?key ?attrs n = make ?key ?attrs (Native n) No_children

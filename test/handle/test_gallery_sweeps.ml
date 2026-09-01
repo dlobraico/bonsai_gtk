@@ -113,6 +113,7 @@ let%expect_test "every event attr has an action that fires it" =
     | On_editing_changed -> Some "Set_editing"
     | On_cursor_moved -> Some "Move_cursor"
     | On_closed -> Some "Close_popover"
+    | On_close_request -> Some "Close_request"
     | Actions -> Some "Activate_action"
     | Shortcut -> Some "Fire_shortcut"
     | On_click -> Some "Click_at"
@@ -236,6 +237,10 @@ type placement =
      so its subject sits inside a scaffold menu button rather than beside the scaffold --
      the same reason the window's sits at the root. *)
   | In_menu_button
+  (* The windows root's row: a [Node.windows] is legal only at the root and holds only
+     windows, so its subject sits at the root and the scaffold is grafted into its first
+     child window (the step button has to live somewhere the checks accept). *)
+  | Root_windows
 
 let lifecycle_app ~placement ~before ~after (graph @ local) =
   let step, set_step = Bonsai.state 0 graph in
@@ -275,11 +280,21 @@ let lifecycle_app ~placement ~before ~after (graph @ local) =
        put underneath it. *)
     let window = Option.value subject ~default:before in
     { window with children = Single (Some (scaffold None)) }
+  | Root_windows ->
+    (* The window row's graft, one level down: the subject is the windows node itself, and
+       the scaffold replaces the first child window's content. *)
+    let windows_node = Option.value subject ~default:before in
+    (match windows_node.children with
+     | List (first :: rest) ->
+       { windows_node with
+         children = List ({ first with children = Single (Some (scaffold None)) } :: rest)
+       }
+     | _ -> failwith "lifecycle sweep: a Root_windows row needs at least one window")
 ;;
 
 let subject_of ~placement (tree : Node.t) =
   match placement with
-  | Root -> Some tree
+  | Root | Root_windows -> Some tree
   | Child ->
     (match tree.children with
      | Single (Some box) ->
@@ -367,7 +382,7 @@ let run_row (placement, before, after) =
   let patched = phase () in
   let unmounted =
     match placement with
-    | Root -> None
+    | Root | Root_windows -> None
     | Child | In_menu_button ->
       Bonsai_gtk_test.Handle.do_actions handle [ Click "step" ];
       phase ()
@@ -381,7 +396,7 @@ let run_row (placement, before, after) =
       "%-15s mount=ok patch=ok unmount=%-9s same_kind=%-5b props_changed=%-5b child_ops=%s\n"
       name
       (match placement, unmounted with
-       | Root, _ -> "n/a(root)"
+       | (Root | Root_windows), _ -> "n/a(root)"
        | (Child | In_menu_button), None -> "ok"
        | (Child | In_menu_button), Some _ -> "STILL THERE")
       same_kind
@@ -504,7 +519,19 @@ let sweep_rows : (placement * Node.t * Node.t) list =
   ; ( In_menu_button
     , Node.popover ~open_:false (child ())
     , Node.popover ~open_:true ~position:Top (child ()) )
-  ; Root, Node.window ~title:"a" (child ()), Node.window ~title:"b" (child ())
+  ; ( Root
+    , Node.window ~title:"a" ~modal:false (child ())
+    , Node.window ~title:"b" ~modal:true ~resizable:false (child ()) )
+    (* The windows row can only change its children -- the kind is nullary -- so it
+       reports [props_changed=false] and joins [Overlay] in the named list below. The
+       child list is where its life happens: one window updated (a title change), one
+       inserted. *)
+  ; ( Root_windows
+    , Node.windows [ Node.window ~key:"a" ~title:"a" (child ()) ]
+    , Node.windows
+        [ Node.window ~key:"a" ~title:"a2" (child ())
+        ; Node.window ~key:"b" ~title:"b" (child ())
+        ] )
   ; ( Child
     , Node.native { Native.name = "thing"; payload = Payload "a" }
     , Node.native { Native.name = "thing"; payload = Payload "b" } )
@@ -528,9 +555,10 @@ let%expect_test "every kind is diffed, and no kind is skipped" =
   in
   print_s [%message "kinds with no row" (missing : string list)];
   (* A kind whose prop change is not [same_kind] is remounted on every frame that touches
-     it; a kind whose prop change is [equal_props] never updates at all. [Overlay] is the
-     one correct member of the second list -- its props are [unit] -- and its being named
-     here is what stops a second kind joining it in silence. *)
+     it; a kind whose prop change is [equal_props] never updates at all. [Overlay] (props
+     are [unit]) and [Windows] (nullary -- no props at all) are the two correct members of
+     the second list, and their being named here is what stops another kind joining them
+     in silence. *)
   print_s
     [%message
       "a prop change is not an update"
@@ -584,9 +612,10 @@ let%expect_test "every kind is diffed, and no kind is skipped" =
     Menu_button     mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     Popover         mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     Window          mount=ok patch=ok unmount=n/a(root) same_kind=true  props_changed=true  child_ops=-
+    Windows         mount=ok patch=ok unmount=n/a(root) same_kind=true  props_changed=false child_ops=1I/0M/0R/1U
     Native          mount=ok patch=ok unmount=ok        same_kind=true  props_changed=true  child_ops=-
     ("kinds with no row" (missing ()))
-    ("a prop change is not an update" (remounted ()) (skipped (Overlay)))
+    ("a prop change is not an update" (remounted ()) (skipped (Overlay Windows)))
     |}]
 ;;
 

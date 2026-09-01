@@ -18,8 +18,9 @@ open Bonsai.Let_syntax
    [Kind.Variants.descriptions] and [Attr.Name.all], so the header cannot drift away from
    the tree again without a test going red. The golden that pins the tree's sexp is
    [test_gallery.ml]. *)
-let gallery_tree ~n ~set_n =
+let gallery_window ~n ~set_n =
   Node.window
+    ~key:"main"
     ~attrs:[ Attr.widget_name "every-widget-root" ]
     ~title:"every widget"
     ~default_size:(900, 560)
@@ -362,6 +363,26 @@ let gallery_tree ~n ~set_n =
                ]
            ]
        ])
+;;
+
+(* A [Node.windows] root since Task 8 -- the census insists every constructor appears, and
+   [Windows] is legal nowhere else. The main window is the M1/M2 gallery unchanged (now
+   keyed); the dialog is the shape stavekeeper's dialog shell ports to -- keyed, transient
+   for the main window, modal, not resizable -- and carries the window-only attr.
+   [~transient_for] before its referent in the list, deliberately: resolution is after the
+   whole list exists, and this pins that order does not matter. *)
+let gallery_tree ~n ~set_n =
+  Node.windows
+    [ Node.window
+        ~key:"about"
+        ~attrs:[ Attr.on_close_request Ui_effect.Ignore ]
+        ~title:"about"
+        ~transient_for:"main"
+        ~modal:true
+        ~resizable:false
+        (Node.label "a transient dialog")
+    ; gallery_window ~n ~set_n
+    ]
 ;;
 
 let every_widget (graph @ local) =

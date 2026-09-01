@@ -3165,7 +3165,7 @@ let%expect_test "the root must be the kind the entry point requires" =
   [%expect
     {|
     (Invalid_argument
-     "Bonsai_gtk: the root node must be a Node.window, got Box. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own. Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.")
+     "Bonsai_gtk: the root node must be a Node.window or a Node.windows, got Box. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own (Node.windows is the virtual root holding several of them). Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.")
     |}];
   (* And the mirror image, which is the rule for a component destined for [Expert.embed]:
      a [GtkWindow] is a toplevel that cannot be parented at all. *)
@@ -3175,7 +3175,7 @@ let%expect_test "the root must be the kind the entry point requires" =
   [%expect
     {|
     (Invalid_argument
-     "Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make the root a container.")
+     "Bonsai_gtk.embed: the root node is a Node.window (or a Node.windows), but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its windows, or make the root a container.")
     |}];
   (* An embedded component with a container root is exactly what [embed] wants. *)
   let handle = Bonsai_gtk_test.create ~root_kind:`Not_window box_root in
@@ -3194,7 +3194,7 @@ let%expect_test "the root must be the kind the entry point requires" =
   [%expect
     {|
     (Invalid_argument
-     "Bonsai_gtk: the root node must be a Node.window, got Box. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own. Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.")
+     "Bonsai_gtk: the root node must be a Node.window or a Node.windows, got Box. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own (Node.windows is the virtual root holding several of them). Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.")
     |}]
 ;;
 
@@ -3240,7 +3240,7 @@ let%expect_test "two siblings with one key, and a window below the root" =
   [%expect
     {|
     (Invalid_argument
-     "root/0/0: a Node.window may only be the root node, not a child of another node")
+     "root/0/0: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node")
     |}]
 ;;
 
@@ -3369,5 +3369,262 @@ let%expect_test "Set_revealed, Set_position and Set_visible_child reach their ha
                    (children No_children))
                   ((kind (Label ((text P)))) (key parts) (attrs ())
                    (children No_children))))))))))))))
+    |}]
+;;
+
+(* ------------------------------------------------------------------------------------ *)
+
+(* Task 8: the windows-root shape, validated headlessly from the same tables and (for the
+   transient resolutions) the same [Events] strings the runtime renders, so a headless
+   suite cannot certify a tree the runtime refuses -- and the [Close_request] action, the
+   veto in headless form. *)
+
+let%expect_test "a windows root is accepted under `Window and rejected under `Not_window" =
+  let windows_root (_graph @ local) =
+    Bonsai.return
+      (Node.windows
+         [ Node.window ~key:"main" ~title:"main" (Node.label "m")
+         ; Node.window
+             ~key:"about"
+             ~title:"about"
+             ~transient_for:"main"
+             ~modal:true
+             (Node.label "a")
+         ])
+  in
+  let handle = Bonsai_gtk_test.create windows_root in
+  Bonsai_gtk_test.Handle.show handle;
+  [%expect
+    {|
+    ((kind Windows) (attrs ())
+     (children
+      (List
+       (((kind (Window ((title (main))))) (key main) (attrs ())
+         (children
+          (Single
+           (((kind (Label ((text m)))) (attrs ()) (children No_children))))))
+        ((kind (Window ((title (about)) (transient_for (main)) (modal true))))
+         (key about) (attrs ())
+         (children
+          (Single
+           (((kind (Label ((text a)))) (attrs ()) (children No_children))))))))))
+    |}];
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create ~root_kind:`Not_window windows_root in
+    Bonsai_gtk_test.Handle.show handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "Bonsai_gtk.embed: the root node is a Node.window (or a Node.windows), but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its windows, or make the root a container.")
+    |}]
+;;
+
+(* The constructor rejects all three of these; the walk is the record-update backstop,
+   with the patcher's strings, so the handle cannot certify what the runtime would crash
+   on or could never reconcile. *)
+let%expect_test "the windows walk backstops: nesting, a non-window child, a keyless one" =
+  let smuggle node (_graph @ local) = Bonsai.return node in
+  let win key = Node.window ~key (Node.label key) in
+  (* A windows node below the root, smuggled into a window's child slot. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let inner = Node.windows [ win "a" ] in
+    let handle =
+      Bonsai_gtk_test.create
+        (smuggle
+           { (Node.window ~title:"w" (Node.label "x")) with
+             children = Single (Some inner)
+           })
+    in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: a Node.windows may only be the root node (the one virtual root holding every toplevel), not a child of another node")
+    |}];
+  (* A non-window child, smuggled past the constructor by record update. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (smuggle
+           { (Node.windows [ win "a" ]) with
+             children = List [ win "a"; Node.label ~key:"b" "b" ]
+           })
+    in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/1: Node.windows children must all be Node.window, not a Label")
+    |}];
+  (* A keyless window child, the same way. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (smuggle
+           { (Node.windows [ win "a" ]) with
+             children = List [ win "a"; Node.window (Node.label "b") ]
+           })
+    in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/1: a Node.windows child carries no ~key (the window's identity: what ~transient_for names and what keeps the GtkWindow across reorders)")
+    |}];
+  (* And a window below anything that is not the root windows list still fails, with the
+     message now naming both legal positions. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle =
+      Bonsai_gtk_test.create
+        (smuggle
+           (Node.window ~title:"w" (Node.box ~orientation:Vertical [ win "inner" ])))
+    in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node")
+    |}]
+;;
+
+(* The [~transient_for] resolutions: a key naming no sibling, and (by record update, the
+   constructor's blind spot) a window transient for itself -- both the [Events] strings
+   the runtime's fixup renders, listing the keys that do exist. *)
+let%expect_test "a transient_for naming no window is rejected with the keys that exist" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.windows
+         [ Node.window ~key:"main" (Node.label "m")
+         ; Node.window ~key:"about" ~transient_for:"perfs" (Node.label "a")
+         ])
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create app in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/1: ~transient_for names no window: no Node.windows child is keyed \"perfs\" (keys that exist: \"about\", \"main\"; a window may only be transient for another window in the same Node.windows list)")
+    |}];
+  let self (_graph @ local) =
+    Bonsai.return
+      (Node.windows
+         [ { (Node.window ~key:"main" (Node.label "m")) with
+             kind =
+               Window
+                 { title = None
+                 ; default_size = None
+                 ; transient_for = Some "main"
+                 ; modal = false
+                 ; resizable = true
+                 }
+           }
+         ])
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create self in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: ~transient_for is this window's own ~key \"main\" (a window cannot be transient for itself)")
+    |}]
+;;
+
+(* Task 8 widens "per toplevel": under a windows root each keyed child is its own
+   toplevel, so two windows may each carry an autofocus in one frame -- and two grabs
+   inside one window are still refused, with the same string as ever. *)
+let%expect_test "autofocus is per window under a windows root" =
+  let one_each (_graph @ local) =
+    Bonsai.return
+      (Node.windows
+         [ Node.window ~key:"a" (Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ())
+         ; Node.window ~key:"b" (Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ())
+         ])
+  in
+  let handle = Bonsai_gtk_test.create one_each in
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  print_s [%sexp "accepted: one grab per window"];
+  [%expect {| "accepted: one grab per window" |}];
+  let two_in_one (_graph @ local) =
+    Bonsai.return
+      (Node.windows
+         [ Node.window
+             ~key:"a"
+             (Node.box
+                ~orientation:Vertical
+                [ Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+                ; Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+                ])
+         ])
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create two_in_one in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0/0/0 and root/0/0/1 both ask Attr.autofocus to grab focus in this frame, but at most one autofocus may fire per frame per toplevel")
+    |}]
+;;
+
+(* [Close_request] is the veto in headless form: the handler's effect fires and nothing
+   else happens -- the window stands until the model drops its node, which is exactly what
+   the diff after the action shows. *)
+let%expect_test "Close_request fires the handler; the model dropping the node is the \
+                 close"
+  =
+  let app (graph @ local) =
+    let open_, set_open = Bonsai.state true graph in
+    let%arr open_ and set_open in
+    Node.windows
+      ([ Node.window ~key:"main" ~title:"main" (Node.label "m") ]
+       @
+       if open_
+       then
+         [ Node.window
+             ~key:"about"
+             ~title:"about"
+             ~attrs:[ Attr.on_close_request (set_open false) ]
+             (Node.label "a")
+         ]
+       else [])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.store_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Close_request "about" ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+      ((kind Windows) (attrs ())
+       (children
+        (List
+         (((kind (Window ((title (main))))) (key main) (attrs ())
+           (children
+            (Single
+    -|       (((kind (Label ((text m)))) (attrs ()) (children No_children))))))
+    -|    ((kind (Window ((title (about))))) (key about)
+    -|     (attrs ((On_close_request <handler>)))
+    -|     (children
+    -|      (Single
+    -|       (((kind (Label ((text a)))) (attrs ()) (children No_children))))))))))
+    +|       (((kind (Label ((text m)))) (attrs ()) (children No_children))))))))))
+    |}];
+  (* A key naming no window fails loudly, listing what exists. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Close_request "perfs" ]);
+  [%expect
+    {|
+    (Failure
+     "Bonsai_gtk_test: no window is keyed \"perfs\" (keys that exist: \"main\")")
+    |}];
+  (* And a window with no handler fails like every other action: live, the runtime
+     swallows the request and reports once -- the model heard nothing. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Bonsai_gtk_test.Handle.do_actions handle [ Close_request "main" ]);
+  [%expect
+    {|
+    (Failure
+     "Bonsai_gtk_test: window \"main\" has no on_close_request handler (live, the runtime swallows the request and reports once -- the window stays open)")
     |}]
 ;;

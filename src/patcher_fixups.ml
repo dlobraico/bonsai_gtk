@@ -4,7 +4,13 @@ open Gtk_import
 
 type ctx =
   { signals : Signals.ctx
-  ; on_window_created : Widget.t -> unit
+  ; (* Mutable so that [Driver.stop] can drop it: under [Bonsai_gtk.start] it closes over
+       the [GtkApplication], and a stopped driver is not itself collectable (its Bonsai
+       graph stays reachable from Incremental's global state), so a callback left here
+       would keep the application alive for the process's life -- the
+       [on_root_widget_changed] leak shape, closing docs/m2-backlog.md's "closes over the
+       GtkApplication" one-liner. *)
+    mutable on_window_created : Widget.t -> unit
   ; (* Where a diagnostic that is not an exception goes: the model asked for something the
        widget cannot hold, the frame carries on, and somebody has to be told. Distinct
        from [Signals.ctx.on_exn], which reports an exception raised while {i dispatching}
@@ -27,6 +33,11 @@ type ctx =
        A queue of its own rather than closures in [fixups], because the
        once-per-frame-per-toplevel check has to see all of them together. *)
     autofocus_claims : autofocus_claim Queue.t
+  ; (* The live [GtkWindow]s of a [Node.windows] root, by their [~key] -- registered by
+       each child's mount and dropped by its teardown, so a sibling's [~transient_for] can
+       resolve after the whole list exists whichever order the walk mounted them in. See
+       {!register_window} for why these need no claims pass where the stacks do. *)
+    windows : (Key.t, Widget.t) Hashtbl.t
   }
 
 and autofocus_claim =
@@ -51,8 +62,14 @@ let create_ctx ?(report = default_report) ~signals ~on_window_created () =
   ; stack_claims = Queue.create ()
   ; fixups = Queue.create ()
   ; autofocus_claims = Queue.create ()
+  ; windows = Hashtbl.create (module Key)
   }
 ;;
+
+(* {!Patcher.ctx} is private, so the mutation lives behind a function: [Driver.stop] calls
+   it because the callback closes over the [GtkApplication] under [Bonsai_gtk.start] and a
+   stopped driver is never collectable -- the [on_root_widget_changed] leak shape. *)
+let drop_on_window_created ctx = ctx.on_window_created <- (fun (_ : Widget.t) -> ())
 
 let claim_autofocus ctx ~path widget =
   Queue.enqueue ctx.autofocus_claims { autofocus_path = path; autofocus_widget = widget }
@@ -111,6 +128,39 @@ let unregister_stack ctx ~name widget =
   match Hashtbl.find ctx.stacks name with
   | Some w when Gobject.same w widget -> Hashtbl.remove ctx.stacks name
   | Some _ | None -> ()
+;;
+
+let register_window ctx ~path ~key widget =
+  match Hashtbl.add ctx.windows ~key ~data:widget with
+  | `Ok -> ()
+  | `Duplicate ->
+    (* Unreachable -- [Reconcile.check_unique_keys] ran over the same siblings before any
+       of them mounted -- and kept for the reason the stack registry keeps its arm: it is
+       what would fire if those two checks ever drifted apart. *)
+    invalid_argf "%s: two Node.windows children are keyed %S" path (key : Key.t) ()
+;;
+
+let unregister_window ctx ~key widget =
+  match Hashtbl.find ctx.windows key with
+  | Some w when Gobject.same w widget -> Hashtbl.remove ctx.windows key
+  | Some _ | None -> ()
+;;
+
+(* [~transient_for]'s resolution, from the fixup queue: the registry holds the whole list
+   by then, so a dialog may precede its parent in it. [self] is the referencing window,
+   for the record-update backstop the constructor cannot see; the keys that do exist are
+   sorted so the message is deterministic (the registry is a hashtable). *)
+let resolve_window ctx ~path ~self ~key : Widget.t =
+  match Hashtbl.find ctx.windows key with
+  | Some w when Gobject.same w self ->
+    invalid_arg (Events.transient_for_self_rejection ~path ~key)
+  | Some w -> w
+  | None ->
+    invalid_arg
+      (Events.transient_for_rejection
+         ~path
+         ~key
+         ~existing:(List.sort (Hashtbl.keys ctx.windows) ~compare:Key.compare))
 ;;
 
 let resolve_stack ctx ~path ~name : Widget.t =
@@ -192,7 +242,7 @@ let abandon_fixups ctx =
    new kind with a registration or a fixup cannot be added without the compiler asking. *)
 type interest =
   | Nothing
-  | Window
+  | Window of Kind.window_props
   | Stack of Kind.stack_props
   | Stack_ref of [ `Switcher | `Sidebar ] * string
   | List_box of Kind.list_box_props
@@ -224,7 +274,11 @@ type interest =
 
 let interest_of_kind (kind : Kind.t) =
   match kind with
-  | Window _ -> Window
+  | Window p -> Window p
+  (* Nothing: the anchor is never presented (so no [on_window_created]) and holds no
+     controlled prop; the children are ordinary keyed list children whose own mounts carry
+     the Window interest each. *)
+  | Windows -> Nothing
   | Stack p -> Stack p
   | Stack_switcher { stack } -> Stack_ref (`Switcher, stack)
   | Stack_sidebar { stack } -> Stack_ref (`Sidebar, stack)
@@ -275,7 +329,20 @@ let interest_of_kind (kind : Kind.t) =
    exactly the frame on which nothing else moved. *)
 let enqueue_fixups ctx ~path ~widget ~(interest : interest) =
   match interest with
-  | Nothing | Window -> ()
+  | Nothing -> ()
+  | Window { transient_for; _ } ->
+    (* Deferred for the reason the selections are, one list wider: the key names a
+       {i sibling} window, which on a mount may not exist until the whole list does. A
+       controlled prop in the §6.5 sense -- resolved and compared against
+       [get_transient_for] on the mount, patch {i and} reassert-only passes -- and
+       enqueued even when [None], because the frame that drops the prop is the frame that
+       has to clear the widget. *)
+    Queue.enqueue ctx.fixups (fun () ->
+      let desired =
+        Option.map transient_for ~f:(fun key ->
+          resolve_window ctx ~path ~self:widget ~key)
+      in
+      W_window.apply_transient_for widget ~desired)
   (* Not a fixup at all: nothing is deferred and nothing is written. This is the one place
      that holds both a text view and the path of the node it came from, which is what a
      refused write needs in order to say anything useful. Reported here rather than from
@@ -378,7 +445,7 @@ let note_interest
   =
   (match interest with
    | Nothing -> ()
-   | Window ->
+   | Window _ ->
      (* Once per window, at mount: the runtime presents it and holds onto it. *)
      (match pass with
       | `Mount -> ctx.on_window_created widget

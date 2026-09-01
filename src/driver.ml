@@ -44,20 +44,21 @@ let schedule_event t effect =
    other, and each message names the entry point the caller evidently wanted. *)
 let check_root ~(root_kind : root_kind) (node : Node.t) =
   match root_kind, node.kind with
-  | `Window, Window _ -> ()
+  | `Window, (Window _ | Windows) -> ()
   | `Window, k ->
     invalid_argf
-      "Bonsai_gtk: the root node must be a Node.window, got %s. A tree started this way \
-       shows its own root, and a GtkWindow is the only thing GTK can show on its own. \
-       Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own."
+      "Bonsai_gtk: the root node must be a Node.window or a Node.windows, got %s. A tree \
+       started this way shows its own root, and a GtkWindow is the only thing GTK can \
+       show on its own (Node.windows is the virtual root holding several of them). Use \
+       Bonsai_gtk.Expert.embed for a tree parented into a container you already own."
       (Kind.name k)
       ()
-  | `Not_window, Window _ ->
+  | `Not_window, (Window _ | Windows) ->
     invalid_arg
-      "Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is \
-       parented into a container the caller owns and a GtkWindow is a toplevel that \
-       cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make \
-       the root a container."
+      "Bonsai_gtk.embed: the root node is a Node.window (or a Node.windows), but an \
+       embedded tree is parented into a container the caller owns and a GtkWindow is a \
+       toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its \
+       windows, or make the root a container."
   | `Not_window, _ -> ()
 ;;
 
@@ -92,12 +93,14 @@ let frame_body t =
        let patched = Patcher.patch t.ctx ~path:"root" ~is_root:true live node in
        t.root <- Some patched;
        (* The root node changed {i kind}, so the patcher mounted a replacement widget and
-          destroyed the old one rather than updating it in place. Under [start] this arm
-          is unreachable -- a windowed root is always a [Window], so [same_kind] always
-          holds at the root -- but an embedded root is an arbitrary node, and a
-          [Node.label "Loading..."] that becomes a [Node.box [...]] on the next frame is
-          an ordinary page. Whoever put the old widget somewhere has to be told, or the
-          container goes on holding a widget nothing renders into again. *)
+          destroyed the old one rather than updating it in place. An embedded root is an
+          arbitrary node, and a [Node.label "Loading..."] that becomes a [Node.box [...]]
+          on the next frame is an ordinary page; under [start] the one reachable flip is
+          [Window] <-> [Windows] (both legal there), which works through this same arm --
+          the mount presents the new toplevels and the destroy takes the old ones down --
+          and notifies a callback [start] never installs. Whoever put the old widget
+          somewhere has to be told, or the container goes on holding a widget nothing
+          renders into again. *)
        if not (phys_equal patched.Patcher.widget live.Patcher.widget)
        then t.on_root_widget_changed patched.Patcher.widget
      | None ->
@@ -216,7 +219,30 @@ let create
   t
 ;;
 
-let root_widget t = Option.map t.root ~f:(fun live -> live.Patcher.widget)
+(* [None] for a [Windows] root -- a breaking change of M3 Task 8, documented in the mli:
+   the widget a [Windows] live holds is the never-shown anchor, and handing that to a
+   caller who would present or parent it is strictly worse than making them ask {!windows}
+   for the real toplevels. *)
+let root_widget t =
+  Option.bind t.root ~f:(fun live ->
+    match live.Patcher.node.Node.kind with
+    | Windows -> None
+    | _ -> Some live.Patcher.widget)
+;;
+
+(* Read off the live tree rather than the ctx registry, so the answer is in the model's
+   own list order (the registry is a hashtable). Every windows child carries a key -- the
+   constructor and the shared walk both insist -- so the [filter_map] drops nothing. *)
+let windows t =
+  match t.root with
+  | None -> []
+  | Some live ->
+    (match live.Patcher.node.Node.kind, live.Patcher.children with
+     | Windows, Children.List lives ->
+       List.filter_map lives ~f:(fun (l : Patcher.live) ->
+         Option.map l.Patcher.node.Node.key ~f:(fun key -> key, l.Patcher.widget))
+     | _ -> [])
+;;
 
 (* Deliberately not [stop]: the caller reaching for this is one that has just been told
    the widgets are going away, and [stop] would walk the whole shadow tree disconnecting
@@ -240,6 +266,10 @@ let stop t =
        wrapper" into a promise the runtime quietly breaks. Measured: without this, a
        stopped-and-dropped embed's wrapper is never finalized; with it, it is. *)
     t.on_root_widget_changed <- (fun (_ : Widget.t) -> ());
+    (* The same drop, for the other caller-owned callback: under [Bonsai_gtk.start] it
+       closes over the [GtkApplication] (docs/m2-backlog.md's one-liner), and a stopped
+       driver will never mount a window again. *)
+    Patcher.drop_on_window_created t.ctx;
     (* [Patcher.destroy] can raise -- the one place teardown calls application code is a
        native node's [destroy] -- and the three steps after it are the ones that make a
        stopped driver actually collectable. Reached through [Exn.protect] so that a native

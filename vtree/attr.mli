@@ -59,6 +59,7 @@ module Name : sig
     | On_editing_changed
     | On_cursor_moved
     | On_closed
+    | On_close_request
     | On_click
     | On_focus_enter
     | On_focus_leave
@@ -175,6 +176,7 @@ module Private : sig
     | On_editing_changed of bool Handler.t
     | On_cursor_moved of int Handler.t
     | On_closed of unit Handler.t
+    | On_close_request of unit Handler.t
     | On_click of
         { button : int
         ; phase : Phase.t
@@ -741,6 +743,21 @@ val on_cursor_moved : (int -> unit Ui_effect.t) -> t
     Attaching it to a widget that emits no such signal raises [Invalid_argument] when the
     node is mounted or patched. *)
 val on_closed : unit Ui_effect.t -> t
+
+(** The user asked this window to close (the X button, Alt+F4, [Window.close]). The
+    runtime ALWAYS answers GTK "handled" -- the window closes when, and only when, the
+    model stops rendering its node. This effect is the model's chance to do that.
+
+    The veto holds on every path, because the alternative is a desynchronised shadow tree:
+    GTK destroying a window behind the patcher's back leaves the runtime patching widgets
+    that no longer exist. A window with {i no} handler therefore swallows the request and
+    reports once -- a single stderr line per window, since the trampoline has no reporting
+    channel of its own -- because a window whose lifetime nobody owns is a model bug, not
+    a UI courtesy.
+
+    Attaching it to a node that is not a {!Node.window} raises [Invalid_argument] when the
+    node is mounted or patched. *)
+val on_close_request : unit Ui_effect.t -> t
 
 (** A [GtkGestureClick] on this widget.
 
