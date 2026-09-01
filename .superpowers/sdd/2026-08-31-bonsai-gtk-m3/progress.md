@@ -88,3 +88,21 @@ line after REAL menu item activation on GtkPopoverMenu (the stavekeeper bug's ac
 trigger; viewer_window.ml:750-797) and design the fallback if the synchronous repair
 misses (one-shot idle may be short — stavekeeper needed 60ms×8); (b) user-open reporting
 via notify::visible is recorded in m2-backlog "Recorded during M3" — Task 13 sweeps it.
+
+### Task 6 — Actions + Node.menu: APPROVED (after fix round 1)
+681c5dd..a79981a (headless + live) + fix round `bc0adc6`. The riskiest design landed as
+planned: Menu pure data, Action_spec carries handlers, one group per node, resolution one
+vtree function raising one string from wrappers AND handle (sibling non-resolving,
+across-frames raises). Measured facts of record: an in-place menu edit RE-BINDS the item
+tracker (rows built before a late group stay insensitive; after, bind — goldened); GTK's
+muxer UNIONS same-scope groups with ancestor fall-through, matching the union env
+exactly; activate_action_variant is the routing (get_action_group is GTK3-only).
+Task 5 carry (a) PROVEN — and it found the real gap first: a ~menu button's PopoverMenu
+is GTK-internal, so the spec-borne repair never connected there; w_menu_button now
+connects the repair to the internal popover's closed (forget_menu release hook, dispose
+rule traced). Synchronous repair suffices after real item activation — no idle fallback.
+Consumer mapping total: Command.Registry {id;label;accel;scope;enabled;run} →
+Action_spec + Menu.Item + Attr.actions ~scope, doc completed in the fix round.
+CARRY FOR TASK 13 (review M4): the Down+Return residual — WM-less Xvfb never gives a
+popup surface X focus, so no keyboard path reaches any popover menu (Escape works only
+via the toplevel's own grab); belongs beside the M2 input residual in the rewrite.
