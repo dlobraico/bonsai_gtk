@@ -120,3 +120,22 @@ capture handlers and the focused widget (stavekeeper's text_input_active shape,
 goldened, documented at the attr); set_scope LOCAL explicit; attr_phase → attr_phases
 (Key goldens byte-identical). Two comment-only nits fold into Task 8's start
 (live_input probe comment; test_menu.ml:194's stale "cannot be fired").
+
+### Task 8 — Node.windows: APPROVED
+26e7bee..1c85260 (task-7 nits + 5 task commits) + six minors folded into the Task 9
+start. Review found no Importants. Of record: the veto's connect wrapper hands GTK
+exactly one value (raising handlers caught in dispatch_payload); the unhandled report
+latches per GtkWindow instance — remove+re-add re-arms, the right semantic;
+release_kind(node) correct at both call sites; the kind-change reorder produces no
+transient duplicate (windows children cannot kind-change; Child_keys rides
+remove-before-insert); key immutability enforced by Reconcile matching; transient_for
+fixup on all three passes with dialog-precedes-parent pinned live AND headless;
+Driver.windows order pinned where insertion and node order differ; placement smuggling
+closed three ways; windows [] exits 0 under watchdog. Implementer finding of record:
+headless Close_request on a handler-less window fails loudly (divergence documented) —
+reviewer concurs loud-fail is right. Process note: SDD reports/reviews stay untracked on
+the branch; the whole workspace commits as evidence at milestone close (fork-round-2
+convention). Task 9 start carries: dead ignore at live_input.ml:908; latched-report
+wording covers unreachable paths; wrap the wrapper's eprintf in a catch; execute
+resolve_window's missing-key raise in a test; probe stop-destroys-all for tools_before;
+optional attr-side divergence sentence.
