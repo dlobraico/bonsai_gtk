@@ -63,6 +63,7 @@ let controls (graph @ local) =
   let search, set_search = Bonsai.state "" graph in
   let query, set_query = Bonsai.state "" graph in
   let note, set_note = Bonsai.state "" graph in
+  let caret, set_caret = Bonsai.state 0 graph in
   let%arr toggled
   and set_toggled
   and checked
@@ -78,7 +79,9 @@ let controls (graph @ local) =
   and query
   and set_query
   and note
-  and set_note in
+  and set_note
+  and caret
+  and set_caret in
   Node.grid
     ~row_spacing:8
     ~column_spacing:12
@@ -149,7 +152,9 @@ let controls (graph @ local) =
           ]
         ~has_frame:true
         (Node.text_view
-           ~attrs:[ Attr.on_changed set_note ]
+         (* [on_cursor_moved] is the other half of the caret policy below: the model that
+            owns the caret can put it where it says. Here it only feeds the readout. *)
+           ~attrs:[ Attr.on_changed set_note; Attr.on_cursor_moved set_caret ]
            ~wrap:Word_char
            ~left_margin:6
            ~right_margin:6
@@ -177,12 +182,13 @@ let controls (graph @ local) =
         (* [search] follows every keystroke and [query] lags it by the debounce, so typing
            in the search box and stopping is how the two are told apart on screen. *)
         (sprintf
-           "text=%S password=%d characters search=%S query=%S note=%d characters"
+           "text=%S password=%d characters search=%S query=%S note=%d characters caret=%d"
            text
            (String.length password)
            search
            query
-           (String.length note))
+           (String.length note)
+           caret)
     ]
 ;;
 
@@ -694,6 +700,7 @@ let input (graph @ local) =
   let escapes, set_escapes = Bonsai.state 0 graph in
   let click, set_click = Bonsai.state "(nothing yet)" graph in
   let focus, set_focus = Bonsai.state "(neither)" graph in
+  let inside, set_inside = Bonsai.state false graph in
   let text, set_text = Bonsai.state "" graph in
   let second, set_second = Bonsai.state "" graph in
   let%arr key
@@ -704,6 +711,8 @@ let input (graph @ local) =
   and set_click
   and focus
   and set_focus
+  and inside
+  and set_inside
   and text
   and set_text
   and second
@@ -751,6 +760,13 @@ let input (graph @ local) =
         "Click the words below, type in the entries, press Escape, and Tab between them."
     ; Node.frame
         ~label:"A click gesture, any button"
+        ~attrs:
+          [ (* The per-widget stylesheet, keyed by a class of this page's own so the
+               selector cannot leak; scheme-dependent styling would belong in
+               [?global_css] (a per-widget provider never matches a dark block). *)
+            Attr.css_class "gallery-card"
+          ; Attr.css_provider ".gallery-card { border-radius: 9px; }"
+          ]
         (* [~button] defaults to 0, which is "any of them", so the readout can show which
            button actually fired -- the middle and secondary buttons included, which a
            [GtkButton] would never report. *)
@@ -773,6 +789,12 @@ let input (graph @ local) =
     ; Node.box
         ~orientation:Horizontal
         ~spacing:8
+        ~attrs:
+          [ (* The coarse focus signal beside the two fine ones: this fires once when
+               focus enters either entry and once when it leaves both, where the per-entry
+               attrs below fire on every hop between them. *)
+            Attr.on_contains_focus_changed set_inside
+          ]
         [ Node.entry
             ~attrs:
               [ Attr.hexpand true
@@ -808,32 +830,134 @@ let input (graph @ local) =
         (sprintf "escapes:    %d (consumed in the capture phase)" escapes)
     ; Node.label ~xalign:0. (sprintf "last click: %s" click)
     ; Node.label ~xalign:0. (sprintf "focus:      %s" focus)
+    ; Node.label
+        ~xalign:0.
+        (sprintf
+           "the entry row %s focus"
+           (if inside then "contains" else "does not contain"))
     ]
 ;;
 
-let app (graph @ local) =
-  let page, set_page = Bonsai.state "controls" graph in
-  let controls = controls graph in
-  let numbers = numbers graph in
-  let lists = lists graph in
-  let grid = grid graph in
-  let tabs = tabs graph in
-  let layout = layout graph in
-  let dates = dates graph in
-  let input = input graph in
-  let%arr page
-  and set_page
-  and controls
-  and numbers
-  and lists
-  and grid
-  and tabs
-  and layout
-  and dates
-  and input in
+(* Page 9: the M3 chrome, in one place -- the bars, the menu button in both of its modes,
+   and the about window the ~windows root below opens. The action scope rides the page's
+   own box, so the menu items and the shortcut resolve against it the way GTK resolves:
+   from the popover's parent upward. *)
+let chrome ~set_about_open (graph @ local) =
+  let pings, set_pings = Bonsai.state 0 graph in
+  let bold, set_bold = Bonsai.state false graph in
+  let bar_revealed, set_bar_revealed = Bonsai.state true graph in
+  let popover_open, set_popover_open = Bonsai.state false graph in
+  let closes, set_closes = Bonsai.state 0 graph in
+  let%arr pings
+  and set_pings
+  and bold
+  and set_bold
+  and bar_revealed
+  and set_bar_revealed
+  and popover_open
+  and set_popover_open
+  and closes
+  and set_closes
+  and set_about_open in
+  Node.box
+    ~orientation:Vertical
+    ~spacing:8
+    ~attrs:
+      [ Attr.margin 12
+        (* One list of specs serves the menu below and the chord: the shortcut names
+           "page.ping" and fires the same handler the menu item does -- the
+           Command.Registry shape this API is designed around. *)
+      ; Attr.actions
+          ~scope:"page"
+          [ Action_spec.simple ~name:"ping" (set_pings (pings + 1))
+          ; Action_spec.toggle ~name:"bold" ~state:bold (set_bold (not bold))
+          ; Action_spec.simple ~name:"about" (set_about_open true)
+          ]
+      ; Attr.shortcut
+          ~trigger:
+            (Trigger.create
+               ~modifiers:{ Modifiers.none with control = true }
+               (Keyval.of_char 'p'))
+          ~action:"page.ping"
+          ()
+      ]
+    [ Node.header_bar
+        ~title:(Node.label ~attrs:[ Attr.css_class "title-4" ] "an in-page header bar")
+        ~show_title_buttons:false
+        ~start:[ Node.button ~key:"back" ~label:"Back" () ]
+        ~end_:
+          [ Node.menu_button
+              ~key:"menu"
+              ~icon_name:"open-menu-symbolic"
+              ~menu:
+                [ Menu.item ~label:"Ping" ~action:"page.ping" ~accel:"<Control>p" ()
+                ; Menu.item ~label:"Bold" ~action:"page.bold" ()
+                ; Menu.section
+                    ~label:""
+                    [ Menu.item ~label:"About the gallery" ~action:"page.about" () ]
+                ]
+              ()
+          ; Node.menu_button
+              ~key:"pop"
+              ~label:"a plain popover"
+              ~popover:
+                (Node.popover
+                   ~open_:popover_open
+                   ~attrs:
+                     [ Attr.on_closed
+                         (Ui_effect.Many
+                            [ set_popover_open false; set_closes (closes + 1) ])
+                     ]
+                   (Node.label ~attrs:[ Attr.margin 8 ] "popover body"))
+              ()
+          ]
+        ()
+    ; Node.label
+        ~xalign:0.
+        (sprintf
+           "pings: %d (menu item or Ctrl+P)   bold: %b   popover closes: %d"
+           pings
+           bold
+           closes)
+    ; Node.button
+        ~attrs:[ Attr.halign Start; Attr.on_clicked (set_popover_open true) ]
+        ~label:"Open the popover (controlled ~open_)"
+        ()
+    ; Node.button
+        ~attrs:[ Attr.halign Start; Attr.on_clicked (set_about_open true) ]
+        ~label:"Open the about window"
+        ()
+    ; Node.action_bar
+        ~revealed:bar_revealed
+        ~center:(Node.label "an action bar")
+        ~start:[ Node.button ~key:"add" ~label:"Add" () ]
+        ~end_:[ Node.button ~key:"del" ~label:"Delete" () ]
+        ()
+    ; Node.button
+        ~attrs:
+          [ Attr.halign Start; Attr.on_clicked (set_bar_revealed (not bar_revealed)) ]
+        ~label:(if bar_revealed then "Conceal the bar" else "Reveal the bar")
+        ()
+    ]
+;;
+
+let main_window
+  ~page
+  ~set_page
+  ~controls
+  ~numbers
+  ~lists
+  ~grid
+  ~tabs
+  ~layout
+  ~dates
+  ~input
+  ~chrome
+  =
   Node.window
   (* The counter's close handler, for the counter's reason: the runtime vetoes every close
      request, so the X button quits only because this says so. *)
+    ~key:"main"
     ~attrs:[ Attr.on_close_request Effect.quit ]
     ~title:"bonsai_gtk gallery"
     ~default_size:(900, 560)
@@ -897,9 +1021,85 @@ let app (graph @ local) =
                    ~attrs:[ Attr.page_title "Input" ]
                    ~orientation:Vertical
                    [ input ]
+               ; Node.box
+                   ~key:"chrome"
+                   ~attrs:[ Attr.page_title "Chrome" ]
+                   ~orientation:Vertical
+                   [ chrome ]
                ]
            ]
        ])
+;;
+
+let app (graph @ local) =
+  let page, set_page = Bonsai.state "controls" graph in
+  let controls = controls graph in
+  let numbers = numbers graph in
+  let lists = lists graph in
+  let grid = grid graph in
+  let tabs = tabs graph in
+  let layout = layout graph in
+  let dates = dates graph in
+  let input = input graph in
+  let about_open, set_about_open = Bonsai.state false graph in
+  let chrome = chrome ~set_about_open graph in
+  let%arr page
+  and set_page
+  and controls
+  and numbers
+  and lists
+  and grid
+  and tabs
+  and layout
+  and dates
+  and input
+  and about_open
+  and set_about_open
+  and chrome in
+  let about =
+    (* The dialog shell shape (stavekeeper's dialog.ml): keyed, transient for the main
+       window, modal, fixed-size -- and closed the only way a window closes, by leaving
+       the tree, which its close handler and its own button both do. [Attr.autofocus] is
+       the fire-once grab a freshly opened dialog wants. *)
+    Node.window
+      ~key:"about"
+      ~title:"About the gallery"
+      ~transient_for:"main"
+      ~modal:true
+      ~resizable:false
+      ~attrs:[ Attr.on_close_request (set_about_open false) ]
+      (Node.box
+         ~orientation:Vertical
+         ~spacing:8
+         ~attrs:[ Attr.margin 16 ]
+         [ Node.label ~attrs:[ Attr.css_class "title-2" ] "bonsai_gtk gallery"
+         ; Node.label "Every widget, driven from one Bonsai model."
+         ; Node.entry
+             ~attrs:[ Attr.autofocus true ]
+             ~placeholder:"autofocused on open"
+             ~text:""
+             ()
+         ; Node.button
+             ~attrs:[ Attr.halign End; Attr.on_clicked (set_about_open false) ]
+             ~label:"Close"
+             ()
+         ])
+  in
+  Node.windows
+    (main_window
+       ~page
+       ~set_page
+       ~controls
+       ~numbers
+       ~lists
+       ~grid
+       ~tabs
+       ~layout
+       ~dates
+       ~input
+       ~chrome
+     :: (if about_open then [ about ] else [])
+     : Node.t list)
 ;;
 
 (* [?global_css] so the smoke run exercises the activate-time install (Task 11 step 3);
