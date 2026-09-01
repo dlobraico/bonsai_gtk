@@ -16,8 +16,8 @@ before the caller parents it: stack holds 0, root's parent is nothing
     (GtkButton (label (+)) (css (text-button))
      (children (GtkLabel (text +))))))))
 broken: false
-window root: Bonsai_gtk.embed: the root node is a Node.window, but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its window, or make the root a container.
-nested window: root/1: a Node.window may only be the root node, not a child of another node
+window root: Bonsai_gtk.embed: the root node is a Node.window (or a Node.windows), but an embedded tree is parented into a container the caller owns and a GtkWindow is a toplevel that cannot be parented. Use Bonsai_gtk.start for a tree that owns its windows, or make the root a container.
+nested window: root/1: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node
 misplaced attr on the root: root: Attr.grid_cell is on the root node, which has no container to read it (a placement attribute is read by the container, and this one holds children for Grid)
 a second embed alongside the first: stack holds 2
 after two clicks on the second: "count 1" and "second 2"

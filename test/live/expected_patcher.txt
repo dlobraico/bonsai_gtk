@@ -72,7 +72,7 @@ window created
  (children (GtkLabel (text bold) markup)))
 (GtkWindow (title (label)) (css (background)) hidden
  (children (GtkLabel (text text))))
-nested window rejected: root/0/0: a Node.window may only be the root node, not a child of another node
+nested window rejected: root/0/0: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node
 duplicate stack name rejected: root/0/2: two Node.stacks are named "nav" in one tree
 the window was presented before the rejection: true
 the presented window is still on screen: false

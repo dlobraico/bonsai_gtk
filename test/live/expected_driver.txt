@@ -22,11 +22,11 @@ frame on broken driver returned, still broken: true
     (GtkButton (label (+)) (css (text-button))
      (children (GtkLabel (text +))))))))
 broken driver stopped
-hand-driven frame raised: root/0/1: a Node.window may only be the root node, not a child of another node
+hand-driven frame raised: root/0/1: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node
 broken after a hand-driven raise: true
 the frame after that was a no-op
 rejected: Bonsai_gtk: Driver.frame on a stopped driver (stop invalidates the Bonsai graph and tears the widget tree down; build a new driver instead)
-rejected: Bonsai_gtk: the root node must be a Node.window, got Label. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own. Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.
+rejected: Bonsai_gtk: the root node must be a Node.window or a Node.windows, got Label. A tree started this way shows its own root, and a GtkWindow is the only thing GTK can show on its own (Node.windows is the virtual root holding several of them). Use Bonsai_gtk.Expert.embed for a tree parented into a container you already own.
 (GtkWindow (title (reentry)) (css (background)) hidden
  (children
   (GtkBox (spacing 0) (css (vertical))
