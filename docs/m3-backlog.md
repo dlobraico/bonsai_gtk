@@ -96,7 +96,10 @@ Every bullet from m2-backlog's list, accounted for by name:
 
 - **The declarative focus model** — the largest named gap, again, and now with a
   concrete interim floor to build from: `Attr.autofocus` (fire-once, at most one per
-  frame per toplevel) shipped in M3 for the palette/dialog open-grab, and everything
+  frame per toplevel) shipped in M3 for the palette/dialog open-grab — with one known
+  hole: the mount-frame grab is a rootless silent no-op under `Expert.embed` (the tree
+  is parented after the frame), ruled doc-only for M3 with the real fix filed as bead
+  `bonsai_gtk-vdy` (a map/`notify::root` retry candidate) — and everything
   beyond it — who holds focus as *state*, `set_focus None` on page swaps,
   `select_region`, `~default_widget` — stays app-side or impossible. The port's
   remaining imperative focus calls are enumerated in the M3 plan's stavekeeper section.
@@ -371,7 +374,11 @@ pre-flight scout; no M3 task blocked on any of these:
 7. **`Gio.File.new_for_path`** — unblocks file-dialog initial folders.
 8. **`Display.get_default` / `Display_manager.get`** — would free the effects from the
    `context_widget` hook for display access.
-9. Known carries from the round-2 close-out (do not re-derive): the borrowed-return
+9. **`Application.set_menubar` + `PopoverMenuBar`** — the menubar the README's "no
+   menubar" limitation records. Added here at Task 13's review: the task-6 review
+   disposed of it as "already on the fork-round-3 list", and it was not — this line is
+   what makes that disposal true.
+10. Known carries from the round-2 close-out (do not re-derive): the borrowed-return
    `ref_sink`→`ref` correctness-by-construction change; `GList*` declared for
    GSList-returning stubs (an error on GCC 14+/Clang 16+); the dead sink-on-non-
    `GInitiallyUnowned` constructor stubs; the fork's unformattable `gir_gen`

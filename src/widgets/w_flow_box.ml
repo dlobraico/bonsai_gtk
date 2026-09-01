@@ -195,7 +195,7 @@ let forget_children (w : Widget.t) =
    a frame. An application that keeps the selected {i widget} in a ref has no such
    recovery, which is what makes this the strongest single argument for the declarative
    version. *)
-(* The [~selected] dedup memo (M3 Task 3 step 2, docs/m2-backlog.md:150-158). A duplicated
+(* The [~selected] dedup memo (M3 Task 3 step 2, docs/m2-backlog.md:153-161). A duplicated
    key in [~selected] used to make [current] and [wanted] never compare equal -- ["a"]
    against ["a"; "a"] -- so every frame ran [unselect_all] plus the redundant re-select,
    forever, with no diagnostic. The ruling takes both halves the backlog said to decide

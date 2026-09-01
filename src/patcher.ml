@@ -489,7 +489,7 @@ and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
     then (
       Signals.require_specs ~node_path:path node.kind node.attrs;
       (* Beside it on the same terms, closing the mount/patch asymmetry the M2 review
-         named (docs/m2-backlog.md:175-182): [require_specs] asks the [Events] table, this
+         named (docs/m2-backlog.md:181-186): [require_specs] asks the [Events] table, this
          asks the slots that were actually built at mount. The two can only disagree if
          the table and the impl's [signals] have drifted -- a drift [live_events.ml]
          catches in CI -- but an attr a frame {i adds} onto a widget whose impl declared

@@ -222,7 +222,7 @@ let forget_rows (w : Widget.t) =
    a [row_selectable false] row) therefore still rewrites on every frame; that is
    documented on [Node.list_box] as a model to bring into line with its mode, and it is
    not the same thing as a key that is simply not here yet. *)
-(* The [~selected] dedup memo (M3 Task 3 step 2, docs/m2-backlog.md:150-158). A duplicated
+(* The [~selected] dedup memo (M3 Task 3 step 2, docs/m2-backlog.md:153-161). A duplicated
    key in [~selected] used to make [current] and [wanted] never compare equal -- ["a"]
    against ["a"; "a"] -- so every frame ran [unselect_all] plus the redundant re-select,
    forever, with no diagnostic. The ruling takes both halves the backlog said to decide

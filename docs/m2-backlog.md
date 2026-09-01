@@ -113,7 +113,10 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   live suite cannot synthesise a press at all. See "Tests worth adding". Tasks 4–5.
 - **The `Keyval` table is curated, not complete** — seventeen names plus `Keyval.f` and
   `Keyval.of_char`; anything else is a raw `int`. Task 5.
-- **No live test delivers a synthetic click or key press.** Task 4 landed on option (c) —
+- ~~**No live test delivers a synthetic click or key press.**~~ — **closed at M2's own
+  close-out** (the `xtest-input` branch, `test/live/live_input.ml`; the "Tests worth
+  adding" twin below was struck then and this bullet was not — tidied at M3's Task 13
+  fix round). Task 4 landed on option (c) —
   plumbing only — and this is the biggest untested surface in the milestone. It has its own
   entry under "Tests worth adding", with what *is* covered and what the two closing routes
   are.

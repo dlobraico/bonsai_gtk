@@ -69,6 +69,6 @@ val find_exn : t -> Widget.t -> what:string -> Key.t
     children adds N, a removal ([Widget_impl.list_ops.remove]) subtracts eagerly, and a
     torn-down container's [forget_*] hook subtracts the rest — which is precisely the hook
     a mutation like [| Flow_box _ -> ()] in [Patcher.destroy]'s release would break, and
-    until this existed broke with every golden byte-identical (docs/m2-backlog.md:158-166,
+    until this existed broke with every golden byte-identical (docs/m2-backlog.md:123-130,
     task-7 review M4). *)
 val length : t -> int
