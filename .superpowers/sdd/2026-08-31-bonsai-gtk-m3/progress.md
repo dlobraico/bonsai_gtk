@@ -139,3 +139,20 @@ convention). Task 9 start carries: dead ignore at live_input.ml:908; latched-rep
 wording covers unreachable paths; wrap the wrapper's eprintf in a catch; execute
 resolve_window's missing-key raise in a test; probe stop-destroys-all for tools_before;
 optional attr-side divergence sentence.
+
+### Task 9 — timing/clipboard/present effects: APPROVED (Important routed to Task 10 start)
+48c7562..d0a9d36 (task-8 minors + implementation + live). The async pattern of record:
+sources armed at perform time, one-shot (retention bounded — NOT the m2-backlog shape;
+the hooks cell drops first thing in Driver.stop), post-stop resolution absorbed by the
+invalidated graph, GValue path leak-safe to the stubs. Hook cell last-wins with
+identity-guarded unregister (two-embeds pinned). Plan error of record: the headless
+effects line violates the no-straddling rule — test/handle cannot link bonsai_gtk;
+compensating pins (live compile + long-pinned opaque sexp) accepted.
+IMPORTANT → TASK 10 FIRST COMMIT (mandatory): respond_to runs the continuation during
+argument evaluation, so a raise in app bind code bypasses Expert.handle's on_exn log,
+re-raises out of respond_to, and dies in the resolver's outer try-with — the codebase's
+only silent swallow, plus the skipped frame request (masked at 60fps, real under
+fps<=0). Fix contained in resolve_from_glib; the resolver comment misstates the
+mechanism. Minors for Task 10 alongside: For_runtime doc sentence for the orphaned
+survivor; orphan log wording ("no hooks at all"); pin the code-read-only miss logs;
+test the negative-span clamp.
