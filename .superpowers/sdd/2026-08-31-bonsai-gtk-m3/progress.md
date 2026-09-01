@@ -156,3 +156,20 @@ fps<=0). Fix contained in resolve_from_glib; the resolver comment misstates the
 mechanism. Minors for Task 10 alongside: For_runtime doc sentence for the orphaned
 survivor; orphan log wording ("no hooks at all"); pin the code-read-only miss logs;
 test the negative-span clamp.
+
+### Task 10 — alert + file dialogs as effects: APPROVED
+2d92604..6838142 (task-9 fixes + implementation/flake + live). The Task 9 Important
+closed for real — both raise pins distinguish fix from no-fix as loud golden diffs (the
+watchdog prints TIMED OUT into compared output; never a silent hang). Of record: the
+implementer's own confession — the first fix application never reached disk and the new
+pin reproduced the reviewer's bug exactly — is the pin working as designed. Keep-alive
+settled by reviewer probe: no path leaks an entry (response removes before destroy;
+nothing external can reach the dialog; parent destroy leaves it answerable; stop leaves
+it up resolving under dropped-hooks). Destroy-before-resolve safe: path computed before
+destroy, get_file transfer-full, get_path copies. Alert mapping total by range check;
+plain-text by construction (Label.new_, no set_markup). GSETTINGS_SCHEMA_DIR dev-shell
+-only, right. For_live_tests rename justified (ui_effect_intf.ml:257 collision).
+ACCEPT-half of the chooser undrivable (GTK-internal geometry) — gap stated, joins the
+input residuals in Task 13. Minors → Task 11 start: one mli sentence documenting the
+shown-dialog-at-stop story; wrap both on_response trampoline bodies so no-raise-into-C
+is syntactic.
