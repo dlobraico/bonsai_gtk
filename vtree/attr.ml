@@ -593,17 +593,18 @@ let on_key_pressed ?(phase = Phase.Bubble) handler = On_key_pressed { phase; han
 let on_key_released ?(phase = Phase.Bubble) handler = On_key_released { phase; handler }
 
 (* Repeatable: each call is one entry, and [Attrs.of_list] merges a node's entries into
-   one keyed list (see [Private.Shortcut]). A "::target" is rejected here because a
-   [GtkNamedAction] activates with {i no} parameter -- a radio (whose parameter type is
-   "s") cannot be fired by a shortcut at all, and the target syntax would promise
-   otherwise; see [Attr.shortcut]'s doc. *)
+   one keyed list (see [Private.Shortcut]). A "::target" is rejected here because M3 ships
+   untargeted shortcuts only: activation goes through [GtkNamedAction], which passes no
+   parameter. Targeted shortcuts are {i feasible} -- [Shortcut.set_arguments] is bound --
+   and deliberately unshipped (docs/m2-backlog.md, "Recorded during M3"); see
+   [Attr.shortcut]'s doc. *)
 let shortcut ?(phase = Phase.Bubble) ~trigger ~action () =
   if String.is_substring action ~substring:"::"
   then
     invalid_argf
-      "Attr.shortcut: action %S carries a \"::target\", but a shortcut activates through \
-       GtkNamedAction, which passes no parameter -- a radio action cannot be fired by a \
-       shortcut"
+      "Attr.shortcut: action %S carries a \"::target\", but targeted shortcuts are not \
+       shipped in M3 (activation goes through a parameterless GtkNamedAction; \
+       Shortcut.set_arguments is the unshipped path)"
       action
       ();
   Shortcut [ { trigger; phase; action } ]

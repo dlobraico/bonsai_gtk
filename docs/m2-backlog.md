@@ -977,3 +977,9 @@ nor a short-lived test will show it, because nothing collects before exit.
   task-5 review; the constructor doc names this paragraph.
 - **The list-container functorise trigger fired** (three fixes made twice); ruled an
   early-M4 motion-only task. task-3 report / ledger `629ae6a`.
+- **Targeted shortcuts are feasible and unshipped.** `Shortcut.set_arguments` is bound,
+  so a shortcut could carry a `GVariant` argument and fire a radio action with a target;
+  M3 ships untargeted shortcuts only (`Attr.shortcut` rejects `"::target"` and the
+  resolution walk refuses a shortcut resolving to a `Radio` spec). Shipping them removes
+  both rejections and adds the argument to `Controllers.make_shortcut`. task-7 review
+  I2/I3.

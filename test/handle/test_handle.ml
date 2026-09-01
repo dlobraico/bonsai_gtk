@@ -2927,7 +2927,7 @@ let%expect_test "a dangling menu action reference is rejected by the handle" =
   [%expect
     {|
     (Invalid_argument
-     "root/0: menu item action \"app.missing\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
+     "root/0: action reference \"app.missing\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
     |}]
 ;;
 

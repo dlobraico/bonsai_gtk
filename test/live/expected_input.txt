@@ -42,3 +42,7 @@ a window key after item activation: (capture F1 mods=none)
 focus back in entry 1 for the chord: (focus-enter e1)
 Ctrl+k with an entry focused: (capture Control_L mods=none entry1 Control_L chord)
 entry 1 text after the chord: "x"
+the contending inner shortcut fired: 0 times
+Ctrl+g on a disabled action, then the sentinel: (capture Control_L mods=none entry1 Control_L capture g mods=control entry1 g capture F1 mods=none entry1 F1)
+gated handler fired: 0 times
+entry 1 text after the disabled chord: "x"

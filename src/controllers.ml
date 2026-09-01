@@ -404,10 +404,20 @@ let make_shortcut (s : Attr.shortcut) =
    [Events.family_phase_rejection] refuses a disagreement -- every entry shares this one
    controller. *)
 let sync_shortcuts t attrs =
+  Option.iter (Events.shortcut_conflict_rejection ~path:t.node_path attrs) ~f:invalid_arg;
   Option.iter
     (Events.family_phase_rejection ~path:t.node_path Shortcut attrs)
     ~f:invalid_arg;
   let wanted = wanted_shortcuts attrs in
+  let install controller wanted =
+    (* In [wanted]'s order, which [wanted_shortcuts] sorts by (trigger, action): the
+       controller's list order is its match order, so sorting the install makes
+       first-match a function of the frame's content rather than of patch history. *)
+    List.map wanted ~f:(fun (s : Attr.shortcut) ->
+      let sc = make_shortcut s in
+      W.Shortcut_controller.add_shortcut controller sc;
+      (s.trigger, s.action), sc)
+  in
   match t.shortcut, wanted with
   | None, [] -> ()
   | Some f, [] ->
@@ -416,18 +426,17 @@ let sync_shortcuts t attrs =
   | None, wanted ->
     let controller = W.Shortcut_controller.new_ () in
     set_name (controller :> W.Event_controller.t) "shortcut";
+    (* GTK's own default today, written anyway: the attr's contract is local scope (fires
+       while focus is inside this widget's subtree), and a contract should not rest on a
+       default staying put. *)
+    W.Shortcut_controller.set_scope controller `LOCAL;
     (match Events.family_phase Shortcut attrs with
      | Some phase ->
        W.Event_controller.set_propagation_phase
          (controller :> W.Event_controller.t)
          (propagation_phase phase)
      | None -> ());
-    let installed =
-      List.map wanted ~f:(fun s ->
-        let sc = make_shortcut s in
-        W.Shortcut_controller.add_shortcut controller sc;
-        (s.trigger, s.action), sc)
-    in
+    let installed = install controller wanted in
     W.Widget.add_controller t.widget (controller :> W.Event_controller.t);
     t.shortcut <- Some { controller; installed }
   | Some f, wanted ->
@@ -440,23 +449,16 @@ let sync_shortcuts t attrs =
     let wanted_keys =
       List.map wanted ~f:(fun (s : Attr.shortcut) -> s.trigger, s.action)
     in
-    let keep, drop =
-      List.partition_tf f.installed ~f:(fun (key, _) ->
-        List.mem wanted_keys key ~equal:[%equal: Trigger.t * string])
-    in
-    List.iter drop ~f:(fun (_, sc) ->
-      W.Shortcut_controller.remove_shortcut f.controller sc);
-    let added =
-      List.filter_map wanted ~f:(fun s ->
-        let key = s.trigger, s.action in
-        if List.Assoc.mem keep key ~equal:[%equal: Trigger.t * string]
-        then None
-        else (
-          let sc = make_shortcut s in
-          W.Shortcut_controller.add_shortcut f.controller sc;
-          Some (key, sc)))
-    in
-    f.installed <- keep @ added
+    let installed_keys = List.map f.installed ~f:fst in
+    (* Any change rebuilds the whole list rather than diffing in place: a surviving entry
+       kept while a new one is appended would give the controller an order that depends on
+       which frame added what, and the list order is the match order. Both sides are
+       sorted, so equality is exact. *)
+    if not (List.equal [%equal: Trigger.t * string] installed_keys wanted_keys)
+    then (
+      List.iter f.installed ~f:(fun (_, sc) ->
+        W.Shortcut_controller.remove_shortcut f.controller sc);
+      f.installed <- install f.controller wanted)
 ;;
 
 (* One [sync] per family, dispatched from an exhaustive match on [Events.Family.t].

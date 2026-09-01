@@ -73,6 +73,8 @@ let focuses = ref 0
 let closes = ref 0
 let picks = ref 0
 let chords = ref 0
+let chords2 = ref 0
+let gated = ref 0
 let record s = log := s :: !log
 
 (* What the nested claim target answers, flipped by the driver between blocks: [Claim] for
@@ -303,6 +305,23 @@ let view =
                    incr chords;
                    record "chord")
                  ())
+          ; Action_spec.simple
+              ~name:"chord2"
+              (Ui_effect.of_sync_fun
+                 (fun () ->
+                   incr chords2;
+                   record "chord2")
+                 ())
+            (* Disabled from mount and never enabled: the chord block at the end measures
+               what a matching shortcut does when its action is off. *)
+          ; Action_spec.simple
+              ~enabled:false
+              ~name:"gated"
+              (Ui_effect.of_sync_fun
+                 (fun () ->
+                   incr gated;
+                   record "gated")
+                 ())
           ]
       ; Attr.shortcut
           ~phase:Capture
@@ -311,6 +330,14 @@ let view =
                ~modifiers:{ Modifiers.none with control = true }
                (Keyval.of_char 'k'))
           ~action:"win.chord"
+          ()
+      ; Attr.shortcut
+          ~phase:Capture
+          ~trigger:
+            (Trigger.create
+               ~modifiers:{ Modifiers.none with control = true }
+               (Keyval.of_char 'g'))
+          ~action:"win.gated"
           ()
       ]
     (Node.box
@@ -324,7 +351,19 @@ let view =
            ~orientation:Vertical
            ~spacing:12
            ~attrs:
-             [ (* The capture-phase handler, on an {i ancestor} of both entries: capture
+             [ (* The cross-node contender (fix round I1): the same Ctrl+k as the window's
+                  shortcut, one node deeper, naming a different action. Which fires is
+                  GTK's routing -- capture runs top-down, so the window's wins -- and the
+                  golden pins that determinism: chord2 never fires. *)
+               Attr.shortcut
+                 ~phase:Capture
+                 ~trigger:
+                   (Trigger.create
+                      ~modifiers:{ Modifiers.none with control = true }
+                      (Keyval.of_char 'k'))
+                 ~action:"win.chord2"
+                 ()
+             ; (* The capture-phase handler, on an {i ancestor} of both entries: capture
                   runs top-down from the toplevel, so this sees a key before either
                   entry's own bubble-phase controller does. Escape is [Handled], which
                   stops the routing dead -- and the entry's controller not firing is the
@@ -849,5 +888,23 @@ let () =
   pump_until ~label:"chord" ~ready:(fun () -> !chords > before);
   drain ();
   show "Ctrl+k with an entry focused";
-  printf "entry 1 text after the chord: %S\n" (W.Editable.get_text (cast entry1))
+  printf "entry 1 text after the chord: %S\n" (W.Editable.get_text (cast entry1));
+  (* The contention verdict: the box's same-trigger shortcut exists and never fired -- the
+     window's capture controller consumed the chord first, deterministically by tree
+     position, which is the whole cross-node ordering rule. *)
+  printf "the contending inner shortcut fired: %d times\n" !chords2;
+  (* --- the disabled-action chord (fix round minor): does a matching shortcut whose
+     action is disabled consume the key or let it fall through to the focused entry? No
+     counter can move, so the probe is the entry's text: consumed leaves it alone,
+     fall-through inserts the g. The F1 sentinel bounds the wait, as in the miss block. *)
+  let before_keys = !keys in
+  xdotool [ "keydown"; "ctrl" ];
+  xdotool [ "key"; "g" ];
+  xdotool [ "keyup"; "ctrl" ];
+  key ~name:"gated-sentinel" "F1";
+  ignore (before_keys : int);
+  drain ();
+  show "Ctrl+g on a disabled action, then the sentinel";
+  printf "gated handler fired: %d times\n" !gated;
+  printf "entry 1 text after the disabled chord: %S\n" (W.Editable.get_text (cast entry1))
 ;;

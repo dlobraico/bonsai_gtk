@@ -30,7 +30,13 @@ let scope_of reference =
 let node_actions (node : Node.t) =
   match (Attrs.find node.attrs Actions :> Attr.Private.t option) with
   | Some (Actions { scope; specs }) ->
-    Some (scope, List.map specs ~f:(fun (s : Action_spec.t) -> s.name))
+    Some
+      ( scope
+      , List.map specs ~f:(fun (s : Action_spec.t) ->
+          ( s.name
+          , match s.kind with
+            | Radio _ -> `Radio
+            | Simple _ | Toggle _ -> `Plain )) )
   | Some _ | None -> None
 ;;
 
@@ -41,48 +47,74 @@ let node_actions (node : Node.t) =
 let node_references (node : Node.t) =
   let from_menu =
     match node.kind with
-    | Menu_button { menu = Some menu; _ } -> Menu.action_references menu
+    | Menu_button { menu = Some menu; _ } ->
+      List.map (Menu.action_references menu) ~f:(fun r -> r, `Menu)
     | _ -> []
   in
   let from_shortcuts =
     match (Attrs.find node.attrs Shortcut :> Attr.Private.t option) with
     | Some (Shortcut shortcuts) ->
-      List.map shortcuts ~f:(fun (s : Attr.shortcut) -> s.action)
+      List.map shortcuts ~f:(fun (s : Attr.shortcut) -> s.action, `Shortcut)
     | Some _ | None -> []
   in
   from_menu @ from_shortcuts
 ;;
 
 let check ~path (root : Node.t) =
-  let rec go ~path ~(env : (string * string list) list) (node : Node.t) =
+  let rec go
+    ~path
+    ~(env : (string * (string * [ `Plain | `Radio ]) list) list)
+    (node : Node.t)
+    =
     let env =
       match node_actions node with
       | Some (scope, names) -> (scope, names) :: env
       | None -> env
     in
-    List.iter (node_references node) ~f:(fun reference ->
+    List.iter (node_references node) ~f:(fun (reference, source) ->
       let resolved =
         match scope_of reference with
-        | None -> false
+        | None -> None
         | Some (scope, name) ->
-          List.exists env ~f:(fun (s, names) ->
-            String.equal s scope && List.mem names name ~equal:String.equal)
+          (* Every entry of the scope, nearest first, union semantics -- the muxer falls
+             through on a same-scope miss (measured; see the header). The nearest holder
+             of the {i name} decides its kind. *)
+          List.find_map env ~f:(fun (s, names) ->
+            if String.equal s scope
+            then List.Assoc.find names name ~equal:String.equal
+            else None)
       in
-      if not resolved
-      then (
+      match resolved, source with
+      | None, (`Menu | `Shortcut) ->
         let in_reach =
           match List.map env ~f:fst with
           | [] -> "none"
           | scopes ->
             String.concat ~sep:", " (List.dedup_and_sort ~compare:String.compare scopes)
         in
+        (* One noun and one string for both callers and both sources: a menu item and a
+           shortcut make the same kind of claim. *)
         invalid_argf
-          "%s: menu item action %S resolves to no Attr.actions here or on an ancestor \
+          "%s: action reference %S resolves to no Attr.actions here or on an ancestor \
            (scopes in reach: %s)"
           path
           reference
           in_reach
-          ()));
+          ()
+      | Some `Radio, `Shortcut ->
+        (* Feasible but unshipped: [Shortcut.set_arguments] is bound, so a targeted
+           shortcut could carry the radio's parameter -- M3 scopes it out (see
+           docs/m2-backlog.md, "Recorded during M3"). Until then a shortcut activates
+           through a parameterless [GtkNamedAction], which GTK refuses against a
+           parameterised action -- silently, which is why this raises instead. *)
+        invalid_argf
+          "%s: shortcut action %S names a radio action; targeted shortcuts are not \
+           shipped in M3 (wrap the choice in a Simple action, or see the backlog entry \
+           on Shortcut.set_arguments)"
+          path
+          reference
+          ()
+      | Some (`Radio | `Plain), `Menu | Some `Plain, `Shortcut -> ());
     Children.iteri node.children ~path ~f:(fun path child -> go ~path ~env child)
   in
   go ~path ~env:[] root

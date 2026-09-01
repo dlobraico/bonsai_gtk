@@ -94,7 +94,7 @@ let%expect_test "action references resolve against self and ancestors only" =
   [%expect
     {|
     (Invalid_argument
-     "root/0/0: menu item action \"app.close\" resolves to no Attr.actions here or on an ancestor (scopes in reach: app)")
+     "root/0/0: action reference \"app.close\" resolves to no Attr.actions here or on an ancestor (scopes in reach: app)")
     |}];
   (* Present on a sibling, which is not in GTK's resolution path and so not in ours. *)
   Expect_test_helpers_core.require_does_raise (fun () ->
@@ -107,7 +107,7 @@ let%expect_test "action references resolve against self and ancestors only" =
   [%expect
     {|
     (Invalid_argument
-     "root/0/1: menu item action \"app.open\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
+     "root/0/1: action reference \"app.open\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
     |}];
   (* A radio reference resolves by its "scope.name" half; the "::target" rides along. *)
   Action_resolution.check
@@ -198,7 +198,7 @@ let%expect_test "shortcuts accumulate, sexp, and diff structurally" =
   [%expect
     {|
     (Invalid_argument
-     "Attr.shortcut: action \"app.theme::dark\" carries a \"::target\", but a shortcut activates through GtkNamedAction, which passes no parameter -- a radio action cannot be fired by a shortcut")
+     "Attr.shortcut: action \"app.theme::dark\" carries a \"::target\", but targeted shortcuts are not shipped in M3 (activation goes through a parameterless GtkNamedAction; Shortcut.set_arguments is the unshipped path)")
     |}]
 ;;
 
@@ -220,6 +220,71 @@ let%expect_test "a shortcut naming a missing action is rejected by the walk" =
   [%expect
     {|
     (Invalid_argument
-     "root/0: menu item action \"app.missing\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
+     "root/0: action reference \"app.missing\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
     |}]
+;;
+
+(* Fix round: the two new rejections. One trigger naming two actions on one node is an
+   order accident (which one ran would depend on install history), refused with one string
+   from the runtime and the handle; and a shortcut resolving to a radio is refused by the
+   walk -- targeted shortcuts are feasible (Shortcut.set_arguments is bound) and
+   deliberately unshipped. *)
+let%expect_test "shortcut conflicts and radio targets are rejected" =
+  let ctrl c =
+    Trigger.create ~modifiers:{ Modifiers.none with control = true } (Keyval.of_char c)
+  in
+  let conflicted =
+    Attrs.of_list
+      [ Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.a" ()
+      ; Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.b" ()
+      ]
+  in
+  print_s
+    [%sexp (Events.shortcut_conflict_rejection ~path:"root/0" conflicted : string option)];
+  [%expect
+    {|
+    ("root/0: two Attr.shortcuts share the trigger <Control>k but name different actions (\"app.a\" and \"app.b\"); which one ran would be an accident of order, so the node is rejected")
+    |}];
+  (* Same trigger, same action: legal, and collapses to one installed shortcut. *)
+  let doubled =
+    Attrs.of_list
+      [ Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.a" ()
+      ; Attr.shortcut ~trigger:(ctrl 'k') ~action:"app.a" ()
+      ]
+  in
+  print_s
+    [%sexp (Events.shortcut_conflict_rejection ~path:"root/0" doubled : string option)];
+  [%expect {| () |}];
+  (* The walk refuses a shortcut resolving to a radio spec outright. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Action_resolution.check
+      ~path:"root"
+      (Node.window
+         (Node.label
+            ~attrs:
+              [ Attr.actions
+                  ~scope:"view"
+                  [ Action_spec.radio ~name:"theme" ~state:"light" (fun _ -> noop) ]
+              ; Attr.shortcut ~trigger:(ctrl 't') ~action:"view.theme" ()
+              ]
+            "sheet")));
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: shortcut action \"view.theme\" names a radio action; targeted shortcuts are not shipped in M3 (wrap the choice in a Simple action, or see the backlog entry on Shortcut.set_arguments)")
+    |}];
+  (* A MENU item naming the radio stays legal -- the refusal is the shortcut's. *)
+  Action_resolution.check
+    ~path:"root"
+    (Node.window
+       (Node.menu_button
+          ~attrs:
+            [ Attr.actions
+                ~scope:"view"
+                [ Action_spec.radio ~name:"theme" ~state:"light" (fun _ -> noop) ]
+            ]
+          ~menu:[ Menu.item ~label:"Dark" ~action:"view.theme::dark" () ]
+          ()));
+  print_s [%sexp "menu radio still resolves"];
+  [%expect {| "menu radio still resolves" |}]
 ;;

@@ -193,6 +193,9 @@ let rec require_supported ~path ~parent (node : Node.t) =
      [Signals.require_specs]. *)
   List.iter Events.Family.all ~f:(fun family ->
     Option.iter (Events.family_phase_rejection ~path family node.attrs) ~f:invalid_arg);
+  (* Beside the phase doctrine, as at runtime: one trigger naming two actions on one node
+     is an order accident waiting to happen, refused with the runtime's string. *)
+  Option.iter (Events.shortcut_conflict_rejection ~path node.attrs) ~f:invalid_arg;
   require_unique_keys ~path node.children;
   Children.iteri node.children ~path ~f:(fun path child ->
     require_supported ~path ~parent:(Some node.kind) child)
@@ -682,9 +685,13 @@ module Result_spec = struct
       let action_ref =
         match (Attrs.find n.attrs Shortcut :> Attr.Private.t option) with
         | Some (Shortcut shortcuts) ->
+          (* First match in (trigger, action) order -- the same sorted order the live
+             controller installs, so the two resolve identically. (With the same-trigger
+             conflict rejected at the walk, the sort is belt-and-braces here.) *)
           (match
-             List.find shortcuts ~f:(fun (s : Attr.shortcut) ->
-               Trigger.equal s.trigger trigger)
+             List.sort shortcuts ~compare:(fun (a : Attr.shortcut) b ->
+               [%compare: Trigger.t * string] (a.trigger, a.action) (b.trigger, b.action))
+             |> List.find ~f:(fun (s : Attr.shortcut) -> Trigger.equal s.trigger trigger)
            with
            | Some s -> s.action
            | None ->
@@ -722,9 +729,12 @@ module Result_spec = struct
        | Some { kind = Simple eff; _ } -> eff
        | Some { kind = Toggle { on_activate; _ }; _ } -> on_activate
        | Some { kind = Radio _; name; _ } ->
+         (* Unreachable through [create]: the walk refuses a shortcut resolving to a
+            radio. Kept loud, with the honest wording -- targeted shortcuts are feasible
+            ([Shortcut.set_arguments] is bound) and deliberately unshipped. *)
          failwithf
-           "Bonsai_gtk_test: %S is a radio action, which a shortcut cannot fire (no \
-            parameter)"
+           "Bonsai_gtk_test: %S is a radio action; targeted shortcuts are not shipped in \
+            M3"
            name
            ())
   ;;

@@ -313,6 +313,36 @@ let controller_class : Family.t -> string = function
   | Shortcut -> "GtkShortcutController"
 ;;
 
+(* The trigger's twin of the phase doctrine, and it lives here for the same reason: two
+   shortcuts on one node sharing a trigger but naming different actions would make "which
+   action runs" a fact about install order rather than about the tree, and both the
+   runtime and [Bonsai_gtk_test] must refuse it with one string. Same trigger, same action
+   is legal (and collapses to one installed shortcut). *)
+let shortcut_conflict_rejection ~path attrs =
+  match (Attrs.find attrs Attr.Name.Shortcut :> Attr.Private.t option) with
+  | Some (Shortcut shortcuts) ->
+    let sorted =
+      List.sort shortcuts ~compare:(fun (a : Attr.shortcut) b ->
+        [%compare: Trigger.t * string] (a.trigger, a.action) (b.trigger, b.action))
+    in
+    let rec find_conflict = function
+      | (a : Attr.shortcut) :: (b :: _ as rest) ->
+        if Trigger.equal a.trigger b.trigger && not (String.equal a.action b.action)
+        then Some (a, b)
+        else find_conflict rest
+      | [ _ ] | [] -> None
+    in
+    Option.map (find_conflict sorted) ~f:(fun (a, b) ->
+      sprintf
+        "%s: two Attr.shortcuts share the trigger %s but name different actions (%S and \
+         %S); which one ran would be an accident of order, so the node is rejected"
+        path
+        (Trigger.to_label a.trigger)
+        a.action
+        b.action)
+  | Some _ | None -> None
+;;
+
 let family_phase_rejection ~path (family : Family.t) attrs =
   match family_phases family attrs with
   | [] | [ _ ] -> None

@@ -852,9 +852,28 @@ val on_key_released : ?phase:Phase.t -> Key_event.t Handler.t -> t
     a window-wide chord is a shortcut attr on the window node ({!Phase.Capture} if it must
     beat the children — stavekeeper's [dialog.ml] rule).
 
-    A ["::target"] in [action] is rejected at the constructor: a [GtkNamedAction]
-    activates with no parameter, so a {!Action_spec.Radio} cannot be fired by a shortcut
-    at all — give the radio a wrapping [Simple] action if a chord must set it. *)
+    {b Within a node, first match in (trigger, action) order wins}: the controller's
+    shortcut list is rebuilt in that stable sort on any change, so which shortcut a chord
+    fires is a function of the frame's content, never of patch history — and one trigger
+    naming two {i different} actions on one node is [Invalid_argument] outright (the
+    order-accident rule, checked beside the phase one, headlessly too). Across nodes,
+    GTK's routing decides: the phase and the tree position, deterministic by construction.
+
+    {b A chord on a disabled action falls through} (measured, [test/live/live_input.ml]):
+    the shortcut does not consume the key, which continues to the key controllers and the
+    focused widget exactly as if no shortcut matched — the golden shows the capture-phase
+    key handler seeing the chord that the disabled action ignored. So disabling the action
+    re-opens the key's normal routing, which is the behaviour stavekeeper's
+    [text_input_active] arms want; a chord that must go {i dead} while a feature is off
+    needs the handler side to say so, not the shortcut.
+
+    A ["::target"] in [action] is rejected at the constructor: M3 ships {i untargeted}
+    shortcuts only (activation goes through a parameterless [GtkNamedAction], which GTK
+    refuses against a {!Action_spec.Radio}'s parameter — so the walk also refuses a
+    shortcut resolving to a radio). Targeted shortcuts are feasible —
+    [Shortcut.set_arguments] is bound — and deliberately unshipped ([docs/m2-backlog.md],
+    "Recorded during M3"); wrap the choice in a [Simple] action if a chord must set a
+    radio today. *)
 val shortcut : ?phase:Phase.t -> trigger:Trigger.t -> action:string -> unit -> t
 
 val many : t list -> t

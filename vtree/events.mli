@@ -84,6 +84,12 @@ val family_attrs : Family.t -> Attr.Name.t list
     consumers check it first. *)
 val family_phase : Family.t -> Attrs.t -> Phase.t option
 
+(** The [Invalid_argument] message for two shortcuts on one node sharing a trigger but
+    naming different actions — which one ran would be an accident of order, the exact
+    indeterminism the sorted install exists to remove — [None] otherwise. Checked beside
+    {!family_phase_rejection} by both the runtime and [Bonsai_gtk_test], one string. *)
+val shortcut_conflict_rejection : path:string -> Attrs.t -> string option
+
 (** The [Invalid_argument] message for a node whose attrs of one family ask for two
     different propagation phases; [None] otherwise. Generalises M2's [key_phase_rejection]
     -- for the [Key] family the message text is unchanged -- and names the two attrs, the
