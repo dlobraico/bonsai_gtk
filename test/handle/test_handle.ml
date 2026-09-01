@@ -2835,6 +2835,102 @@ let%expect_test "a non-popover smuggled into the slot by record update is reject
     |}]
 ;;
 
+(* The action system, headless (M3 Task 6): [Activate_action] reaches the right handler; a
+   radio's target rides the reference; and a toggle's checkmark is the controlled story --
+   an activation moves nothing until the model's next render does. *)
+let%expect_test "actions activate, radios carry targets, toggles stay controlled" =
+  let app (graph @ local) =
+    let log, set_log = Bonsai.state [] graph in
+    let dark, (_ : (bool -> unit Ui_effect.t) Bonsai.t) = Bonsai.state false graph in
+    let%arr log and set_log and dark in
+    Node.window
+      ~title:"actions"
+      (Node.box
+         ~orientation:Vertical
+         ~attrs:
+           [ Attr.test_id "holder"
+           ; Attr.actions
+               ~scope:"app"
+               [ Action_spec.simple ~name:"ping" (set_log ("ping" :: log))
+               ; Action_spec.toggle
+                   ~name:"dark"
+                   ~state:dark
+                   (set_log (sprintf "dark-requested (now %b)" dark :: log))
+               ; Action_spec.radio ~name:"theme" ~state:"light" (fun target ->
+                   set_log (("theme:" ^ target) :: log))
+               ]
+           ]
+         [ Node.menu_button
+             ~label:"menu"
+             ~menu:
+               [ Menu.item ~label:"Ping" ~action:"app.ping" ~accel:"<Control>p" ()
+               ; Menu.item ~label:"Dark" ~action:"app.dark" ()
+               ; Menu.item ~label:"Solar" ~action:"app.theme::solar" ()
+               ]
+             ()
+         ; Node.label ~attrs:[ Attr.test_id "log" ] (String.concat ~sep:"," log)
+         ])
+  in
+  let handle = Bonsai_gtk_test.create app in
+  Bonsai_gtk_test.Handle.store_view handle;
+  Bonsai_gtk_test.Handle.do_actions handle [ Activate_action ("holder", "app.ping") ];
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  Bonsai_gtk_test.Handle.do_actions
+    handle
+    [ Activate_action ("holder", "app.theme::solar") ];
+  Bonsai_gtk_test.Handle.recompute_view handle;
+  (* The toggle: the activation is a request. The model here logs it and does not move
+     [dark], so the spec's [state] stays [false] -- the declined checkmark. *)
+  Bonsai_gtk_test.Handle.do_actions handle [ Activate_action ("holder", "app.dark") ];
+  Bonsai_gtk_test.Handle.show_diff handle;
+  [%expect
+    {|
+            ((Actions (scope app)
+              (specs
+               (((name ping) (Simple <effect>))
+                ((name dark) (Toggle ((state false))))
+                ((name theme) (Radio ((state light)))))))
+             (Test_id holder)))
+           (children
+            (List
+             (((kind
+                (Menu_button
+                 ((label (menu))
+                  (menu
+                   (((Item ((label Ping) (action app.ping) (accel (<Control>p))))
+                     (Item ((label Dark) (action app.dark) (accel ())))
+                     (Item ((label Solar) (action app.theme::solar) (accel ())))))))))
+               (attrs ()) (children (Slots ((popover (Single ()))))))
+    -|        ((kind (Label ((text "")))) (attrs ((Test_id log)))
+    -|         (children No_children))))))))))
+    +|        ((kind
+    +|          (Label ((text "dark-requested (now false),theme:solar,ping"))))
+    +|         (attrs ((Test_id log))) (children No_children))))))))))
+    |}]
+;;
+
+(* A menu naming an action nobody provides is rejected headlessly with the runtime's
+   string -- the walk is one function in vtree, so the two cannot drift. *)
+let%expect_test "a dangling menu action reference is rejected by the handle" =
+  let app (_graph @ local) =
+    Bonsai.return
+      (Node.window
+         ~title:"dangling"
+         (Node.menu_button
+            ~label:"menu"
+            ~menu:[ Menu.item ~label:"Lost" ~action:"app.missing" () ]
+            ()))
+  in
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    let handle = Bonsai_gtk_test.create app in
+    Bonsai_gtk_test.Handle.recompute_view handle);
+  [%expect
+    {|
+    (Invalid_argument
+     "root/0: menu item action \"app.missing\" resolves to no Attr.actions here or on an ancestor (scopes in reach: none)")
+    |}]
+;;
+
 (* The popover's controlled ~open_ from the model's side: Close_popover fires
    [Attr.on_closed] and the model that follows flips [open_]; Open_popover fires nothing
    (live, opening emits nothing this library exposes), so the prop stands wherever the

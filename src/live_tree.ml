@@ -505,6 +505,7 @@ let rec dump (w : Widget.t) : Sexp.t =
           | Some i -> [ [%sexp `icon (i : string)] ])
        @ flag_prop "primary" (W.Menu_button.get_primary mb)
        @ flag_prop "always-show-arrow" (W.Menu_button.get_always_show_arrow mb)
+       @ flag_prop "has-menu" (Option.is_some (W.Menu_button.get_menu_model mb))
      | "GtkCenterBox" ->
        (* Only the non-GTK value: which of the three slots are filled is visible in the
           children, and an empty slot parents nothing at all. *)

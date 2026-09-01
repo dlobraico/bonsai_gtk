@@ -120,6 +120,9 @@ let set (w : Widget.t) (attr : Attr.t) =
      the placement attrs, and inert on {i unset} too, deliberately: dropping the attr
      un-grabs nothing, because a grab is an event rather than a state. *)
   | Autofocus _
+  (* [Actions] is [src/actions.ml]'s, not a property write: the group is created, diffed
+     and removed there, from the attrs, exactly as the controllers are. *)
+  | Actions _
   | Test_id _
   | Measure_overlay _
   | Grid_cell _
@@ -178,6 +181,7 @@ let unset (d : defaults) (w : Widget.t) (name : Attr.Name.t) =
   | Widget_name -> Widget.set_name w (Some d.widget_name)
   | Cursor_name -> Widget.set_cursor w d.cursor
   | Autofocus
+  | Actions
   | Test_id
   | Measure_overlay
   | Grid_cell

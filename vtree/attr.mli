@@ -29,6 +29,7 @@ module Name : sig
     | Focusable
     | Can_focus
     | Autofocus
+    | Actions
     | Widget_name
     | Cursor_name
     | Test_id
@@ -132,6 +133,10 @@ module Private : sig
     | Focusable of bool
     | Can_focus of bool
     | Autofocus of bool
+    | Actions of
+        { scope : string
+        ; specs : Action_spec.t list
+        }
     | Widget_name of string
     | Cursor_name of string
     | Test_id of string
@@ -268,6 +273,30 @@ val can_focus : bool -> t
     [select_region], default widgets) is on the backlog, and this attr will be re-examined
     against it. *)
 val autofocus : bool -> t
+
+(** One [GSimpleActionGroup], inserted on this widget under [scope]
+    ([Widget.insert_action_group]): GTK resolves ["scope.name"] from any menu — or
+    (Task 7) shortcut — at or below this node, which is why the check in
+    [Action_resolution] walks ancestors and nothing wider. Legal on every kind — a
+    controller-family-shaped attr, though what it attaches is an action group rather than
+    an event controller; [src/actions.ml] owns the GTK side and keeps [enabled]/[state]
+    controlled (spec §6.5, see {!Action_spec}).
+
+    At most one [Attr.actions] per node ({!Attrs} is keyed by name; a later one replaces);
+    more scopes belong on ancestors, which is also where GTK looks. Duplicate spec names
+    within the attr, and a scope that is empty or contains a dot, are [Invalid_argument]
+    from this constructor.
+
+    {b One caveat, measured (pre-flight correction 1)}: an [Attr.actions]
+    {i first appearing} on an already-mounted node resolves for activation, but a
+    [PopoverMenu] built before the group existed never binds its item tracker to it — the
+    items render permanently insensitive, and [set_enabled] does not move them. Changing
+    the menu (any [Menu.equal]-visible change) rebuilds the model and re-binds. Mount the
+    actions with the tree (the normal shape) and this never arises; the limitation is
+    documented rather than repaired because the repair — re-setting every descendant menu
+    button's model from an ancestor's attr change — needs machinery no other attr needs.
+    [test/live/live_menus.ml] pins the activation half. *)
+val actions : scope:string -> Action_spec.t list -> t
 
 (** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]
     because {!name} already means "which attribute is this".

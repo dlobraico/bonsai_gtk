@@ -304,6 +304,10 @@ type menu_button_props =
   ; primary : bool [@sexp_drop_if Bool.equal Defaults.Menu_button.primary]
   ; always_show_arrow : bool
        [@sexp_drop_if Bool.equal Defaults.Menu_button.always_show_arrow]
+  ; menu : Menu.t option [@sexp_drop_if Option.is_none]
+  (* A prop, deliberately: a [Menu.t] carries no handlers (items {i name} actions), so it
+     is equalable and diffable like any other prop, and [Menu.equal] deciding "the menu
+     changed" is what triggers the GMenu rebuild. *)
   }
 [@@deriving sexp_of, equal]
 

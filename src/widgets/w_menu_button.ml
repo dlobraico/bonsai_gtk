@@ -65,6 +65,64 @@ let repair_focus_after_popdown (popover : Widget.t) =
     ()
 ;;
 
+(* The [GMenu] behind a button's [~menu], per widget and for its lifetime: the rebuild
+   strategy is [remove_all] + re-append on the {i same} model -- GTK's items-changed
+   machinery propagates that to an open [PopoverMenu] safely (measured, pre-flight
+   correction 9) -- so the handle has to survive between patches. Weakly keyed on the
+   widget the patcher retains, the [Refusal]/[Child_keys] invariant in one more place. *)
+module Menus = struct
+  module Table = Stdlib.Ephemeron.K1.Make (struct
+      type t = Widget.t
+
+      let equal = Gobject.same
+      let hash = Stdlib.Hashtbl.hash
+    end)
+
+  let table : Gio.Menu.t Table.t = Table.create 8
+  let set w m = Table.replace table w m
+  let find w = Table.find_opt table w
+  let remove w = Table.remove table w
+end
+
+(* One [Menu.entry], appended. An item with a "::target" goes through
+   [set_action_and_target_value] rather than [set_detailed_action]'s parser -- the fact
+   table's ruling, and it also keeps GTK's detailed-action syntax out of everything but
+   the one string the vtree defined. The display-only accel is the "accel" attribute
+   stavekeeper renders ([viewer_window.ml:4288-4292]); nothing is installed. *)
+let rec append_entry (menu : Gio.Menu.t) (entry : Menu.entry) =
+  match entry with
+  | Item item ->
+    let mi = Gio.Menu_item.new_ (Some item.label) None in
+    (match String.substr_index item.action ~pattern:"::" with
+     | None -> Gio.Menu_item.set_detailed_action mi item.action
+     | Some i ->
+       let target = String.drop_prefix item.action (i + 2) in
+       Gio.Menu_item.set_action_and_target_value
+         mi
+         (Some (String.prefix item.action i))
+         (Some (Gvariant.of_string target)));
+    Option.iter item.accel ~f:(fun accel ->
+      Gio.Menu_item.set_attribute_value mi "accel" (Some (Gvariant.of_string accel)));
+    Gio.Menu.append_item menu mi
+  | Section { label; entries } ->
+    let sub = Gio.Menu.new_ () in
+    List.iter entries ~f:(append_entry sub);
+    Gio.Menu.append_section menu label (sub :> Ocgtk_gio.Gio.Wrappers.Menu_model.t)
+  | Submenu { label; entries } ->
+    let sub = Gio.Menu.new_ () in
+    List.iter entries ~f:(append_entry sub);
+    Gio.Menu.append_submenu menu (Some label) (sub :> Ocgtk_gio.Gio.Wrappers.Menu_model.t)
+;;
+
+let fill (menu : Gio.Menu.t) (m : Menu.t) = List.iter m ~f:(append_entry menu)
+
+let set_menu (mb : W.Menu_button.t) (w : Widget.t) (m : Menu.t) =
+  let menu = Gio.Menu.new_ () in
+  fill menu m;
+  Menus.set w menu;
+  W.Menu_button.set_menu_model mb (Some (menu :> Ocgtk_gio.Gio.Wrappers.Menu_model.t))
+;;
+
 let apply_label_or_icon (mb : W.Menu_button.t) (p : Kind.menu_button_props) =
   match p.label, p.icon_name with
   | Some l, _ -> W.Menu_button.set_label mb l
@@ -83,7 +141,8 @@ let impl : Widget_impl.t =
           Widget_impl.batch w (fun () ->
             apply_label_or_icon mb p;
             if p.primary then W.Menu_button.set_primary mb true;
-            if p.always_show_arrow then W.Menu_button.set_always_show_arrow mb true);
+            if p.always_show_arrow then W.Menu_button.set_always_show_arrow mb true;
+            Option.iter p.menu ~f:(set_menu mb w));
           w
         | k -> Widget_impl.wrong_kind "MenuButton" k)
   ; update =
@@ -105,7 +164,26 @@ let impl : Widget_impl.t =
             if not (Bool.equal old.primary new_.primary)
             then W.Menu_button.set_primary mb new_.primary;
             if not (Bool.equal old.always_show_arrow new_.always_show_arrow)
-            then W.Menu_button.set_always_show_arrow mb new_.always_show_arrow)
+            then W.Menu_button.set_always_show_arrow mb new_.always_show_arrow;
+            if not (Option.equal Menu.equal old.menu new_.menu)
+            then (
+              match new_.menu with
+              | None ->
+                W.Menu_button.set_menu_model mb None;
+                Menus.remove w
+              | Some m ->
+                (match Menus.find w with
+                 | Some menu ->
+                   (* The same model, rebuilt in place: an open PopoverMenu tracks the
+                      items-changed stream without popping down (pre-flight 9). *)
+                   Gio.Menu.remove_all menu;
+                   fill menu m
+                 | None ->
+                   (* No handle: the menu is appearing (or the entry was somehow lost, in
+                      which case a fresh model re-binds everything). This is also the
+                      documented workaround path for an [Attr.actions] that appeared
+                      post-mount -- a fresh [set_menu_model] re-binds the item tracker. *)
+                   set_menu mb w m)))
         | _, k -> Widget_impl.wrong_kind "MenuButton" k)
   ; reassert = None
   ; signals = []
@@ -119,8 +197,17 @@ let impl : Widget_impl.t =
                        it everywhere else): [set_popover] both parents the popover and
                        binds the button's toggle to it; [None] unparents. The child
                        arrives as a plain [Widget.t] and is a popover by construction --
-                       the placement check ran before this. *)
-                    W.Menu_button.set_popover (cast w) (Option.map c ~f:cast))
+                       the placement check ran before this.
+
+                       The guard: [set_popover NULL] also clears any menu model (one
+                       surface, two setters), and the always-empty slot beside a [~menu]
+                       -- the constructor guarantees the two never coexist -- would
+                       otherwise wipe the model the same mount just built. An empty slot
+                       while a model is present is the menu path, and writes nothing. *)
+                    let mb : W.Menu_button.t = cast w in
+                    match c with
+                    | None when Option.is_some (W.Menu_button.get_menu_model mb) -> ()
+                    | _ -> W.Menu_button.set_popover mb (Option.map c ~f:cast))
               } )
         ]
   }

@@ -187,7 +187,7 @@ let%expect_test "is_event over every name" =
   [%expect
     {|
     (events
-     (On_clicked On_toggled On_changed On_activate On_search_changed
+     (Actions On_clicked On_toggled On_changed On_activate On_search_changed
       On_value_changed On_expanded_changed On_revealed On_position_changed
       On_visible_child_changed On_row_activated On_selected_rows_changed
       On_child_activated On_selected_children_changed On_page_changed
@@ -236,7 +236,7 @@ let%expect_test "the table and [is_event] cover the same names" =
       && not (List.mem in_table n ~equal:Attr.Name.equal))
   in
   print_s [%sexp `signal_names_no_kind_emits (emitted_by_nobody : Attr.Name.t list)];
-  [%expect {| (signal_names_no_kind_emits ()) |}]
+  [%expect {| (signal_names_no_kind_emits (Actions)) |}]
 ;;
 
 (* The other half of the same fact, and the one an application depends on: a controller

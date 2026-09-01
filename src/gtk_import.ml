@@ -25,6 +25,17 @@ module W = Gtk.Wrappers
    reason everything else in this file is: so that no widget impl has to remember which
    library a GTK-facing type lives in. *)
 module List_model = Ocgtk_gio.Gio.Wrappers.List_model
+
+(* The GIO wrappers as a whole, for the action system ([src/actions.ml],
+   [w_menu_button.ml]'s GMenu building): [Menu], [Menu_item], [Simple_action],
+   [Simple_action_group], and the three interface casts ([Action], [Action_map],
+   [Action_group]). Aliased for the reason everything here is. *)
+module Gio = Ocgtk_gio.Gio.Wrappers
+
+(* GVariant and its type strings live at the top level of ocgtk's common library, beside
+   [Gobject] and [Glib]. *)
+module Gvariant = Gvariant
+module Gvariant_type = Gvariant_type
 module Widget = W.Widget
 module Gobject = Gobject
 module Glib = Glib

@@ -20,6 +20,7 @@ module Name = struct
       | Focusable
       | Can_focus
       | Autofocus
+      | Actions
       | Widget_name
       | Cursor_name
       | Test_id
@@ -97,6 +98,11 @@ module Name = struct
       | On_contains_focus_changed
       | On_key_pressed
       | On_key_released -> true
+      (* Carries handlers, so a mistake around it deserves the event diagnostics -- but
+         like the controller attrs it is no impl's signal: [Events.is_actions_attr] is the
+         carve-out that makes it legal on every kind, and [src/actions.ml] is what builds
+         its slots. *)
+      | Actions -> true
       | Margin_start
       | Margin_end
       | Margin_top
@@ -170,6 +176,14 @@ module Private = struct
        queue -- on the frame this widget mounts carrying [true], or the frame the attr
        flips false-to-true -- and never afterwards. See [Attr.autofocus]'s doc. *)
     | Autofocus of bool
+    (* One [GSimpleActionGroup] under [scope], inserted on whatever widget carries the
+       attr -- the [Controllers] shape over GTK's action system rather than an event
+       controller, owned by [src/actions.ml]. The specs list is the one place in the menu
+       system that carries handlers. *)
+    | Actions of
+        { scope : string
+        ; specs : Action_spec.t list
+        }
     | Widget_name of string
     | Cursor_name of string
     | Test_id of string
@@ -336,6 +350,7 @@ let name = function
   | Focusable _ -> Some Focusable
   | Can_focus _ -> Some Can_focus
   | Autofocus _ -> Some Autofocus
+  | Actions _ -> Some Actions
   | Widget_name _ -> Some Widget_name
   | Cursor_name _ -> Some Cursor_name
   | Test_id _ -> Some Test_id
@@ -401,6 +416,8 @@ let rec equal a b =
   | Row_activatable a, Row_activatable b -> Bool.equal a b
   | Opacity a, Opacity b -> Float.equal a b
   | Grid_cell a, Grid_cell b -> Grid_cell.equal a b
+  | Actions a, Actions b ->
+    String.equal a.scope b.scope && List.equal Action_spec.equal a.specs b.specs
   | On_clicked a, On_clicked b -> Handler.equal a b
   | On_toggled a, On_toggled b -> Handler.equal a b
   | On_changed a, On_changed b -> Handler.equal a b
@@ -467,6 +484,31 @@ let opacity f = Opacity f
 let focusable b = Focusable b
 let can_focus b = Can_focus b
 let autofocus b = Autofocus b
+
+(* Two structural rejections, both at the line that made the mistake. A duplicate name
+   would be two [GSimpleAction]s fighting over one lookup; a dotted (or empty) scope would
+   make every "scope.name" reference ambiguous, since resolution splits on the first dot.
+   Action {i names} may contain dots -- GTK allows them, and the first-dot split still
+   finds the scope. *)
+let actions ~scope specs =
+  if String.is_empty scope || String.mem scope '.'
+  then
+    invalid_argf
+      "Attr.actions: scope %S must be non-empty and contain no '.' (action references \
+       split on the first dot)"
+      scope
+      ();
+  (match
+     List.find_a_dup
+       (List.map specs ~f:(fun (s : Action_spec.t) -> s.name))
+       ~compare:String.compare
+   with
+   | Some name ->
+     invalid_argf "Attr.actions: two specs are named %S in scope %S" name scope ()
+   | None -> ());
+  Actions { scope; specs }
+;;
+
 let widget_name s = Widget_name s
 let cursor_name s = Cursor_name s
 let test_id s = Test_id s

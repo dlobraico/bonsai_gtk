@@ -259,6 +259,16 @@ module Action : sig
         (click-away or Escape, GTK's [~autohide]). Fires that handler's effect; a model
         that flips [~open_] to [false] follows the user, and one that ignores it shows the
         declined-dismissal reopen as an unchanged [open_ true] in the diff. *)
+    | Activate_action of string * string
+    (** test_id of the node {i carrying the [Attr.actions]}, and the action reference —
+        ["scope.name"], or ["scope.name::target"] to activate a radio, whose handler
+        receives the target. Fires that spec's handler and nothing else: a [Toggle]'s
+        [state] does not move until the model's next render moves it, which is the
+        controlled story (spec §6.5) told through a menu — the diff after a declined
+        activation shows the checkmark standing still. The scope must be the node's own
+        (the resolution walk has already certified any menu references against ancestors;
+        this action addresses the group directly, as [Action_group.activate_action] does
+        live). *)
   [@@deriving sexp_of]
 end
 

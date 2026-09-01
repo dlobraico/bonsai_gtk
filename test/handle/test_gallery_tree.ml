@@ -267,6 +267,11 @@ let gallery_tree ~n ~set_n =
                        ~end_:[ Node.button ~key:"del" ~label:"Delete" () ]
                        ()
                    ; Node.menu_button
+                       ~attrs:
+                         [ Attr.actions
+                             ~scope:"gallery"
+                             [ Action_spec.simple ~name:"noop" Ui_effect.Ignore ]
+                         ]
                        ~icon_name:"open-menu-symbolic"
                        ~primary:true
                        ~popover:

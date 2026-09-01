@@ -1469,8 +1469,17 @@ val popover
 
     [~popover] is the {b one} place a {!popover} may appear; the slot is patched through
     [set_popover], so swapping the popover node swaps the surface and emptying the slot
-    detaches it. [~menu] — the [Gio.Menu]-model path stavekeeper's viewer menu wants —
-    lands in Task 6; until then a menu is a popover whose child is a box of buttons.
+    detaches it.
+
+    [~menu] is the other surface — a declarative {!Menu} rendered by GTK into its own
+    [PopoverMenu] ([set_menu_model]), which is stavekeeper's ⋮-menu shape: items name
+    actions ({!Attr.actions} on this node or an ancestor — a name resolving to nothing is
+    [Invalid_argument] at mount, at patch, and headlessly), sections and submenus nest,
+    and an item's [accel] renders beside its label without installing anything. A changed
+    menu ([Menu.equal]) is rebuilt in place — [remove_all] plus re-append on the same
+    [GMenu], which an {i open} popover tracks safely (measured, pre-flight 9). [~menu] and
+    [~popover] are mutually exclusive ([set_menu_model] builds its own popover, replacing
+    the other's; [Invalid_argument] together).
 
     At most one of [~label]/[~icon_name] (GTK stores one child widget for both;
     [Invalid_argument] otherwise); neither gives GTK's default ⋮-less arrow-only look.
@@ -1483,6 +1492,7 @@ val menu_button
   -> ?icon_name:string
   -> ?primary:bool
   -> ?always_show_arrow:bool
+  -> ?menu:Menu.t
   -> ?popover:t
   -> unit
   -> t

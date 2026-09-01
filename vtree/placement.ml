@@ -83,6 +83,7 @@ let reader : Attr.Name.t -> string option = function
   | On_cursor_moved
   | On_closed
   | Autofocus
+  | Actions
   | On_click
   | On_focus_enter
   | On_focus_leave

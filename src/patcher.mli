@@ -129,6 +129,10 @@ type live =
       {!Bonsai_gtk_vtree.Events.is_controller_attr}'s doc gives. Unlike [slots], which is
       fixed at mount, this changes shape as the attrs do: a controller is attached on the
       frame its first attr appears and removed on the frame its last one goes. *)
+  ; actions : Actions.t
+  (** The {!Bonsai_gtk_vtree.Attr.actions} group this node carries, on the controllers'
+      lifecycle exactly: synced from the attrs at mount and on every patch, slots cleared
+      before an unparent, released at destroy. See [src/actions.mli]. *)
   ; mutable children : live Children.t
   }
 

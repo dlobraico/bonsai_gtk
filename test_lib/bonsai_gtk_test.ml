@@ -29,6 +29,7 @@ module Action = struct
     | Move_cursor of string * int
     | Open_popover of string
     | Close_popover of string
+    | Activate_action of string * string
   [@@deriving sexp_of]
 end
 
@@ -276,6 +277,10 @@ module Result_spec = struct
        and there. The autofocus check is last, as its runtime twin is -- the patcher
        raises it from the fixup queue, after the whole walk. *)
     check_root node;
+    (* Second, as at runtime: [Patcher]'s mount/patch wrappers run this before their walk,
+       so a tree with several mistakes reports the same one here and there. Same function,
+       same string. *)
+    Action_resolution.check ~path:"root" node;
     require_supported ~path:"root" ~parent:None node;
     check_autofocus node
   ;;
@@ -585,6 +590,66 @@ module Result_spec = struct
       (match (Attrs.find n.attrs On_closed :> Attr.Private.t option) with
        | Some (On_closed h) -> h ()
        | _ -> failwithf "Bonsai_gtk_test: node %s has no on_closed handler" id ())
+    (* The user activated an action -- through a menu item, or (Task 7) a shortcut. The id
+       names the node {i carrying the [Attr.actions]}, and the reference is "scope.name"
+       (or "scope.name::target" for a radio, whose handler receives the target). The
+       activation reaches the handler and nothing else: a [Toggle]'s state moves only when
+       the model's next render moves it, which is the controlled story the runtime tells
+       and the diff a test takes shows. *)
+    | Activate_action (id, reference) ->
+      let n = node_exn node id in
+      let reference, target =
+        match String.substr_index reference ~pattern:"::" with
+        | None -> reference, None
+        | Some i -> String.prefix reference i, Some (String.drop_prefix reference (i + 2))
+      in
+      let scope, name =
+        match String.index reference '.' with
+        | None ->
+          failwithf
+            "Bonsai_gtk_test: action reference %S has no scope (expected \"scope.name\")"
+            reference
+            ()
+        | Some i -> String.prefix reference i, String.drop_prefix reference (i + 1)
+      in
+      (match (Attrs.find n.attrs Actions :> Attr.Private.t option) with
+       | Some (Actions { scope = s; specs }) when String.equal s scope ->
+         (match
+            List.find specs ~f:(fun (spec : Action_spec.t) -> String.equal spec.name name)
+          with
+          | None ->
+            failwithf
+              "Bonsai_gtk_test: node %s's Attr.actions scope %S has no action %S"
+              id
+              scope
+              name
+              ()
+          | Some spec ->
+            (match spec.kind, target with
+             | Simple eff, None -> eff
+             | Toggle { on_activate; _ }, None -> on_activate
+             | Radio { on_activate; _ }, Some target -> on_activate target
+             | Radio _, None ->
+               failwithf
+                 "Bonsai_gtk_test: %S is a radio action; activate it with \
+                  \"%s.%s::target\""
+                 name
+                 scope
+                 name
+                 ()
+             | (Simple _ | Toggle _), Some _ ->
+               failwithf
+                 "Bonsai_gtk_test: %S takes no ::target (it is not a radio)"
+                 name
+                 ()))
+       | Some (Actions { scope = s; _ }) ->
+         failwithf
+           "Bonsai_gtk_test: node %s's Attr.actions scope is %S, not %S"
+           id
+           s
+           scope
+           ()
+       | _ -> failwithf "Bonsai_gtk_test: node %s carries no Attr.actions" id ())
   ;;
 end
 

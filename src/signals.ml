@@ -194,7 +194,10 @@ let require_slots ~node_path ~impl_name (slots : slots) attrs =
        on the widget. [Controllers] builds their slots from the attr itself, on the frame
        the attr appears, which is why "the attr is here but has no slot" is not a state
        they can reach. *)
-    | Some name when Attr.Name.is_event name && not (Events.is_controller_attr name) ->
+    | Some name
+      when Attr.Name.is_event name
+           && (not (Events.is_controller_attr name))
+           && not (Events.is_actions_attr name) ->
       if not (List.Assoc.mem !slots name ~equal:Attr.Name.equal)
       then
         invalid_argf

@@ -167,9 +167,20 @@ let controller_family : Attr.Name.t -> Family.t option = function
   | On_editing_changed
   | On_cursor_moved
   | On_closed
+  | Actions
   | Row_selectable
   | Row_activatable
   | Tab_label -> None
+;;
+
+(* The second carve-out beside the controller one, and one constructor wide: an
+   [Attr.actions] carries handlers (so [is_event] says yes and the diagnostics apply) but
+   is no impl's signal -- [src/actions.ml] attaches a [GSimpleActionGroup] to whatever
+   widget carries it, exactly as [Controllers] attaches an event controller -- so
+   [is_supported] admits it on every kind and [Signals.require_slots] skips it. *)
+let is_actions_attr : Attr.Name.t -> bool = function
+  | Actions -> true
+  | _ -> false
 ;;
 
 (* The controller attrs are legal on every kind: they are not any impl's signal, they are
@@ -261,6 +272,7 @@ let attr_phase (attr : Attr.t) =
   | On_cursor_moved _
   | On_closed _
   | On_contains_focus_changed _
+  | Actions _
   | Many _ -> None
 ;;
 
@@ -316,6 +328,7 @@ let family_phase_rejection ~path (family : Family.t) attrs =
 let is_supported kind name =
   (not (Attr.Name.is_event name))
   || is_controller_attr name
+  || is_actions_attr name
   || List.mem (for_kind kind) name ~equal:Attr.Name.equal
 ;;
 

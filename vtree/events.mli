@@ -94,6 +94,13 @@ val family_phase : Family.t -> Attrs.t -> Phase.t option
     between a dialog that takes Escape and one whose child swallows it. *)
 val family_phase_rejection : path:string -> Family.t -> Attrs.t -> string option
 
+(** [true] for {!Attr.actions}'s name — the second carve-out beside {!is_controller_attr},
+    one constructor wide: the attr carries handlers (so [Attr.Name.is_event] says yes and
+    the silent-inertness diagnostics apply) but is no impl's signal — [src/actions.ml]
+    attaches a [GSimpleActionGroup] to whatever widget carries it — so {!is_supported}
+    admits it on every kind and [Signals.require_slots] skips it. *)
+val is_actions_attr : Attr.Name.t -> bool
+
 (** [is_supported kind name] is [true] if [name] is not an event name, is a controller
     attr (legal everywhere), or is a signal this kind emits. A non-event name is always
     supported: this answers "may this attr be here", and layout attrs may be anywhere. *)

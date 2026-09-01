@@ -867,7 +867,26 @@ let popover
 
 (* At most one of [~label]/[~icon_name]: GTK's two setters replace each other's child
    widget, so a call carrying both is asking for a race the constructor can see. *)
-let menu_button ?key ?attrs ?label ?icon_name ?primary ?always_show_arrow ?popover () =
+let menu_button
+  ?key
+  ?attrs
+  ?label
+  ?icon_name
+  ?primary
+  ?always_show_arrow
+  ?menu
+  ?popover
+  ()
+  =
+  (* [set_menu_model] builds its own [PopoverMenu], replacing whatever [set_popover]
+     installed and vice versa -- one surface, two owners is a race the constructor can
+     see. *)
+  (match menu, popover with
+   | Some _, Some _ ->
+     invalid_arg
+       "Node.menu_button: ~menu and ~popover are mutually exclusive (set_menu_model \
+        builds its own PopoverMenu, replacing the popover)"
+   | (Some _ | None), (Some _ | None) -> ());
   (match label, icon_name with
    | Some _, Some _ ->
      invalid_arg
@@ -899,6 +918,7 @@ let menu_button ?key ?attrs ?label ?icon_name ?primary ?always_show_arrow ?popov
        ; primary = Option.value primary ~default:Defaults.Menu_button.primary
        ; always_show_arrow =
            Option.value always_show_arrow ~default:Defaults.Menu_button.always_show_arrow
+       ; menu
        })
     (Slots [ "popover", Single popover ])
 ;;

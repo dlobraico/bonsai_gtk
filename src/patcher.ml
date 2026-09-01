@@ -44,6 +44,7 @@ type live =
   ; slots : Signals.slots
   ; connections : Signals.connection list
   ; controllers : Controllers.t
+  ; actions : Actions.t
   ; mutable children : live Children.t
   }
 
@@ -145,6 +146,7 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
   let built_slots = ref None in
   let built_connections = ref [] in
   let built_controllers = ref None in
+  let built_actions = ref None in
   let built_children = ref None in
   (* Keep in step with {!destroy}: the four stages below are that function's, in its
      order, over whatever exists so far. Only the tail is genuinely shared
@@ -155,6 +157,7 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
   let unwind () =
     Option.iter !built_slots ~f:Signals.clear_slots;
     Option.iter !built_controllers ~f:Controllers.release;
+    Option.iter !built_actions ~f:Actions.release;
     Signals.disconnect !built_connections;
     Option.iter !built_children ~f:(Children.iter ~f:(destroy ctx));
     release_kind ctx ~kind:node.kind ~widget
@@ -184,6 +187,13 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
     let controllers = Controllers.create ctx.signals ~node_path:path widget in
     built_controllers := Some controllers;
     Controllers.update controllers node.attrs;
+    (* Beside the controllers, and for the same reason: [Attr.actions] is nobody's signal.
+       The ordering here is also pre-flight correction 1's requirement met by
+       construction: this widget is not yet parented -- the caller roots it after this
+       whole mount returns -- so the group is always inserted before rooting. *)
+    let actions = Actions.create ctx.signals ~node_path:path widget in
+    built_actions := Some actions;
+    Actions.update actions node.attrs;
     let children =
       mount_children
         ctx
@@ -205,7 +215,7 @@ let rec mount ctx ~path ~is_root ~parent_kind (node : Node.t) : live =
       ~widget
       ~interest:(Patcher_fixups.interest_of_kind node.kind)
       ~pass:`Mount;
-    { node; widget; impl; defaults; slots; connections; controllers; children }
+    { node; widget; impl; defaults; slots; connections; controllers; actions; children }
   with
   | live -> live
   | exception exn ->
@@ -369,6 +379,7 @@ and destroy ctx (live : live) =
      [gtk_widget_remove_controller] runs -- which can itself provoke a leave or a cancel
      -- every slot on this widget, its own and its controllers', is already empty. *)
   step (fun () -> Controllers.release live.controllers);
+  step (fun () -> Actions.release live.actions);
   step (fun () -> Signals.disconnect live.connections);
   (* Per child rather than around the loop: a raise on the third child must not strand the
      fourth, which is the whole point. *)
@@ -390,8 +401,9 @@ and disarm (live : live) =
   (* The controllers' slots too, and not the controllers themselves: this is the
      pre-unparent disarming, and the detaching belongs to [destroy], which runs after. A
      click gesture or a focus controller is exactly the kind of thing GTK will emit from
-     during an unparent. *)
+     during an unparent -- and the action slots on the same terms. *)
   Controllers.clear live.controllers;
+  Actions.clear live.actions;
   Children.iter live.children ~f:disarm
 
 (* Every stack name a subtree holds, given up before the subtree is replaced.
@@ -479,6 +491,7 @@ and patch ctx ~path ~is_root ~parent_kind (live : live) (node : Node.t) : live =
        rebuilds its closures. This is also where a controller is created for an attr the
        frame *added* and removed for one it dropped. *)
     Controllers.update live.controllers node.attrs;
+    Actions.update live.actions node.attrs;
     live.children <- patch_children ctx ~path live node;
     (* The false-to-true edge, read against the {i old} node's attrs -- which is why it
        sits before [live.node <- node] like the stack claim below. [true] rendered again
@@ -723,6 +736,14 @@ and patch_children ctx ~path (live : live) (node : Node.t) : live Children.t =
    [Patcher_fixups.apply_stack_claims]). A walk that raised leaves its claims for
    [abandon_fixups], which the runtime calls on its way out of a frame that died. *)
 let mount ctx ~path ~is_root node =
+  (* Before anything is built: every action name any menu references must resolve against
+     an [Attr.actions] on the referencing node or an ancestor -- GTK's own resolution path
+     for a popover, checked from the pure node data the caller just handed over, so a
+     rejected tree costs nothing to unwind. [Bonsai_gtk_test] runs the identical function
+     per frame, so the two raise one string. The plan placed this "at the fixup pass" for
+     the refer-in-any-order property; at the wrapper the whole tree is already in hand as
+     data, which has the same property a walk earlier. *)
+  Action_resolution.check ~path node;
   let live = mount ctx ~path ~is_root ~parent_kind:None node in
   (* Inside the exception-safe region, not beside it. [apply_stack_claims] is the one
      thing a mount does after the walk that can raise -- two [Node.stack]s with one name,
@@ -747,6 +768,10 @@ let mount ctx ~path ~is_root node =
 ;;
 
 let patch ctx ~path ~is_root live node =
+  (* The mount wrapper's check, per changed frame; a reassert-only frame skips it (the
+     node is the same value, so nothing can have changed). Kind-change remounts inside the
+     walk are subtrees of this already-checked tree. *)
+  Action_resolution.check ~path node;
   let live = patch ctx ~path ~is_root ~parent_kind:None live node in
   Patcher_fixups.apply_stack_claims ctx;
   live
