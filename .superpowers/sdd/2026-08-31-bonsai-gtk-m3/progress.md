@@ -73,3 +73,18 @@ pack move = remove+insert identity loss undocumented (+ optional two-line cross-
 duplicate-key pin); live_chrome identity-survival comment overclaims (real pins are
 test_reconcile + sweep 1U). Carry: examples/gallery.ml still lacks the new kinds —
 Task 12 (existing carry, reconfirmed).
+
+### Task 5 — MenuButton + Popover: APPROVED (after fix round 1)
+eabcd47..aca5db6 (task-4 minors + headless + live) + fix round `f268f39`. Rulings of
+record: controlled ~open_ lives in the FIXUP QUEUE (parenting precondition; converges in
+one write, no memo needed — reviewer verified all three pass coverages and the guard);
+the focus-repair connection rides w_popover's spec list (teardown traced clean incl.
+destroy-with-open-popover); Popover legal only in the slot, non-Popover kinds rejected at
+the constructor AND the shared walk (smuggling test proves the backstop). Importants
+closed: the slot type hole; the focus-repair overclaim tempered — what is proven is the
+plain-popover Escape chain.
+CARRIES FOR TASK 6 (named, mandatory): (a) re-prove the F1-afterward/focus-not-stranded
+line after REAL menu item activation on GtkPopoverMenu (the stavekeeper bug's actual
+trigger; viewer_window.ml:750-797) and design the fallback if the synchronous repair
+misses (one-shot idle may be short — stavekeeper needed 60ms×8); (b) user-open reporting
+via notify::visible is recorded in m2-backlog "Recorded during M3" — Task 13 sweeps it.
