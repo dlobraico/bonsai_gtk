@@ -5,8 +5,8 @@
 ; stanzas in one directory need explicit (modules ...) on each.
 
 (executables
- (names counter gallery)
- (modules counter gallery)
+ (names counter gallery chrome)
+ (modules counter gallery chrome)
  (libraries core bonsai bonsai_gtk)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))
