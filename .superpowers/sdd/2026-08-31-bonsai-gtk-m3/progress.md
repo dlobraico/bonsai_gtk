@@ -173,3 +173,20 @@ ACCEPT-half of the chooser undrivable (GTK-internal geometry) — gap stated, jo
 input residuals in Task 13. Minors → Task 11 start: one mli sentence documenting the
 shown-dialog-at-stop story; wrap both on_response trampoline bodies so no-raise-into-C
 is syntactic.
+
+### Task 11 — display-wide CSS + Attr.css_provider: APPROVED (3 doc-scale Importants → Task 12 start)
+0417419..ccbea26 (task-10 minors + implementation + live). CONTROLLER RULING upheld by
+review: the color-scheme mirror (plan silent; implementer built it isolated) is right —
+verified against GTK 4.22.4's gtkcssprovider.c: DEFAULT/LIGHT/UNSUPPORTED all evaluate
+light, the mapping exact, round trip restores. N installs = N independent providers, no
+fighting; settings connections permanent by design, bounded. Ephemeron
+pointer-hash/compare consistent; invalid CSS never raises, errors reach stderr.
+IMPORTANTS → TASK 12 FIRST COMMIT: (1) mli's "keeps the previous ruleset" is FALSE —
+GTK clears on every load (probe: to_string empty after invalid load); fix sentence +
+dump line; (2) ?global_css publicly undocumented (all docs landed in Private mli) —
+write the public start/embed docs; (3) the mirror's rationale applies verbatim to
+per-widget providers (their dark blocks are dead at DEFAULT) — honest doc sentence at
+the attr. Minors alongside: lock-taxonomy sentence for live_css's category; one
+to_string dump proving consumption after the dark flip; exercise the direct
+color-scheme knob. Out-of-scope recorded: equal-priority precedence unestablished
+(specificity is the honest tool); prefers-contrast unmirrored.
