@@ -94,17 +94,17 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
 
 ## Do first in M3
 
-- **`Attr.on_click` cannot claim the event sequence.** The gesture deliberately does not, so
+- ~~**`Attr.on_click` cannot claim the event sequence.**~~ — **closed in M3, Task 2: `Click_response.t`, the source-breaking retype (see `docs/m3-backlog.md`, "Closed during M3").** The gesture deliberately does not, so
   a click on a card also reaches its list box's click-to-select — but an application that
   wants to *consume* one has no way to say so. Tasks 4–5.
-- **`Attr.on_focus_enter`/`on_focus_leave` are events, not the `contains_focus` query**
+- ~~**`Attr.on_focus_enter`/`on_focus_leave` are events, not the `contains_focus` query**~~ — **closed in M3, Task 2: `Attr.on_contains_focus_changed` (see `docs/m3-backlog.md`, "Closed during M3").**
   stavekeeper polls. An app that needs the bit keeps it in its own model. Task 4.
-- **The focus attrs take no `?phase`**, while `on_click`, `on_key_pressed` and
+- ~~**The focus attrs take no `?phase`**~~ — **closed in M3, Task 2: `?phase` added and `family_phase_rejection` generalised (see `docs/m3-backlog.md`, "Closed during M3").**, while `on_click`, `on_key_pressed` and
   `on_key_released` all do. Visibly asymmetric in a sexp golden
   (`test/handle/test_handle.ml` prints `(On_focus_leave <handler>)` beside
   `(On_key_pressed (phase Bubble) …)`), and adding one would let
   `Events.key_phase_rejection` generalise into a `family_phase_rejection`. Tasks 4–5.
-- **`TextView` exposes no cursor position.** The controlled write preserves the caret as a
+- ~~**`TextView` exposes no cursor position.**~~ — **closed in M3, Task 3: `Attr.on_cursor_moved` (see `docs/m3-backlog.md`, "Closed during M3").** The controlled write preserves the caret as a
   character offset — exact for an in-place rewrite, approximate for one that changes length
   before the caret. `notify::cursor-position` is the hook for an application that wants to
   own the caret, and it is what closes the stated approximation. Task 9.
@@ -117,7 +117,7 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   plumbing only — and this is the biggest untested surface in the milestone. It has its own
   entry under "Tests worth adding", with what *is* covered and what the two closing routes
   are.
-- **`Child_keys` is one ephemeron table per module and is never compacted**: an entry is
+- ~~**`Child_keys` is one ephemeron table per module and is never compacted**~~ — **closed in M3, Task 3: `Child_keys.length` plus live teardown pins, mutation-verified (see `docs/m3-backlog.md`, "Closed during M3").**: an entry is
   removed on `remove` and otherwise waits for the GC. Correct — the table is keyed on the
   child widget the patcher retains, which is the invariant `child_keys.mli` states and Tasks
   7–8 inherited — but nothing measures it, and `child_keys.mli` exposes no size accessor, so
@@ -133,7 +133,7 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   (task-6 M6 → task-7 I1, `e9e7793`). The reconciler's own `O(n·ops)` was never the term
   that showed up in a measurement. Recorded so M3 spends the next optimisation where the
   numbers are rather than where the prediction was.
-- **A hidden `~current_page` diverges forever with no diagnostic** (`w_notebook.ml`'s select
+- ~~**A hidden `~current_page` diverges forever with no diagnostic**~~ — **closed in M3, Task 3: the shared `Select_memo`, report-once for stack and notebook together (see `docs/m3-backlog.md`, "Closed during M3").** (`w_notebook.ml`'s select
   fixup): a page carrying `Attr.visible false` that is also `~current_page` makes the fixup
   write on every frame, forever, with no error. Same shape as a `~selected` a list box's
   selection mode cannot hold. Both are "a model to bring into line", both are candidates for
@@ -147,7 +147,7 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   frame. The fix wave took the documentation half (both constructors and both impls now say
   it); the report-once half is this item, and the stack and the notebook should get it
   together, since it is one memo shape serving both.
-- **A duplicate key in `~selected` writes on every frame** (final review, containers N4).
+- ~~**A duplicate key in `~selected` writes on every frame**~~ — **closed in M3, Task 3: deduped and reported once via the shared `Refusal` machinery (see `docs/m3-backlog.md`, "Closed during M3").** (final review, containers N4).
   `~selected:["a"; "a"]` with `a` present gives `current = ["a"]` and `wanted = ["a"; "a"]`
   in both `w_list_box.ml` and `w_flow_box.ml`, which never compare equal, so every frame runs
   `unselect_all` plus a redundant `select_row`, forever, with no diagnostic. Unlike the mode
@@ -156,7 +156,10 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   selection path that the controller's rulings did not cover, and it wants deciding together
   with the item above — dedupe silently, or report once like everything else in M2 that
   cannot be held.
-- **`w_list_box.ml` and `w_flow_box.ml` are two copies of one container.** M2 declined to
+- **`w_list_box.ml` and `w_flow_box.ml` are two copies of one container.**
+  **M3 update: the trigger fired** (the `~selected` dedup was the third copy) and the
+  functorise is promoted from declined to a scheduled early-M4 motion-only task — see
+  `docs/m3-backlog.md`, "Do first in M4". M2 declined to
   functorise them (task-7 deviation 8, and the reviewer agreed) on the grounds that no fix
   had had to be made twice — and then I1 was made twice in the same round. The standing
   trigger the review left: if M3 produces a third, that is the evidence the header comment
@@ -172,7 +175,7 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
   4.22). `Attr.widget_name`'s doc no longer blames the binding — the fix wave corrected it
   to say the caveat is now a deliberate choice — so what is left here is only the
   behavioural change itself.
-- **`Patcher.require_slots` is not called on the patch path** (`src/patcher.ml`; the mount
+- ~~**`Patcher.require_slots` is not called on the patch path**~~ — **closed in M3, Task 2: called beside `require_specs` on the patch path (see `docs/m3-backlog.md`, "Closed during M3").** (`src/patcher.ml`; the mount
   call is its only one, while `require_specs` has two). If a widget impl drifted so that
   `Events.for_kind` lists an attr the impl declares no spec for, and an app adds that attr
   conditionally on frame 2, mount's check passed, patch's `require_specs` consults the table
@@ -217,11 +220,9 @@ All thirteen, in the tasks the plan put them in — plus one the final review's 
 - **`Controllers.key_pressed_answer` and `key_pressed_declined` are test-facing exports** that
   widen `controllers.mli`. They exist because no real key press can be delivered; they should
   go the day one can. Task 5.
-- `Expert.Driver.root_widget : Widget.t option` cannot survive `Node.windows` (M3).
+- ~~`Expert.Driver.root_widget : Widget.t option` cannot survive `Node.windows` (M3).~~ — **closed in M3, Task 8: it answers `None` for a `Windows` root (the documented break; `Driver.windows` is the replacement).**
 - `start ?flags` (spec §4.1) is unimplemented; `NON_UNIQUE` is needed for two instances.
-- No `close-request` on `Node.window`. With no handler a model can neither veto nor observe a
-  window close, which is exactly the frame in which M3's `Node.windows` has to reconcile
-  multi-window state.
+- ~~No `close-request` on `Node.window`.~~ — **closed in M3, Task 8: `Attr.on_close_request`, under the always-veto ruling (a behaviour change for M2 apps — see the README's migration note).**
 - `Kind.t`'s sexps are lossy — `sexp_of` only, with `[@sexp_drop_if]` dropping default-valued
   fields — so a `Node.t` sexp is a view for tests, not a serialisation.
 - **`Node.editable_label` has no `~editable`, `~width_chars` or `~xalign`**, though all three
@@ -428,10 +429,12 @@ Consistency:
   them in adjacent lines. Carried from M1.
 - **`w_frame.create` and `w_center_box.update` write outside `Widget_impl.batch`.** Carried
   from M1.
-- **`test/live/live_controllers.ml` is 800-odd lines over seven blocks**, and
-  `test/handle/test_gallery.ml` is 1077 lines of which ~540 are one golden, with the three
-  sweeps behind it. Both want splitting before M3 grows them again; a large pure-motion diff
-  in front of a round's substance is what made it not worth doing inside M2.
+- ~~**`test/live/live_controllers.ml` is 800-odd lines over seven blocks**, and
+  `test/handle/test_gallery.ml` is 1077 lines of which ~540 are one golden~~ — **closed in
+  M3, Task 1: split into the per-family `live_controllers_*.ml` files and
+  `test_gallery_tree.ml` + `test_gallery_sweeps.ml`, as pure motion, goldens
+  byte-identical.** References to the old names elsewhere in this file read against the
+  split files (`docs/m3-backlog.md`'s header has the translation).
   task-5 report, task-13 N7.
 - **The two `all_kinds` lists** in `test/test_events.ml` and `test/live/live_events.ml` are
   still duplicated verbatim. Each is now count-checked against `Kind.t`, so neither can rot
@@ -712,9 +715,7 @@ Do not "fix" these when an expected file surprises you:
   this library's; if M3 wants defence in depth, it is disconnecting the patcher's signal closures
   from a finalizer-safe place, or holding the driver from the `ctx` weakly. `Driver.stop` does
   now drop `on_root_widget_changed`. Task 12.
-- **`Bonsai_gtk.start`'s `on_window_created` has the same shape** and is not dropped by
-  `Driver.stop`: it closes over the `GtkApplication`. Harmless today, one line to fix the day it
-  is not.
+- ~~**`Bonsai_gtk.start`'s `on_window_created` has the same shape**~~ — **closed in M3, Task 8: `Driver.stop` drops it beside `on_root_widget_changed`.**
 - **`drain`-shaped loops (`while Glib.Main.pending () do …`) can fail to terminate** right after
   a major collection that finalizes many wrappers (reproduced twice by the Task 12 reviewer).
   `test/live/live_embed.ml`'s `drain` is bounded for that reason; every other live test's is not.
@@ -722,8 +723,7 @@ Do not "fix" these when an expected file surprises you:
   cancel a pending `request_frame_soon`.
 - `after_of` is `O(index)` per op and the surrounding `cur` bookkeeping `O(n)` per op — see "Do
   first in M3" for what actually showed up in a measurement instead.
-- The `Update` kind-change arm still removes a child after `patch` destroyed the old live widget
-  — latent until M3's `Node.windows` puts a `Window` in a list.
+- ~~The `Update` kind-change arm still removes a child after `patch` destroyed the old live widget~~ — **closed in M3, Task 8: the arm runs mount-first then disarm → remove → destroy → insert; the regression pin is a box in `test/live/live_lists.ml`.**
 - `Widget_impl.snapshot` is 17 getter calls per widget creation and grows with every widget-wide
   attr; the shape to reach for is lazy per-field capture on first `Set`.
 - The `page` helper is duplicated across the Task 5 live tests.
@@ -968,6 +968,9 @@ nor a short-lived test will show it, because nothing collects before exit.
 `Gc.full_major`, and an assertion that the widgets are still there.
 
 ## Recorded during M3, input to the Task 13 rewrite
+
+**Swept**: every item below now lives in `docs/m3-backlog.md` (Task 13); this section
+stays as the record of where each came from.
 
 - **Nothing reports a user {i opening} a popover.** `Attr.on_closed` covers the dismissal
   direction; the open direction has no signal this library exposes, so a model that
