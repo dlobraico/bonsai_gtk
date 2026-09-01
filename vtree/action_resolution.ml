@@ -104,9 +104,9 @@ let check ~path (root : Node.t) =
       | Some `Radio, `Shortcut ->
         (* Feasible but unshipped: [Shortcut.set_arguments] is bound, so a targeted
            shortcut could carry the radio's parameter -- M3 scopes it out (see
-           docs/m2-backlog.md, "Recorded during M3"). Until then a shortcut activates
-           through a parameterless [GtkNamedAction], which GTK refuses against a
-           parameterised action -- silently, which is why this raises instead. *)
+           docs/m3-backlog.md, "Do first in M4"). Until then a shortcut activates through
+           a parameterless [GtkNamedAction], which GTK refuses against a parameterised
+           action -- silently, which is why this raises instead. *)
         invalid_argf
           "%s: shortcut action %S names a radio action; targeted shortcuts are not \
            shipped in M3 (wrap the choice in a Simple action, or see the backlog entry \

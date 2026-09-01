@@ -194,7 +194,7 @@ let%expect_test "shortcuts accumulate, sexp, and diff structurally" =
   (* A "::target" is rejected at the constructor: the shipped path activates through a
      parameterless GtkNamedAction, so the syntax would promise a parameter it cannot pass.
      Targeted shortcuts are feasible (ocgtk binds [Shortcut.set_arguments]) and
-     deliberately unshipped -- see docs/m2-backlog.md. *)
+     deliberately unshipped -- see docs/m3-backlog.md. *)
   Expect_test_helpers_core.require_does_raise (fun () ->
     Attr.shortcut ~trigger:(ctrl 't') ~action:"app.theme::dark" ());
   [%expect

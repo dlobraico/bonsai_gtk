@@ -140,7 +140,7 @@ end
     still-live driver hookless -- that driver's async resolutions then log as outside a
     running app while its app still runs. Observable only under [fps <= 0] (the default 60
     fps tick flushes injects regardless); a real multi-driver hook story is on the backlog
-    (docs/m2-backlog.md, "Recorded during M3"). *)
+    (docs/m3-backlog.md, "Do first in M4"). *)
 module For_runtime : sig
   type registration
 

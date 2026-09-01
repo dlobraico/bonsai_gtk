@@ -914,9 +914,9 @@ val on_key_released : ?phase:Phase.t -> Key_event.t Handler.t -> t
     shortcuts only (activation goes through a parameterless [GtkNamedAction], which GTK
     refuses against a {!Action_spec.Radio}'s parameter — so the walk also refuses a
     shortcut resolving to a radio). Targeted shortcuts are feasible —
-    [Shortcut.set_arguments] is bound — and deliberately unshipped ([docs/m2-backlog.md],
-    "Recorded during M3"); wrap the choice in a [Simple] action if a chord must set a
-    radio today. *)
+    [Shortcut.set_arguments] is bound — and deliberately unshipped ([docs/m3-backlog.md],
+    "Do first in M4"); wrap the choice in a [Simple] action if a chord must set a radio
+    today. *)
 val shortcut : ?phase:Phase.t -> trigger:Trigger.t -> action:string -> unit -> t
 
 val many : t list -> t

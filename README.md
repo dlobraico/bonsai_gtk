@@ -6,12 +6,17 @@ spirit of `bonsai_web` and `bonsai_term`. An app is a pure function
 signals into Bonsai events, and keeps a live GTK widget tree in sync with the declarative
 `Node.t` the app computes.
 
-Status: pre-alpha (M2) — 37 `Node.*` constructors covering displays, controls, text
-entry, layout, stack-based navigation and the three keyed containers (see
-[Widgets](#widgets)); five event-controller attributes for clicks, keys and focus (see
-[Input](#input)); `Expert.embed`, for rendering a Bonsai tree into a container an existing
-GTK application owns (see [Embedding](#embedding)); the `Native` escape hatch, the runtime
-loop, and headless testing. See [Limitations](#limitations) below.
+Status: pre-alpha (M3) — 42 `Node.*` constructors covering displays, controls, text
+entry, layout, stack-based navigation, the three keyed containers, and the M3 chrome:
+header/action bars, menu buttons over real GMenu/GAction routing, popovers, and
+multi-window trees (see [Widgets](#widgets)); seven event-controller attributes over
+four controller families — clicks that can claim, keys, focus with phases, and keyboard
+shortcuts (see [Input](#input)); timing, clipboard, window and dialog [Effects](#effects);
+display-wide and per-widget [CSS](#css); `Expert.embed`, for rendering a Bonsai tree into
+a container an existing GTK application owns (see [Embedding](#embedding)); the `Native`
+escape hatch, the runtime loop, and headless testing. See [Limitations](#limitations)
+below — including the one behaviour change for M2 apps: **the window close button is
+vetoed unless the model handles it**.
 
 ## Example
 
@@ -26,6 +31,7 @@ let app (graph @ local) =
   let count, set_count = Bonsai.state 0 graph in
   let%arr count and set_count in
   Node.window
+    ~attrs:[ Attr.on_close_request Effect.quit ]
     ~title:"bonsai_gtk counter"
     ~default_size:(240, 120)
     (Node.box
@@ -65,10 +71,13 @@ have `xvfb-run -a dune exec examples/counter.exe` for a headless one).
 
 `examples/gallery.ml` renders one of every widget in a `Stack` with a sidebar —
 `dune exec examples/gallery.exe` — and is the quickest way to see what a constructor
-looks like on screen. Its *Input* page is the one to run by hand: it is where
-`Attr.on_click`, `Attr.on_key_pressed` and the focus attrs are exercised against a real
-pointer and a real keyboard, which is the half of [Input](#input) no test in this
-repository can reach (see [Limitations](#limitations)).
+looks like on screen; its *Chrome* page holds the M3 bars, menus and the about dialog,
+and its *Input* page exercises the click/key/focus attrs against a real pointer and
+keyboard. `examples/chrome.ml` is the M3 counter — the smallest program using every
+headline M3 feature at once: a `Node.windows` tree, a header-bar menu over one
+`Action_spec` list that also serves two keyboard chords, an alert dialog whose answer
+binds back into the model, and a second window the model opens and
+`Effect.Window.present` raises.
 
 ## Libraries
 
@@ -78,12 +87,13 @@ repository can reach (see [Limitations](#limitations)).
 - **`bonsai_gtk`** (`src/`) — the GTK4 runtime: `start` runs an app as a `GtkApplication`
   and keeps a live widget tree in sync with the `Node.t` it computes each frame. Re-exports
   `vtree`'s modules plus `Widget` (the live GTK widget type), `Native` (the escape hatch for
-  widgets this library has no `Node` constructor for), `Effect` (`Ui_effect` plus `quit`),
-  and `Expert.Driver` for callers that want to drive frames by hand, plus `Expert.embed`
+  widgets this library has no `Node` constructor for), `Effect` (`Ui_effect` plus `quit`,
+  the timing/clipboard/window effects and the dialogs — see [Effects](#effects)), and
+  `Expert.Driver` for callers that want to drive frames by hand, plus `Expert.embed`
   for rendering into a container the caller owns ([Embedding](#embedding)).
 - **`bonsai_gtk_test`** (`test_lib/`) — a headless test handle built on `bonsai_gtk.vtree`
   only (no GTK, no display needed): `Bonsai_test.Handle` over the `Node.t` sexp tree, with
-  nineteen actions dispatched by `test_id` (see [Headless testing](#headless-testing)).
+  twenty-nine actions dispatched by `test_id` (see [Headless testing](#headless-testing)).
 
 ## Widgets
 
@@ -96,13 +106,14 @@ repository can reach (see [Limitations](#limitations)).
 | **Pickers** | `drop_down` (string list, controlled `~selected`), `calendar` (controlled `Core.Date.t`, marked days) |
 | **Layout** | `box`, `grid` (`Attr.grid_cell`), `center_box`, `paned`, `overlay` (`Attr.measure_overlay`), `frame`, `expander`, `revealer`, `scrolled_window` |
 | **Navigation** | `stack` + `stack_switcher` + `stack_sidebar` (pages keyed by `Key.t`, switchers name their stack) |
-| **Window** | `window` (one per app until M3) |
+| **Chrome** | `header_bar` (a *widget* title slot plus keyed `start`/`end` packs — GTK 4 has no title-string setter on the bar), `action_bar` (`center` slot, keyed packs, plain `revealed`), `menu_button` with either `~menu` (a pure-data `Menu.t` whose items name actions an `Attr.actions` declares — display accels included) or `~popover` (the popover's one legal position; controlled `~open_`, `Attr.on_closed`) |
+| **Window** | `window` (`~title`, `~default_size`, `~transient_for`/`~modal`/`~resizable`, `Attr.on_close_request` — see the migration note under [Limitations](#limitations)), `windows` (a virtual root of keyed windows: many toplevels, one tree; rendering `windows []` exits the app) |
 | **Escape hatch** | `Node.native` for anything else, plus `Native.Picture` for a widget fed from a `GdkPaintable` |
 
-That is all 37 `Node.*` constructors; `vtree/node.mli` is the reference, and each
+That is all 42 `Node.*` constructors; `vtree/node.mli` is the reference, and each
 constructor's doc comment names the properties it does *not* bind.
-`test/handle/test_gallery.ml` checks the claim against `Kind.Variants.descriptions`, so a
-constructor added and never put in the gallery fails the suite rather than quietly
+`test/handle/test_gallery_sweeps.ml` checks the claim against `Kind.Variants.descriptions`,
+so a constructor added and never put in the gallery fails the suite rather than quietly
 escaping this table.
 
 Four small enum modules come with the M2 widgets and are re-exported from `Bonsai_gtk`
@@ -115,8 +126,11 @@ saying which GTK default it carries.
 
 Shared attributes on every widget: `css_class`, `margin_*`, `halign`/`valign`,
 `hexpand`/`vexpand`, `width_request`/`height_request`, `sensitive`, `visible`, `tooltip`,
-`opacity`, `focusable`/`can_focus`, `widget_name`, `cursor_name`, `test_id`. Dropping an
-attribute restores the value that widget was created with, not a global default.
+`opacity`, `focusable`/`can_focus`, `widget_name`, `cursor_name`, `test_id`, and since
+M3 `css_provider` (a per-widget stylesheet — see [CSS](#css)), `autofocus` (a fire-once
+focus grab at mount, at most one per frame per toplevel — the dialog-open pattern) and
+`actions`/`shortcut` (see [Input](#input)). Dropping an attribute restores the value that
+widget was created with, not a global default.
 
 Six *placement* attributes are held by the parent rather than applied to the child, and
 each is read by exactly one container: `Attr.grid_cell` (a `grid` child's
@@ -131,17 +145,20 @@ granularity is the parent's *kind*, not its slot, so an `Attr.measure_overlay` o
 `overlay`'s main child (rather than one of its `~overlays`) is still accepted and still
 inert; tightening that means threading the slot name in, and is on the backlog.
 
-Eighteen event attributes are *signals* of some widget class: M1's `on_clicked`,
+Twenty-one event attributes are *signals* of some widget class: M1's `on_clicked`,
 `on_toggled`, `on_changed`, `on_activate`, `on_search_changed`, `on_value_changed`,
 `on_expanded_changed`, `on_revealed`, `on_position_changed` and
-`on_visible_child_changed`, plus M2's `on_row_activated`, `on_selected_rows_changed`,
+`on_visible_child_changed`, M2's `on_row_activated`, `on_selected_rows_changed`,
 `on_child_activated`, `on_selected_children_changed`, `on_page_changed`,
-`on_selected_changed`, `on_day_selected` and `on_editing_changed`. Attaching one to a
-widget that has no such signal raises at mount and at patch, rather than silently doing
-nothing. The five *controller* attributes are the other kind and are legal everywhere —
-see [Input](#input).
+`on_selected_changed`, `on_day_selected` and `on_editing_changed`, and M3's
+`on_cursor_moved` (a text view's caret), `on_closed` (a popover's dismissal) and
+`on_close_request` (a window's close request — always vetoed; see
+[Limitations](#limitations)). Attaching one to a widget that has no such signal raises at
+mount and at patch, rather than silently doing nothing. The seven *controller*
+attributes are the other kind and are legal everywhere — see [Input](#input).
 
-See §7 of the design doc for what M3 (chrome & popups) adds.
+See §7 of the design doc for the milestone history; `docs/m3-backlog.md` is what M3
+leaves behind.
 
 ## Input
 
@@ -152,33 +169,93 @@ whatever node carries the attribute:
 - `Attr.on_click ?button ?phase` attaches a `GtkGestureClick` and hands the handler a
   `Click_event.t` — the button that was pressed, the press count, the coordinates in the
   widget's own space, and the modifiers held. `?button:0` (the default) listens for all of
-  them.
+  them. The handler returns a `Click_response.t`: `Continue` lets the click also reach
+  whatever else would have handled it (a card's handler beside its list box's
+  click-to-select), `Claim` consumes the sequence on the spot (`Gesture.set_state
+  \`CLAIMED`, on GTK's own stack), and either can carry an effect.
 - `Attr.on_key_pressed ?phase` and `Attr.on_key_released ?phase` share one
   `GtkEventControllerKey`. The *pressed* handler is not an ordinary handler: it returns a
   `Key_response.t` (`Handled`, `Propagate`, or either carrying an effect) rather than an
   effect, because GTK asks a key press whether anything handled it and routes the event on
   that answer synchronously, on its own stack, long before the frame an effect would run
   in. A release cannot be consumed, so `on_key_released` is an ordinary handler.
-- `Attr.on_focus_enter` and `Attr.on_focus_leave` share one `GtkEventControllerFocus`.
-  They fire for focus moving into or out of the widget *or any of its children*, which is
-  the useful sense for a composite like a `GtkSearchEntry` whose own `has_focus` is always
-  false.
+- `Attr.on_focus_enter ?phase`, `Attr.on_focus_leave ?phase` and
+  `Attr.on_contains_focus_changed` share one `GtkEventControllerFocus`. The first two
+  fire on every hop of focus into or out of the widget or its children;
+  `on_contains_focus_changed` is the coarse query — once when focus enters the subtree,
+  once when it leaves — which is the bit an "is the focus anywhere in this panel?" model
+  wants without bookkeeping.
+- `Attr.shortcut ?phase ~trigger ~action ()` is the fourth family: a keyboard chord
+  (`Trigger.create ~modifiers (Keyval.of_char 'k')`) that fires a **named action** an
+  `Attr.actions` on the same node or an ancestor declares — GTK's own
+  `ShortcutController → NamedAction → GAction` routing, which is also why a shortcut
+  cannot hold a closure directly (the binding has no `GtkCallbackAction`; the named-action
+  design turned out the better shape anyway — one `Action_spec` list serves the menu, the
+  chord and the palette). Repeatable on one node; two shortcuts sharing a trigger but
+  naming different actions on one node are rejected outright, and cross-node contention
+  is deterministic. A chord whose action is disabled *falls through* to capture handlers
+  and the focused widget (measured, goldened) — the shape a "text input active" gate
+  needs.
 
-All five are legal on any node, and the controller exists exactly as long as the attribute
-does: a frame that drops it removes the controller, and a later frame that adds it back
-gets a fresh one. `?phase` defaults to `Phase.Bubble`, GTK's own; `Phase.Capture` is what a
-window-wide Escape wants, because in bubble phase a child's controller added later sees the
-key first. Giving `on_key_pressed` and `on_key_released` different phases is
-`Invalid_argument` — one controller, one phase — and is rejected by the headless handle
-too.
+All seven are legal on any node, and each family's controller exists exactly as long as
+its attrs do: a frame that drops the last one removes the controller, and a later frame
+that adds one back gets a fresh one. `?phase` defaults to `Phase.Bubble`, GTK's own;
+`Phase.Capture` is what a window-wide Escape or chord wants, because in bubble phase a
+child's controller sees the event first. A family's attrs asking for two different
+phases on one node is `Invalid_argument` — one controller, one phase, the same rule for
+all four families (`Events.family_phase_rejection`) — and is rejected by the headless
+handle too.
 
-Keyvals are plain `int`s. `Keyval` names the seventeen worth naming (`Keyval.escape`,
-`Keyval.tab`, `Keyval.page_down`, …) plus `Keyval.f n` for the function keys and
-`Keyval.of_char 'w'`; anything else is a raw number. That is deliberate: it keeps a view
-function free of ocgtk, and therefore headless-testable.
+Keyvals are plain `int`s. `Keyval` names the couple of dozen worth naming
+(`Keyval.escape`, `Keyval.tab`, the punctuation chords use, …) plus `Keyval.f n` for the
+function keys and `Keyval.of_char 'w'`; anything else is a raw number. That is
+deliberate: it keeps a view function free of ocgtk, and therefore headless-testable.
 
-What none of this is tested against end to end is a real button press or a real keystroke —
-see [Limitations](#limitations) before relying on it.
+Since M3 all of this *is* tested against a real button press and a real keystroke —
+`test/live/live_input.ml` drives the X server with XTEST, chords and menu activations
+included — on the one input path a WM-less Xvfb has; see [Limitations](#limitations) for
+the real-display residual.
+
+## Effects
+
+`Bonsai_gtk.Effect` is `Ui_effect` plus the GTK-shaped effects (each documents what a
+perform outside a running app does — always log-and-resolve, never a raise):
+
+- `quit` ends the application `start` is running.
+- `after span` and `on_idle` resolve on the GLib main loop (one-shot per perform) and
+  then request the frame that shows what their continuation did. The *cancellable* timer
+  stays app-side: gate what the continuation does on model state.
+- `Clipboard.set_text` writes the display's clipboard. There is no `get_text`: the
+  binding has no synchronous read and no bound async one (a documented omission).
+- `Window.present key` raises the window keyed `key` in the root `Node.windows` list —
+  the one window operation with no prop equivalent (`close` and `set_title` are the
+  node's existence and `~title`; an effect duplicating a prop would be a second writer
+  fighting the runtime).
+- `Alert_dialog.show ?detail ?cancel ~buttons message` shows a modal alert and resolves
+  with the index of the button pressed; every dismissal (Escape, the close button)
+  resolves `?cancel` (default 0), so a `let%bind` over it is total. It is a real
+  `GtkDialog` under the hood — the binding cannot construct `GtkAlertDialog`.
+- `File_dialog.open_file` / `save_file ?initial_name` / `select_folder` resolve
+  `Some path` on accept and `None` on any dismissal, on `GtkFileChooserNative`
+  (`GtkFileDialog` cannot be launched in the binding). No initial-folder argument:
+  `Gio.File` has no constructor.
+
+Shown dialogs are held by the runtime until answered, so the effect value can be
+dropped freely, and two alerts at once are two dialogs.
+
+## CSS
+
+`start ?global_css` (and `Expert.embed ?global_css`) installs one application-wide
+stylesheet on the default display. Dark-mode `@media (prefers-color-scheme: dark)`
+blocks work: the runtime mirrors the desktop's color scheme onto the provider and
+follows changes — GTK 4.20+ evaluates that query per provider, and an unmirrored
+provider would never match it. `Attr.css_provider` styles one widget (and its subtree):
+the runtime owns the provider for the widget's life, a changed string restyles in
+place, dropping the attr removes it. Two caveats worth reading before use: an *invalid*
+stylesheet never raises but leaves the provider empty (GTK clears before parsing — the
+widget goes un-styled, it does not keep the previous sheet), and a per-widget provider's
+media queries evaluate against its own unset preference — effectively always light — so
+scheme-dependent styling belongs in `?global_css`.
 
 ## Embedding
 
@@ -196,6 +273,7 @@ val embed
   :  ?time_source:Bonsai.Time_source.t
   -> ?optimize:bool
   -> ?target_frames_per_second:float
+  -> ?global_css:string
   -> (local_ Bonsai.graph -> Node.t Bonsai.t)
   -> Embedded.t
 ```
@@ -245,20 +323,26 @@ let%expect_test "clicking the button re-renders the label" =
 ;;
 ```
 
-There are nineteen actions, each naming a node by `test_id` and each failing loudly if
-that node carries no matching handler:
+There are twenty-nine actions, each naming a node by `test_id` (or, for `Close_request`,
+a window by its key) and each failing loudly if that node carries no matching handler:
 
 | | |
 |---|---|
 | **M1** | `Click` (fires `Attr.on_clicked`), `Toggle` (a `toggle_button`/`check_button`/`switch`, fired with the negation of the `active` the node currently renders), `Set_text of test_id * string` and `Set_value of test_id * float` (the text the user typed / the value they moved to, passed through verbatim so the test can watch the *model* clamp or rewrite it), `Activate` (Enter pressed in a text widget) |
-| **M2 signals** | `Search_changed`, `Set_expanded`, `Activate_row`, `Activate_child`, `Set_selection of test_id * Key.t list`, `Set_page`, `Set_selected of test_id * int`, `Select_day of test_id * Date.t`, `Set_editing` |
+| **M2 signals** | `Search_changed`, `Set_expanded`, `Set_revealed`, `Set_position`, `Set_visible_child`, `Activate_row`, `Activate_child`, `Set_selection of test_id * Key.t list`, `Set_page`, `Set_selected of test_id * int`, `Select_day of test_id * Date.t`, `Set_editing` |
 | **M2 controllers** | `Click_at of test_id * Click_event.t`, `Key_press of test_id * Key_event.t` (whose `Key_response.t` the handle prints, because that half of a key press is a value GTK reads synchronously and there is no GTK here), `Key_release`, `Focus_enter`, `Focus_leave` |
+| **M3** | `Focus_contains`, `Move_cursor`, `Open_popover` (an honest no-op: opening emits no signal this library exposes), `Close_popover`, `Activate_action of test_id * reference` (`"scope.name"`, or `::target` for a radio), `Fire_shortcut of test_id * Trigger.t` (resolved against the node's shortcuts and the ancestor action scopes, in the same order the live controller uses), `Close_request of Key.t` (the close veto in headless form — the handler fires, and the window stands until the model drops its node) |
 
 Since M2 the handle also *validates* the tree it is shown, from the same tables the runtime
-uses: an event attr on a widget that cannot emit it (`Bonsai_gtk_vtree.Events`), a
-placement attr on a container that does not read it (`Placement`), and two key attrs asking
-for different phases (`Events.key_phase_rejection`) all raise here exactly as they do at
-mount, with the same message. Every entry point that advances a handle checks — `show`,
+uses — and M3 widened both sides in step: an event attr on a widget that cannot emit it
+(`Bonsai_gtk_vtree.Events`), a placement attr on a container that does not read it
+(`Placement`), a controller family's attrs asking for different phases
+(`Events.family_phase_rejection`, over all four families), a menu item or shortcut whose
+action reference resolves to no `Attr.actions` in scope (`Action_resolution`, the same
+walk the runtime runs per frame), same-trigger shortcut conflicts, the windows-root
+shape (children all keyed windows; `windows` only at the root), a `~transient_for`
+naming no sibling window, popover placement, and two autofocus grabs in one frame per
+toplevel — all raise here exactly as they do at mount, with the same message. Every entry point that advances a handle checks — `show`,
 `show_into_string`, `show_diff`, `store_view`, `recompute_view` and
 `recompute_view_until_stable` — which is why `Bonsai_gtk_test.Handle` is a hand-written
 signature rather than an alias for `Bonsai_test.Handle`. The guarantee is about *this*
@@ -332,20 +416,42 @@ reference-sinks its elements, non-`GInitiallyUnowned` constructors no longer ove
 result, three nullable string bindings take and return `string option`, and a GObject
 handler reached from OCaml's finaliser no longer re-enters the runtime from the collector.
 See `docs/upstream/README.md` for the fork, the fixes, and their upstreaming status, and
-`docs/m2-backlog.md` for what the fork still owes.
+`docs/m3-backlog.md` (the "ocgtk fork" section, with the round-3 candidate list) for what
+the fork still owes.
 
 ## Limitations
 
-M2 covers the widgets listed under [Widgets](#widgets) and the input attributes under
-[Input](#input); anything else is a `Node.native` case. What is deliberately still out:
+M3 covers the widgets listed under [Widgets](#widgets), the input attributes under
+[Input](#input), the [Effects](#effects) and [CSS](#css); anything else is a
+`Node.native` case. What is deliberately still out — starting with the one thing an M2
+app must change:
 
-### The input path, and the one part of it still untested
+### Migration note: the close button is vetoed (M2 → M3)
 
-- **What remains uncovered is a real display.** `test/live/live_input.ml` runs under `xvfb`
-  with no window manager and no compositor, so the X11 input path is exercised and
-  Wayland's (`gdk_wayland`) is not. That residual is on the backlog. Everything below it is
-  what *is* covered, and is here because this section is where a reader comes looking for
-  the gap.
+Since M3 the runtime answers **every** window close request "handled": the X button (and
+Alt+F4, and `Window.close`) destroys nothing — a window closes when, and only when, the
+model stops rendering its node, and `Attr.on_close_request` is how the model hears the
+request. **An M2 app that adds no handler has an inert X button** (the request is
+swallowed and reported once per window on stderr). For a one-window app the migration is
+one attr — `Attr.on_close_request Effect.quit`, as `examples/counter.ml` now shows; a
+multi-window app removes the keyed window from its `Node.windows` list instead. The
+alternative — letting GTK destroy a window behind the runtime's back — leaves the
+runtime patching widgets that no longer exist, which is why the veto is unconditional
+rather than a default.
+
+### The input path, and the parts of it still untested
+
+- **What remains uncovered is a real display.** The live suites run under `xvfb` with no
+  window manager and no compositor, so the X11 input path is exercised and Wayland's
+  (`gdk_wayland`) is not — and M3 widened what rides on that residual: popover opening,
+  menu item activation, shortcut chords and dialog dismissal all inherit it.
+- **Two inputs are unreachable even on that path.** A WM-less Xvfb never gives a popup
+  surface keyboard focus, so no keyboard path reaches an open menu (Down+Return on a
+  `GtkPopoverMenu`: measured, sensitive item, no activation — menu activation is proven
+  by pointer); and choosing a file in the chooser fallback needs a click inside
+  GTK-internal furniture whose geometry nothing can name, so only the Escape/dismissal
+  half of the file dialogs is driven. Both run only by hand on a real display.
+  Everything below is what *is* covered.
 
 - **A real click and a real keystroke are delivered by the X server, not by the binding.**
   The pinned ocgtk binding can synthesise neither: there is no `GdkEvent` constructor for
@@ -375,17 +481,23 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
 
 ### Input
 
-- **`Attr.on_click`'s gesture does not claim the event sequence**, so a click also reaches
-  whatever else would have handled it. That is what lets a card carry a middle-click
-  handler without breaking its list box's click-to-select — but an application that wants
-  to *consume* a click has no way to say so in M2.
-- **`Attr.on_focus_enter`/`on_focus_leave` are events, not a `contains_focus` query.** An
-  app that needs the bit ("is the focus anywhere in this panel right now?") keeps it in its
-  own model, fed by the two attrs. They also take no `?phase`, unlike the click and key
-  attrs; the focus controller stays in GTK's default bubble phase.
-- **`Keyval` is a curated list**, not a table of every X keysym: seventeen names, plus
-  `Keyval.f` and `Keyval.of_char`. Anything else is a raw `int`, which works and reads
-  badly.
+- **No focus model — the largest named gap.** Who holds focus is not state this library
+  can express: there is no `set_focus`-as-prop, no focus-follows-model, no
+  `~default_widget`. `Attr.autofocus` is the deliberate interim floor (a fire-once grab
+  when a window or panel appears — the dialog-open pattern) and the focus attrs report
+  what happened; everything beyond that stays app-side until the focus design is done
+  (`docs/m3-backlog.md`, "Do first in M4").
+- **Shortcuts are untargeted.** `Attr.shortcut` rejects `"::target"` and a shortcut
+  resolving to a radio action: activation goes through a parameterless `GtkNamedAction`.
+  Targeted shortcuts are *feasible* (the binding has `Shortcut.set_arguments`) and
+  deliberately unshipped; the backlog names shipping's exact removals.
+- **Menu accels are display, not installation.** `Menu.item ~accel` renders the chord in
+  the menu row; it installs nothing. Install the binding with `Attr.shortcut` naming the
+  same action — the separation stavekeeper's own menu code insists on ("the key handler
+  stays the single source of key truth").
+- **`Keyval` is a curated list**, not a table of every X keysym: a couple of dozen names
+  plus `Keyval.f` and `Keyval.of_char`. Anything else is a raw `int`, which works and
+  reads badly.
 
 ### Widgets
 
@@ -394,11 +506,10 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   `set_header_func`) — the generator emits no GIR-callback-taking method at all — so sort
   and filter in the model, and render a header as an ordinary row carrying
   `Attr.row_selectable false` and `Attr.row_activatable false`.
-- **`TextView` does not expose the cursor position**, and its controlled write preserves
-  the caret as a *character offset*: exact for a rewrite that does not change the text's
-  length before the caret, approximate for one that does (an autocompleter inserting six
-  characters at the start leaves the caret six characters early). `notify::cursor-position`
-  is the hook for an app that wants to own the caret; it is on the backlog.
+- **`TextView`'s controlled write preserves the caret as a *character offset***: exact
+  for a rewrite that does not change the text's length before the caret, approximate for
+  one that does. Since M3 `Attr.on_cursor_moved` reports the caret, so a model that
+  wants to own it can close that approximation itself.
 - **Text GTK cannot hold: two rules across the five text widgets.** Where a write *is*
   refused it is refused *before* it happens — the widget keeps what it had, the refusal is
   remembered so the frames after it cost a pointer comparison, and it is reported once per
@@ -467,9 +578,15 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
 
 ### Not bound yet
 
-- `HeaderBar`, `ActionBar`, `Popover`, `MenuButton` + `Node.menu`, alert/file dialogs,
-  multi-window (`Node.windows`) and `Attr.shortcut` are M3. **One window per app until
-  then.**
+- **No free-floating popover.** `Node.popover` ships only as a `menu_button`'s slot:
+  anchoring one to an arbitrary node needs `Popover.set_pointing_to`, whose
+  `GdkRectangle` the binding cannot construct (fork round 3), and a placement design of
+  its own.
+- **No clipboard read** (`Effect.Clipboard.get_text`): no synchronous read exists and
+  the async one is unbound. `set_text` ships.
+- **No menubar** (`Application.set_menubar` / `PopoverMenuBar`) — the menu story is the
+  menu button's.
+- **No file-dialog initial folder** — `Gio.File` has no constructor in the binding.
 - **Out of scope until a follow-up design.** `ListView`/`ColumnView`/`GridView` (ocgtk
   generates no `SignalListItemFactory` signals, so they can't be populated without new C
   stubs); custom Cairo drawing (`DrawingArea.set_draw_func` is unbound in ocgtk); drag and
@@ -508,10 +625,10 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   widget nothing renders into again — silently. The wrapper is a layout-transparent
   `GtkOverlay` that will show up in a `Live_tree` dump and in GTK Inspector. `Embedded.stop`
   empties it but does not unparent it.
-- **`Bonsai_gtk_test.Action.t` is an unsealed public variant** with nineteen constructors,
+- **`Bonsai_gtk_test.Action.t` is an unsealed public variant** with twenty-nine constructors,
   so every action a later milestone adds is a breaking change for a downstream exhaustive
   match. So are `Key_response.t`, `Selection_mode.t` and the other small enums. Sealing is
-  on the backlog (`docs/m2-backlog.md`). `Attr.t` no longer is: its constructors moved to
+  on the backlog (`docs/m3-backlog.md`). `Attr.t` no longer is: its constructors moved to
   `Attr.Private` and `Attr.t` is a private abbreviation of it, so an application can
   neither build one from a raw constructor nor match on one without writing
   `(a :> Attr.Private.t)` — which is supported, carries no stability promise, and is
@@ -526,6 +643,6 @@ M2 covers the widgets listed under [Widgets](#widgets) and the input attributes 
   because with the node physically identical there is nothing for `Attrs.diff` to find and
   nothing for `Kind.equal_props` to admit.
 
-`docs/m2-backlog.md` is the full list of what M2 leaves behind, with the review each item
-came from. See §7 of the design doc for the widget catalogue and the milestone plan (M3
-chrome & popups).
+`docs/m3-backlog.md` is the full list of what M3 leaves behind, with the review each item
+came from (`docs/m2-backlog.md` stays as the M2 record, closures struck). See §7 of the
+design doc for the widget catalogue and the milestone history.

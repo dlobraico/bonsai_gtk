@@ -614,7 +614,7 @@ let on_key_released ?(phase = Phase.Bubble) handler = On_key_released { phase; h
    one keyed list (see [Private.Shortcut]). A "::target" is rejected here because M3 ships
    untargeted shortcuts only: activation goes through [GtkNamedAction], which passes no
    parameter. Targeted shortcuts are {i feasible} -- [Shortcut.set_arguments] is bound --
-   and deliberately unshipped (docs/m2-backlog.md, "Recorded during M3"); see
+   and deliberately unshipped (docs/m3-backlog.md, "Do first in M4"); see
    [Attr.shortcut]'s doc. *)
 let shortcut ?(phase = Phase.Bubble) ~trigger ~action () =
   if String.is_substring action ~substring:"::"
