@@ -276,17 +276,67 @@ let () =
    watchdog turns a hang -- the failure mode this pins against -- into exit 3 rather than
    a stuck CI. *)
 let () =
-  ignore
-    (Glib.Timeout.add
-       ~ms:20_000
-       ~callback:(fun () ->
-         eprintf "live_windows: start over windows [] hung\n%!";
-         Stdlib.exit 3)
-       ()
-     : Glib.Timeout.id);
+  let watchdog =
+    Glib.Timeout.add
+      ~ms:20_000
+      ~callback:(fun () ->
+        eprintf "live_windows: start over windows [] hung\n%!";
+        Stdlib.exit 3)
+      ()
+  in
   let quit_app (_graph @ local) = Bonsai.return (Node.windows []) in
   let status =
     Bonsai_gtk.start ~application_id:"org.bonsai_gtk.test.live_windows" quit_app
   in
+  (* Disarmed, so it cannot fire mid-way through the next block's [start] on a machine
+     slow enough to stretch this executable past 20 s. *)
+  Glib.Timeout.remove watchdog;
   printf "start over windows [] returned %d (the declarative quit)\n" status
+;;
+
+(* The other way [start] must return: a frame that {i raises}. A raising frame breaks the
+   driver for good (M0's contract), and before the fix-wave hook that left an app no one
+   could exit -- every window [add_window]ed (so [run] holds while any exists), the
+   close-request veto armed on every path, a close handler's effect dead in
+   [schedule_event]'s broken-driver guard: frozen windows refusing to close, [start] never
+   returning (probed). Now [Driver.set_on_broken] points at [Application.quit]: one clear
+   error on stderr (the "exception in frame" line above this block's output is that
+   report), the loop ends, [stop] tears the still-live window down, and [start] reports
+   [broken_driver_status] = 2. The healthy first frame proves the window really was up
+   before the break. *)
+let () =
+  let watchdog =
+    Glib.Timeout.add
+      ~ms:20_000
+      ~callback:(fun () ->
+        eprintf "live_windows: start over a raising app hung\n%!";
+        Stdlib.exit 3)
+      ()
+  in
+  let app (graph @ local) =
+    let boom, set_boom = Bonsai.state false graph in
+    let () =
+      Bonsai.Clock.every
+        ~when_to_start_next_effect:`Every_multiple_of_period_non_blocking
+        (Bonsai.return (Time_ns.Span.of_ms 50.))
+        (let%arr set_boom in
+         set_boom true)
+        graph
+    in
+    let%arr boom in
+    Node.window
+      ~key:"probe"
+      ~title:"probe"
+      ~attrs:[ Attr.on_close_request Effect.quit ]
+      (Node.box
+         ~orientation:Vertical
+         (if boom
+          then [ Node.label ~key:"dup" "a"; Node.label ~key:"dup" "b" ]
+          else [ Node.label ~key:"one" "healthy" ]))
+  in
+  let status =
+    Bonsai_gtk.start ~application_id:"org.bonsai_gtk.test.live_windows_raise" app
+  in
+  Glib.Timeout.remove watchdog;
+  printf "start over a raising app returned %d (one clear error, then quit)\n" status
 ;;

@@ -56,6 +56,15 @@ let start
                 app
             in
             driver := Some d;
+            (* A frame that raises has broken the driver for good, and under [start] a
+               broken driver must end the run: the windows were all [add_window]ed (so
+               [run] holds while any exists), the close-request veto is armed on every
+               path, and a close handler's effect dies in [schedule_event]'s guard — so
+               without this the user is left with frozen windows that refuse to close and
+               a [start] that never returns (probed live). One clear error on stderr, then
+               the loop ends, the [Driver.stop] below tears the still-live windows down
+               through the normal path, and [start] reports [broken_driver_status]. *)
+            Driver.set_on_broken d (fun () -> Gio_application.quit gapp);
             (* The effect hooks, before the first frame so an effect it performs already
                finds them (Task 9). [context_widget] answers for both root shapes: a
                [Window] root has a root widget, a [Windows] root answers its first live

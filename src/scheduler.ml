@@ -53,8 +53,12 @@ let with_patch_guard t f =
    mutates GTK as it walks the ops and only then writes the shadow tree back, so a frame
    that dies part-way leaves GTK's tree ahead of the shadow tree's idea of it. Every later
    frame would diff from that stale shadow tree — wrong ordering at best, and the same
-   exception again at tick rate at worst. One clear error and a frozen (but still
-   displayed) window beats a live app patching a tree it no longer describes.
+   exception again at tick rate at worst. One clear error and a stopped driver beat a live
+   app patching a tree it no longer describes. What becomes of the widgets is the entry
+   point's business, decided through [Driver.set_on_broken]: [Loop.start] quits the
+   application (M3's close-request veto made a broken app's windows unclosable, so "frozen
+   but still displayed" stopped being an option there); an embedder's stay frozen at their
+   last good state, on its own main loop.
 
    This is the whole of the state transition, and it lives here rather than inside
    [guarded_frame] because a frame driven by hand — an embedder with its own main loop, a

@@ -439,6 +439,11 @@ alternative — letting GTK destroy a window behind the runtime's back — leave
 runtime patching widgets that no longer exist, which is why the veto is unconditional
 rather than a default.
 
+The one state the veto does not govern is a **broken driver** (a frame raised): there is
+no model left to hear the request, so instead of leaving frozen windows that refuse to
+close, `start` ends the run itself — one error on stderr, the windows torn down, and
+`start` returns status 2. "Structure and lifecycle" below has the full story.
+
 ### The input path, and the parts of it still untested
 
 - **What remains uncovered is a real display.** The live suites run under `xvfb` with no
@@ -597,7 +602,12 @@ rather than a default.
 - **A `Node` constructor's `Invalid_argument` costs the whole application, not the widget.**
   Constructors run inside the Bonsai computation, so the exception comes out of
   `Driver.frame`, which marks the driver broken, abandons the pending fixups and re-raises:
-  every later frame is a no-op and the window never repaints again. The checks therefore
+  every later frame is a no-op. Under `start` the app then **quits** — one clear error on
+  stderr, the windows torn down through the normal stop path, `start` returning status 2 —
+  because a broken driver's windows could never close otherwise: the close-request veto
+  answers every request and no handler's effect can reach a dead driver. Under
+  `Expert.embed` the widgets stay (frozen at their last good state) and the embedder,
+  which owns the main loop, hears the raise itself. The checks therefore
   follow one rule — *reject only what no later frame could make valid* — and a state a
   correct model passes through (a stale index, a key whose child has not arrived) is inert,
   applied on the frame it becomes meaningful, and reported once through the patcher's

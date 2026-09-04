@@ -23,6 +23,15 @@ type t =
        inside [Gtk_effect] because only the registrar knows whether this driver registered
        anything, and only [stop] knows when it died. *)
     mutable drop_effect_hooks : unit -> unit
+  ; (* What the raising frame runs after marking this driver broken, before the exception
+       propagates. A no-op unless the entry point sets it: [Loop.start] points it at
+       [Gio.Application.quit], because under [start] a broken driver otherwise leaves an
+       app that can never exit -- every window was [add_window]ed (so [run] holds while
+       any exists), the close-request veto stays armed on every path, and a scheduled
+       close handler's effect is [schedule_event]'s guarded no-op. A hand-driven caller
+       (an embedder, a test) keeps the default: it owns its main loop and hears the raise
+       directly out of [frame]. *)
+    mutable on_broken : unit -> unit
   }
 
 (* The async effects' GLib callbacks come through here (via the registered [request_frame]
@@ -34,6 +43,7 @@ let request_frame t =
 ;;
 
 let set_effect_hooks_drop t f = t.drop_effect_hooks <- f
+let set_on_broken t f = t.on_broken <- f
 
 let schedule_event t effect =
   (* A broken driver renders nothing again (see [frame]), so queueing effects into it only
@@ -170,6 +180,11 @@ let frame t =
       let backtrace = Stdlib.Printexc.get_raw_backtrace () in
       Scheduler.mark_broken t.scheduler;
       Patcher.abandon_fixups t.ctx;
+      (* After the break is recorded, so anything the hook runs finds a driver already in
+         its terminal state; swallow-guarded because the raise below is the frame's real
+         report and the hook must not displace it. *)
+      (try t.on_broken () with
+       | _ -> ());
       Stdlib.Printexc.raise_with_backtrace exn backtrace)
 ;;
 
@@ -230,6 +245,7 @@ let create
     ; root = None
     ; stopped = false
     ; drop_effect_hooks = (fun () -> ())
+    ; on_broken = (fun () -> ())
     }
   in
   cell := Some t;

@@ -110,6 +110,21 @@ val request_frame : t -> unit
     callbacks at all. Defaults to doing nothing; {!stop} resets it after running it. *)
 val set_effect_hooks_drop : t -> (unit -> unit) -> unit
 
+(** Registers what a {i raising frame} runs after marking this driver {!broken} (and
+    dropping the pass's fixups), just before the exception propagates. Defaults to doing
+    nothing, which is right for every hand-driven caller: an embedder or a test hears the
+    raise straight out of {!frame} and owns its own main loop.
+
+    [Loop.start] points it at [Gio.Application.quit]. Without that, a broken driver under
+    [start] is an app that can never exit: every window was [add_window]ed, so
+    [g_application_run] holds while any exists; the close-request veto stays armed on
+    every path; and a close handler's effect dies in {!schedule_event}'s broken-driver
+    guard — frozen windows that refuse to close, and a [start] that never returns (probed
+    live). With it, the contract is one clear error on stderr, the loop ends, [stop] tears
+    the windows down, and [start] returns [broken_driver_status]. Swallow-guarded: a raise
+    from the hook cannot displace the frame's own exception. *)
+val set_on_broken : t -> (unit -> unit) -> unit
+
 (** The root widget, or [None] before the first {!frame} (and after {!stop}).
 
     {b Also [None] for a [Node.windows] root} — a breaking change of M3 Task 8. The widget
@@ -144,9 +159,11 @@ val start_tick : t -> fps:float -> unit
     shadow tree back only on success — so a frame that raises part-way leaves the two out
     of sync, and every later frame would diff against a tree that no longer describes GTK.
     Rather than repeat that (and the exception) at tick rate, the scheduler logs once and
-    stops. The widgets stay on screen showing their last good state and the GTK main loop
-    keeps running, so the window does not vanish; nothing updates it again. The fix is to
-    the application. {!Bonsai_gtk.start} reports this as a non-zero exit status. *)
+    stops. What happens to the widgets is the entry point's choice ({!set_on_broken}):
+    under {!Bonsai_gtk.start} the app quits — teardown through [stop], and a non-zero exit
+    status — because the close-request veto leaves a broken app's windows unclosable by
+    the user; under a hand-driven loop they stay on screen showing their last good state,
+    and nothing updates them again. The fix is to the application. *)
 val broken : t -> bool
 
 (** Marks this driver {!broken} without touching the widget tree, and removes the tick.

@@ -38,3 +38,4 @@ after stop: windows = 0, main visible=false tools visible=false
 missing-key fixup raised: root/0: ~transient_for names no window: no Node.windows child is keyed "nope" (keys that exist: "a"; a window may only be transient for another window in the same Node.windows list)
 missing-key block done
 start over windows [] returned 0 (the declarative quit)
+start over a raising app returned 2 (one clear error, then quit)
