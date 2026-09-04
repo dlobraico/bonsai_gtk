@@ -365,8 +365,9 @@ New in M3:
 
 ## ocgtk fork
 
-The pin is unchanged from M2's close: `649498b4`, the fork's `m2-bindings` head
-(`ocgtk-pin.json`); `ci.sh` is green against it. **M3 shipped no fork round** — every
+The pin is `72cc75f2`, the post-fork-round-2 head, standing since before this
+milestone's first task (`ocgtk-pin.json` is the authority); `ci.sh` is green against
+it. **M3 shipped no fork round** — every
 binding gap met a chosen workaround or documented omission — so m2-backlog's fork
 section remains the authoritative ledger for what is fixed and what is still open
 there (the 153 stack-frame record returns, the transfer-full `char*` leak, the

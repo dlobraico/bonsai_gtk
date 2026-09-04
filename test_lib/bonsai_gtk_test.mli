@@ -523,8 +523,10 @@ end
     widget (same widget, no edge) would not — and a {i kind change} at the same path with
     a steady [true] is a remount that re-fires live but is no edge to the path, so a frame
     pairing such a remount with a second widget's flip raises live and is certified here.
-    No tree in this repository does either. Per toplevel is per tree here, until
-    [Node.windows] widens it.
+    No tree in this repository does either. Per toplevel is per window under a
+    [Node.windows] root — the grouping key is the windows child, matching the live rule,
+    tested ("autofocus is per window under a windows root") — and per tree under any other
+    root.
 
     Rows 8-12 are the ones that could still be closed cheaply: they are tree walks over
     data this library already has. Rows 14 and 15 are {i refusals} rather than rejections
