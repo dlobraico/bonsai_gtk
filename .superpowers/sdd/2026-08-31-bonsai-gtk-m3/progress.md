@@ -205,3 +205,26 @@ Task 13 start: autofocus stack-page reasoning into the example comment; Menu.sec
 ~label:"" → omit ?label (separator idiom) in both examples; examples/dune "these two"
 count. The nothing-sweeps-the-example residual + its stale 36/38 counts go to Task 13's
 rewrite by name.
+
+### Task 13 — README, spec amendments, m3-backlog: APPROVED (after fix round 1)
+dd891e7..9ee1fd6 (task-12 minors + three doc commits + fix round; NOTE: db26888 is the
+real step-2 commit — 8132f44 is a red off-branch orphan from an amend, not
+bisect-reachable). Reviewer's independent sweep checklist found the record complete;
+every count verified against code; strikes attributed correctly; digest deviation
+(m2-backlog stays the authoritative M2 record, marked as such) accepted. FIX-WAVE
+residuals: task-13-report.md line 103's step-2 heading still says 8132f44;
+docs/m3-backlog.md:348 names the pin 649498b4 where it has been 72cc75f2 since fork
+round 2.
+
+### Task 14 — ci.sh from a clean tree: DONE (controller-recovered), evidence verified
+The implementer ran both passes 2026-09-01 (fresh clone, switch built from scratch,
+ci.sh cold then warm, both "all green", diff = bench noise only) but stalled twice
+before reporting; controller recovered the logs into the workspace (ci-run1/2.log,
+setup-switch.log), wrote task-14-report.md, deleted the 15G cold tree. Reviewer verified
+the evidence HOLDS with precision limits now recorded in the report (two expected
+exception lines per run; exit codes inferred from tails; commit corroborated not
+logged; NO surviving loaded-run evidence — the close must not cite Task 14 for 5/5
+under load). Process note of record: the single implementer carried Tasks 1–13 well but
+stalled repeatedly at the tail; the fix wave gets fresh agents.
+
+## All 14 tasks complete — proceeding to the four-lens final review.
