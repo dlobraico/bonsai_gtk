@@ -1,0 +1,96 @@
+== nix: ocgtk pin builds and passes its tests
+== format
+== build
+== generated opam files are committed
+== pure + headless tests
+== per-package builds, the way opam --with-test runs them
+== live tests (xvfb)
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+bonsai_gtk: exception in frame, stopping the driver: (Invalid_argument
+  "root/0/1: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node")
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+bonsai_gtk: root/0: ~current_page names the hidden page "score"; GTK will not switch to it
+bench: flow box 0.357 ms at sel=1, 0.413 ms at sel=200, ratio 1.16 (bound 5)
+bench: list box 0.371 ms at sel=1, 0.428 ms at sel=200, ratio 1.16 (bound 5)
+bench: stack 0.00045 ms per idle frame parked on a hidden page, 0.00297 ms settled
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+bench: 0.00024 ms at 16 chars, 0.00016 ms at 1 MB, ratio 0.66 (bound 5)
+bench: 0.00017 ms parked on a refused 1 MB write, ratio 1.05 (bound 5)
+bench: 0.00016 ms at 4 items, 0.00016 ms at 1000 items, ratio 0.98 (bound 5)
+bench: 0.00016 ms parked on a refused selection, ratio 0.99 (bound 5)
+live_text: the four Gtk-CRITICALs that follow are expected -- they are the naive write order below being refused by GTK, which is what this block measures
+
+(process:2031292): Gtk-CRITICAL **: 17:51:11.298: gtk_calendar_set_month: assertion 'date != NULL' failed
+
+(process:2031292): Gtk-CRITICAL **: 17:51:11.298: gtk_calendar_set_year: assertion 'date != NULL' failed
+
+(process:2031292): Gtk-CRITICAL **: 17:51:11.299: gtk_calendar_set_month: assertion 'date != NULL' failed
+
+(process:2031292): Gtk-CRITICAL **: 17:51:11.299: gtk_calendar_set_month: assertion 'date != NULL' failed
+bench: calendar 0.00020 ms settled, 0.00015 ms parked on a refused date, ratio 0.73
+bench: editable label 0.00024 ms at 16 chars, 0.00016 ms parked on a refused write, 1.21821 ms at 100 000 chars (the compare is O(len), as every entry's already is)
+bench: entry 0.00023 ms settled at 16 chars, 0.00019 ms parked on a refused 100 000-char write, ratio 0.84
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+live_embed: the bonsai_gtk frame exception that follows is expected
+bonsai_gtk: exception in frame, stopping the driver: (Invalid_argument
+  "root/1: a Node.window may only be the root node or a child of the root Node.windows, not a child of any other node")
+bench: 0.0083 ms embedded, 0.0084 ms windowed, ratio 0.99 (bound 1.2)
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+Gtk-Message: 17:51:37.525: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.580: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.631: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.641: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.652: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.661: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.670: GtkDialog mapped without a transient parent. This is discouraged.
+Gtk-Message: 17:51:37.718: GtkDialog mapped without a transient parent. This is discouraged.
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+
+(process:2031744): Gtk-WARNING **: 17:51:37.857: Theme parser error: <data>:1:9-13: No property named "this"
+
+(process:2031744): Gtk-WARNING **: 17:51:37.857: Theme parser warning: <data>:1:9-27: Unterminated block at end of document
+
+(process:2031744): Gtk-WARNING **: 17:51:37.857: Theme parser warning: <data>:1:7-27: Unterminated block at end of document
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+Gtk-Message: 17:51:40.655: GtkDialog mapped without a transient parent. This is discouraged.
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+== example smoke
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+all green

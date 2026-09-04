@@ -228,3 +228,28 @@ under load). Process note of record: the single implementer carried Tasks 1–13
 stalled repeatedly at the tail; the fix wave gets fresh agents.
 
 ## All 14 tasks complete — proceeding to the four-lens final review.
+
+## Final review, fix wave, and close
+
+Four-lens whole-branch review (fresh agents, read-only except tests): core found the
+milestone's hardest cross-task bug — the always-veto × broken-driver interaction made a
+raising app UNQUITTABLE under start (even Effect.quit inert; an M2→M3 regression);
+input found the certified-tree PROCESS ABORT (unvalidated action-name charset reaching
+g_error) and the same-node late menu+actions question; chrome found the stale
+set_titlebar promise; tests came back clean and banked the loaded-run evidence Task 14
+lost (2x oversubscription PASS, worst bench ratio 0.98/5; 3/3 mutations caught).
+
+Fix wave (fresh agent, probe-first, 9 commits 5b94923..3e46d7a + c338951): both hard
+Importants confirmed by probe exactly as predicted (exit 134 abort; watchdog exit 42)
+and fixed — charset validation at the constructors AND the Attr.actions choke point
+(record-literal bypass closed, c338951); the on-broken hook (shape (b), merits argued:
+uniform multi-window story, stop's walk stays sound, broken_driver_status=2 revived;
+embed can never quit the host). Measurements that beat predictions: same-node late
+menu+actions BINDS (no reorder needed); Attr.visible on a popover is a measured
+SEGFAULT — now rejected at the constructor. Re-review verdict: DONE, per-finding
+disposition table in fix-wave-review.md; nothing silently dropped; input M4 stays the
+recorded task-7 residual.
+
+Merged after a final full gate at c338951. M3 complete: 42 constructors, four
+controller families, GAction routing as data, multi-window trees, effects, dialogs,
+display-wide CSS — the stavekeeper dialogs port's full foundation.

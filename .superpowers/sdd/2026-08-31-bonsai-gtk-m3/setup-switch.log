@@ -1,0 +1,854 @@
+No ./_opam switch yet: run ./scripts/setup-switch.sh
+
+<><> Installing new switch packages <><><><><><><><><><><><><><><><><><><><><><>
+Switch invariant: ["ocaml-variants" {= "5.2.0+ox"}]
+[NOTE] It seems you have not updated your repositories for a while. Consider updating them with:
+       opam update
+
+
+The following system packages will first need to be installed:
+    autoconf which
+
+<><> Processing actions <><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+⬇ retrieved ocaml-config.3  (cached)
+⬇ retrieved oxcaml.latest  (cached)
+∗ installed base-bigarray.base
+∗ installed base-threads.base
+∗ installed base-unix.base
+∗ installed ocaml-options-vanilla.1
+∗ installed oxcaml-alcotest.guard
+∗ installed oxcaml-backoff.guard
+∗ installed oxcaml-chrome-trace.guard
+∗ installed oxcaml-cmarkit.guard
+∗ installed oxcaml-ctypes.guard
+∗ installed oxcaml-ctypes-foreign.guard
+∗ installed oxcaml-dot-merlin-reader.guard
+∗ installed oxcaml-dune.guard
+∗ installed oxcaml-dune-action-plugin.guard
+∗ installed oxcaml-dune-build-info.guard
+∗ installed oxcaml-dune-configurator.guard
+∗ installed oxcaml-dune-glob.guard
+∗ installed oxcaml-dune-private-libs.guard
+∗ installed oxcaml-dune-rpc.guard
+∗ installed oxcaml-dune-rpc-lwt.guard
+∗ installed oxcaml-dune-site.guard
+∗ installed oxcaml-dyn.guard
+∗ installed oxcaml-eio.guard
+∗ installed oxcaml-eio_linux.guard
+∗ installed oxcaml-eio_main.guard
+∗ installed oxcaml-eio_posix.guard
+∗ installed oxcaml-extlib.guard
+∗ installed oxcaml-fs-io.guard
+∗ installed oxcaml-gen_js_api.guard
+∗ installed oxcaml-js_of_ocaml.guard
+∗ installed oxcaml-js_of_ocaml-compiler.guard
+∗ installed oxcaml-js_of_ocaml-ppx.guard
+∗ installed oxcaml-js_of_ocaml-toplevel.guard
+∗ installed oxcaml-jsonrpc.guard
+∗ installed oxcaml-lsp.guard
+∗ installed oxcaml-lwt.guard
+∗ installed oxcaml-lwt_direct.guard
+∗ installed oxcaml-lwt_ppx.guard
+∗ installed oxcaml-lwt_runtime_events.guard
+∗ installed oxcaml-mdx.guard
+∗ installed oxcaml-merlin.guard
+∗ installed oxcaml-merlin-lib.guard
+∗ installed oxcaml-notty-community.guard
+∗ installed oxcaml-ocaml-compiler-libs.guard
+∗ installed oxcaml-ocaml-index.guard
+∗ installed oxcaml-ocaml-lsp-server.guard
+∗ installed oxcaml-ocamlbuild.guard
+∗ installed oxcaml-ocamlc-loc.guard
+∗ installed oxcaml-ocamlfind.guard
+∗ installed oxcaml-ocamlformat.guard
+∗ installed oxcaml-ocamlformat-lib.guard
+∗ installed oxcaml-odoc.guard
+∗ installed oxcaml-ojs.guard
+∗ installed oxcaml-omd.guard
+∗ installed oxcaml-opam-core.guard
+∗ installed oxcaml-opam-format.guard
+∗ installed oxcaml-ordering.guard
+∗ installed oxcaml-otoml.guard
+∗ installed oxcaml-patch-guards.ox
+∗ installed oxcaml-ppx_deriving.guard
+∗ installed oxcaml-ppxlib.guard
+∗ installed oxcaml-ppxlib_ast.guard
+∗ installed oxcaml-re.guard
+∗ installed oxcaml-sedlex.guard
+∗ installed oxcaml-sherlodoc.guard
+∗ installed oxcaml-spawn.guard
+∗ installed oxcaml-stdune.guard
+∗ installed oxcaml-top-closure.guard
+∗ installed oxcaml-topkg.guard
+∗ installed oxcaml-utop.guard
+∗ installed oxcaml-uutf.guard
+∗ installed oxcaml-wasm_of_ocaml-compiler.guard
+∗ installed oxcaml-xdg.guard
+∗ installed oxcaml-yojson.guard
+∗ installed oxcaml-zarith.guard
+⬇ retrieved oxcaml-compiler.5.2.0minus39  (cached)
+∗ installed conf-autoconf.0.2
+[NOTE] Requirement for system package autoconf overridden in this switch. Use `opam option 'depext-bypass-="autoconf"'' to revert.
+∗ installed conf-which.1
+[NOTE] Requirement for system package which overridden in this switch. Use `opam option 'depext-bypass-="which"'' to revert.
+∗ installed oxcaml-compiler.5.2.0minus39
+∗ installed ocaml-variants.5.2.0+ox
+∗ installed ocaml-config.3
+∗ installed oxcaml.latest
+∗ installed ocaml.5.2.0
+∗ installed base-domains.base
+∗ installed base-nnp.base
+Done.
+# To update the current shell environment, run: eval $(opam env --switch=/tmp/claude-278400001/-home-dlobraico-src-stavekeeper/99e80f86-e33c-49b7-8288-5c822cdb4e96/scratchpad/bonsai_gtk-cold)
+Cloning into '.ocgtk-src'...
+[ocgtk.0.1~preview2] synchronised (file:///tmp/claude-278400001/-home-dlobraico-src-stavekeeper/99e80f86-e33c-49b7-8288-5c822cdb4e96/scratchpad/bonsai_gtk-cold/.ocgtk-src/ocgtk)
+ocgtk is now pinned to file:///tmp/claude-278400001/-home-dlobraico-src-stavekeeper/99e80f86-e33c-49b7-8288-5c822cdb4e96/scratchpad/bonsai_gtk-cold/.ocgtk-src/ocgtk (version 0.1~preview2)
+
+<><> Synchronising pinned packages ><><><><><><><><><><><><><><><><><><><><><><>
+[ocgtk.0.1~preview2] synchronised (no changes)
+
+[NOTE] It seems you have not updated your repositories for a while. Consider updating them with:
+       opam update
+
+The following actions will be performed:
+=== remove 32 packages
+  ⊘ oxcaml-cmarkit                      guard                     [conflicts with cmarkit]
+  ⊘ oxcaml-dune                         guard                     [conflicts with dune]
+  ⊘ oxcaml-dune-configurator            guard                     [conflicts with dune-configurator]
+  ⊘ oxcaml-dune-rpc                     guard                     [conflicts with dune-rpc]
+  ⊘ oxcaml-dyn                          guard                     [conflicts with dyn]
+  ⊘ oxcaml-gen_js_api                   guard                     [conflicts with gen_js_api]
+  ⊘ oxcaml-js_of_ocaml                  guard                     [conflicts with js_of_ocaml]
+  ⊘ oxcaml-js_of_ocaml-compiler         guard                     [conflicts with js_of_ocaml-compiler]
+  ⊘ oxcaml-js_of_ocaml-ppx              guard                     [conflicts with js_of_ocaml-ppx]
+  ⊘ oxcaml-jsonrpc                      guard                     [conflicts with jsonrpc]
+  ⊘ oxcaml-lsp                          guard                     [conflicts with lsp]
+  ⊘ oxcaml-merlin-lib                   guard                     [conflicts with merlin-lib]
+  ⊘ oxcaml-ocaml-compiler-libs          guard                     [conflicts with ocaml-compiler-libs]
+  ⊘ oxcaml-ocaml-index                  guard
+  ⊘ oxcaml-ocaml-lsp-server             guard                     [conflicts with ocaml-lsp-server]
+  ⊘ oxcaml-ocamlbuild                   guard                     [conflicts with ocamlbuild]
+  ⊘ oxcaml-ocamlc-loc                   guard                     [conflicts with ocamlc-loc]
+  ⊘ oxcaml-ocamlfind                    guard                     [conflicts with ocamlfind]
+  ⊘ oxcaml-ocamlformat                  guard                     [conflicts with ocamlformat]
+  ⊘ oxcaml-ocamlformat-lib              guard                     [conflicts with ocamlformat-lib]
+  ⊘ oxcaml-ojs                          guard                     [conflicts with ojs]
+  ⊘ oxcaml-ordering                     guard                     [conflicts with ordering]
+  ⊘ oxcaml-ppxlib                       guard                     [conflicts with ppxlib]
+  ⊘ oxcaml-ppxlib_ast                   guard                     [conflicts with ppxlib_ast]
+  ⊘ oxcaml-re                           guard                     [conflicts with re]
+  ⊘ oxcaml-sedlex                       guard                     [conflicts with sedlex]
+  ⊘ oxcaml-spawn                        guard                     [conflicts with spawn]
+  ⊘ oxcaml-stdune                       guard                     [conflicts with stdune]
+  ⊘ oxcaml-topkg                        guard                     [conflicts with topkg]
+  ⊘ oxcaml-uutf                         guard                     [conflicts with uutf]
+  ⊘ oxcaml-yojson                       guard                     [conflicts with yojson]
+  ⊘ oxcaml-zarith                       guard                     [conflicts with zarith]
+=== install 235 packages
+  ∗ abstract_algebra                    v0.18~preview.130.106+341 [required by bonsai]
+  ∗ angstrom                            0.16.1                    [required by patdiff]
+  ∗ astring                             0.8.5                     [required by ocaml-lsp-server]
+  ∗ async                               v0.18~preview.130.106+341 [required by ocaml-lsp-server, bonsai_test, virtual_dom]
+  ∗ async_js                            v0.18~preview.130.106+341 [required by bonsai_test]
+  ∗ async_kernel                        v0.18~preview.130.106+341 [required by virtual_dom]
+  ∗ async_log                           v0.18~preview.130.106+341 [required by async]
+  ∗ async_rpc_kernel                    v0.18~preview.130.106+341 [required by bonsai]
+  ∗ async_unix                          v0.18~preview.130.106+341 [required by ocaml-embed-file]
+  ∗ base                                v0.18~preview.130.106+341 [required by ocaml-lsp-server, bonsai_test, core, virtual_dom]
+  ∗ base64                              3.5.2                     [required by virtual_dom]
+  ∗ base_bigstring                      v0.18~preview.130.106+341 [required by core]
+  ∗ base_internalhash_types             v0.18~preview.130.106+341 [required by base]
+  ∗ base_quickcheck                     v0.18~preview.130.106+341 [required by core, ppx_jane]
+  ∗ basement                            v0.18~preview.130.106+341 [required by base, flexible_sexp]
+  ∗ bignum                              v0.18~preview.130.106+341 [required by incr_map]
+  ∗ bigstringaf                         0.10.0                    [required by angstrom]
+  ∗ bin_prot                            v0.18~preview.130.106+341 [required by core]
+  ∗ bonsai                              v0.18~preview.130.106+341
+  ∗ bonsai_concrete                     v0.18~preview.130.106+341 [required by bonsai, bonsai_test]
+  ∗ bonsai_test                         v0.18~preview.130.106+341
+  ∗ camlp-streams                       5.0.1                     [required by ocaml-lsp-server]
+  ∗ capitalization                      v0.18~preview.130.106+341 [required by ppx_string_conv]
+  ∗ capsule                             v0.18~preview.130.106+341 [required by core]
+  ∗ capsule0                            v0.18~preview.130.106+341 [required by base]
+  ∗ chrome-trace                        3.20.2                    [required by ocaml-lsp-server]
+  ∗ cmarkit                             0.3.0+ox                  [required by ocaml-lsp-server]
+  ∗ cmdliner                            2.1.1                     [required by ocamlformat]
+  ∗ conf-c++                            1.0                       [required by re2]
+  ∗ conf-gmp                            5                         [required by zarith]
+  ∗ conf-gtk4                           2                         [required by ocgtk]
+  ∗ conf-pkg-config                     5                         [required by conf-gtk4]
+  ∗ core                                v0.18~preview.130.106+341
+  ∗ core_extended                       v0.18~preview.130.106+341 [required by async_rpc_kernel, patdiff]
+  ∗ core_kernel                         v0.18~preview.130.106+341 [required by bonsai, virtual_dom]
+  ∗ core_unix                           v0.18~preview.130.106+341 [required by bonsai_test, ocaml-lsp-server]
+  ∗ csexp                               1.5.2                     [required by ocaml-lsp-server]
+  ∗ cstruct                             6.2.0                     [required by async_unix]
+  ∗ dune                                3.22.2+ox
+  ∗ dune-build-info                     3.20.2                    [required by ocaml-lsp-server]
+  ∗ dune-configurator                   3.22.2+ox                 [required by ocgtk]
+  ∗ dune-rpc                            3.20.2+ox                 [required by ocaml-lsp-server]
+  ∗ dyn                                 3.20.2+ox                 [required by ocaml-lsp-server]
+  ∗ either                              1.0.0                     [required by ocamlformat-lib]
+  ∗ expect_test_helpers_async           v0.18~preview.130.106+341 [required by ppx_quick_test]
+  ∗ expect_test_helpers_base            v0.18~preview.130.106+341 [required by bonsai_test]
+  ∗ expect_test_helpers_core            v0.18~preview.130.106+341 [required by bonsai_test]
+  ∗ expectable                          v0.18~preview.130.106+341 [required by bonsai_test]
+  ∗ expectree                           v0.18~preview.130.106+341 [required by ocaml-lsp-server]
+  ∗ fiber                               3.7.0                     [required by ocaml-lsp-server]
+  ∗ fieldslib                           v0.18~preview.130.106+341 [required by core]
+  ∗ fix                                 20250919                  [required by ocamlformat-lib]
+  ∗ flexible_sexp                       v0.18~preview.130.106+341 [required by async_rpc_kernel]
+  ∗ float_array                         v0.18~preview.130.106+341 [required by unboxed]
+  ∗ fmt                                 0.11.0                    [required by cstruct]
+  ∗ fpath                               0.7.3                     [required by ocamlformat-lib]
+  ∗ gen                                 1.1                       [required by sedlex]
+  ∗ gen_js_api                          1.1.2+ox                  [required by virtual_dom]
+  ∗ incr_map                            v0.18~preview.130.106+341 [required by bonsai, bonsai_test]
+  ∗ incr_select                         v0.18~preview.130.106+341 [required by bonsai_concrete]
+  ∗ incremental                         v0.18~preview.130.106+341 [required by bonsai, bonsai_test]
+  ∗ int_repr                            v0.18~preview.130.106+341 [required by base_bigstring]
+  ∗ jane-street-headers                 v0.18~preview.130.106+341 [required by core]
+  ∗ jane_rope                           v0.18~preview.130.106+341 [required by re2]
+  ∗ janestreet_lru_cache                v0.18~preview.130.106+341 [required by incremental]
+  ∗ js_of_ocaml                         6.3.2+ox                  [required by virtual_dom]
+  ∗ js_of_ocaml-compiler                6.3.2+ox                  [required by js_of_ocaml, ojs]
+  ∗ js_of_ocaml-ppx                     6.3.2+ox                  [required by bonsai, virtual_dom]
+  ∗ jsonrpc                             1.19.0+ox2                [required by ocaml-lsp-server]
+  ∗ jst-config                          v0.18~preview.130.106+341 [required by core]
+  ∗ lambdasoup                          1.1.1                     [required by virtual_dom]
+  ∗ legacy_diffable                     v0.18~preview.130.106+341 [required by incr_map]
+  ∗ lsp                                 1.19.0+ox2                [required by ocaml-lsp-server]
+  ∗ markup                              1.0.3                     [required by lambdasoup]
+  ∗ menhir                              20240715                  [required by merlin-lib, ocamlformat-lib]
+  ∗ menhirCST                           20240715                  [required by menhir]
+  ∗ menhirLib                           20240715                  [required by merlin-lib, ocamlformat-lib]
+  ∗ menhirSdk                           20240715                  [required by merlin-lib, ocamlformat-lib]
+  ∗ merlin-lib                          5.2.1-502+ox2             [required by ocaml-lsp-server]
+  ∗ nonempty_list_type                  v0.18~preview.130.106+341 [required by base]
+  ∗ num                                 1.6                       [required by bignum]
+  ∗ ocaml-compiler-libs                 v0.17.0+ox                [required by ppx_quick_test, ppx_bin_prot]
+  ∗ ocaml-embed-file                    v0.18~preview.130.106+341 [required by bonsai, bonsai_test]
+  ∗ ocaml-index                         1.1+ox2
+  ∗ ocaml-lsp-server                    1.19.0+ox2
+  ∗ ocaml-syntax-shims                  1.0.0                     [required by angstrom]
+  ∗ ocaml-version                       4.1.3                     [required by ocamlformat-lib]
+  ∗ ocaml_intrinsics_kernel             v0.18~preview.130.106+341 [required by base]
+  ∗ ocamlbuild                          0.16.1+ox                 [required by cmarkit]
+  ∗ ocamlc-loc                          3.20.2+ox                 [required by ocaml-lsp-server]
+  ∗ ocamlfind                           1.9.8+ox                  [required by cmarkit]
+  ∗ ocamlformat                         0.26.2+ox2
+  ∗ ocamlformat-lib                     0.26.2+ox2                [required by ocamlformat]
+  ∗ ocamlformat-rpc-lib                 0.29.0                    [required by ocaml-lsp-server]
+  ∗ ocgtk                               0.1~preview2 (pinned)
+  ∗ ocp-indent                          1.9.0                     [required by ocamlformat-lib]
+  ∗ odoc-parser                         3.2.1                     [required by ocaml-lsp-server]
+  ∗ ojs                                 1.1.2+ox                  [required by gen_js_api]
+  ∗ ordering                            3.20.2+ox                 [required by ocaml-lsp-server]
+  ∗ oxcaml-cmarkit-patches              enabled
+  ∗ oxcaml-dune-configurator-patches    enabled
+  ∗ oxcaml-dune-patches                 enabled
+  ∗ oxcaml-dune-rpc-patches             enabled
+  ∗ oxcaml-dyn-patches                  enabled
+  ∗ oxcaml-gen_js_api-patches           enabled
+  ∗ oxcaml-js_of_ocaml-compiler-patches enabled
+  ∗ oxcaml-js_of_ocaml-patches          enabled
+  ∗ oxcaml-js_of_ocaml-ppx-patches      enabled
+  ∗ oxcaml-jsonrpc-patches              enabled
+  ∗ oxcaml-lsp-patches                  enabled
+  ∗ oxcaml-merlin-lib-patches           enabled
+  ∗ oxcaml-ocaml-compiler-libs-patches  enabled
+  ∗ oxcaml-ocaml-index-patches          enabled
+  ∗ oxcaml-ocaml-lsp-server-patches     enabled
+  ∗ oxcaml-ocamlbuild-patches           enabled
+  ∗ oxcaml-ocamlc-loc-patches           enabled
+  ∗ oxcaml-ocamlfind-patches            enabled
+  ∗ oxcaml-ocamlformat-lib-patches      enabled
+  ∗ oxcaml-ocamlformat-patches          enabled
+  ∗ oxcaml-ojs-patches                  enabled
+  ∗ oxcaml-ordering-patches             enabled
+  ∗ oxcaml-ppxlib-patches               enabled
+  ∗ oxcaml-ppxlib_ast-patches           enabled
+  ∗ oxcaml-re-patches                   enabled
+  ∗ oxcaml-sedlex-patches               enabled
+  ∗ oxcaml-spawn-patches                enabled
+  ∗ oxcaml-stdune-patches               enabled
+  ∗ oxcaml-topkg-patches                enabled
+  ∗ oxcaml-uutf-patches                 enabled
+  ∗ oxcaml-yojson-patches               enabled
+  ∗ oxcaml-zarith-patches               enabled
+  ∗ parsexp                             v0.18~preview.130.106+341 [required by core]
+  ∗ patdiff                             v0.18~preview.130.106+341 [required by bonsai_test]
+  ∗ patience_diff                       v0.18~preview.130.106+341 [required by patdiff]
+  ∗ pipe_with_writer_error              v0.18~preview.130.106+341 [required by async_rpc_kernel]
+  ∗ portable                            v0.18~preview.130.106+341 [required by core]
+  ∗ pp                                  2.0.0                     [required by ocaml-lsp-server]
+  ∗ ppx_array_base                      v0.18~preview.130.106+341 [required by base]
+  ∗ ppx_assert                          v0.18~preview.130.106+341 [required by core, ppx_jane]
+  ∗ ppx_base                            v0.18~preview.130.106+341 [required by core, ppx_jane]
+  ∗ ppx_bench                           v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_bin_prot                        v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_box                             v0.18~preview.130.106+341 [required by unboxed]
+  ∗ ppx_builtin                         v0.18~preview.130.106+341 [required by core_unix]
+  ∗ ppx_compare                         v0.18~preview.130.106+341 [required by ppx_log, ppx_typed_fields]
+  ∗ ppx_custom_printf                   v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_debug_assert                    v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_derivers                        1.2.1                     [required by ppxlib]
+  ∗ ppx_diff                            v0.18~preview.130.106+341 [required by core]
+  ∗ ppx_disable_unused_warnings         v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_enumerate                       v0.18~preview.130.106+341 [required by ppx_log, ppx_typed_fields]
+  ∗ ppx_expect                          v0.18~preview.130.106+341 [required by core, bonsai_test, ppx_jane]
+  ∗ ppx_fields_conv                     v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_fixed_literal                   v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_fuelproof                       v0.18~preview.130.106+341 [required by ppx_expect]
+  ∗ ppx_globalize                       v0.18~preview.130.106+341 [required by ppx_typed_fields]
+  ∗ ppx_hash                            v0.18~preview.130.106+341 [required by core]
+  ∗ ppx_helpers                         v0.18~preview.130.106+341 [required by ppx_bin_prot, ppx_quick_test, ppx_typerep_conv]
+  ∗ ppx_here                            v0.18~preview.130.106+341 [required by bonsai, ppx_jane]
+  ∗ ppx_ignore_instrumentation          v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_inline_test                     v0.18~preview.130.106+341 [required by core, ppx_jane]
+  ∗ ppx_int63_literal                   v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_jane                            v0.18~preview.130.106+341
+  ∗ ppx_js_style                        v0.18~preview.130.106+341 [required by parsexp]
+  ∗ ppx_let                             v0.18~preview.130.106+341 [required by bonsai, ppx_jane]
+  ∗ ppx_log                             v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_module_timer                    v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_optcomp                         v0.18~preview.130.106+341 [required by core]
+  ∗ ppx_optional                        v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_pattern_bind                    v0.18~preview.130.106+341 [required by bonsai, bonsai_test]
+  ∗ ppx_pipebang                        v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_portable                        v0.18~preview.130.106+341 [required by base_quickcheck]
+  ∗ ppx_quick_test                      v0.18~preview.130.106+341 [required by bonsai_test]
+  ∗ ppx_sexp_conv                       v0.18~preview.130.106+341 [required by core]
+  ∗ ppx_sexp_message                    v0.18~preview.130.106+341 [required by core, ppx_jane]
+  ∗ ppx_sexp_value                      v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_shorthand                       v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_stable                          v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_stable_witness                  v0.18~preview.130.106+341 [required by core, ppx_jane]
+  ∗ ppx_string                          v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_string_conv                     v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_template                        v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_tydi                            v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_typed_fields                    v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_typerep_conv                    v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_var_name                        v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_variants_conv                   v0.18~preview.130.106+341 [required by ppx_jane]
+  ∗ ppx_yojson_conv                     v0.18~preview.130.106+341 [required by ocaml-lsp-server]
+  ∗ ppx_yojson_conv_lib                 v0.18~preview.130.106+341 [required by ocaml-lsp-server]
+  ∗ ppxlib                              0.33.0+ox2                [required by bonsai, ppx_jane]
+  ∗ ppxlib_ast                          0.33.0+ox2                [required by ppxlib]
+  ∗ ppxlib_jane                         v0.18~preview.130.106+341 [required by bonsai]
+  ∗ protocol_version_header             v0.18~preview.130.106+341 [required by async_rpc_kernel]
+  ∗ re                                  1.14.0+ox                 [required by ocaml-lsp-server, bonsai_test, ocamlformat]
+  ∗ re2                                 v0.18~preview.130.106+341 [required by ocaml-lsp-server]
+  ∗ record_builder                      v0.18~preview.130.106+341 [required by core_extended]
+  ∗ regex_parser_intf                   v0.18~preview.130.106+341 [required by re2]
+  ∗ result                              1.5                       [required by ocamlformat-lib]
+  ∗ sedlex                              3.7+ox                    [required by js_of_ocaml-compiler]
+  ∗ seq                                 base                      [required by tyxml]
+  ∗ sexp_pretty                         v0.18~preview.130.106+341 [required by expect_test_helpers_async]
+  ∗ sexp_type                           v0.18~preview.130.106+341 [required by capsule0]
+  ∗ sexplib                             v0.18~preview.130.106+341 [required by core, virtual_dom]
+  ∗ sexplib0                            v0.18~preview.130.106+341 [required by ppx_typed_fields]
+  ∗ spawn                               v0.15.1+ox                [required by ocaml-lsp-server]
+  ∗ splittable_random                   v0.18~preview.130.106+341 [required by core]
+  ∗ stdio                               v0.18~preview.130.106+341 [required by core, virtual_dom]
+  ∗ stdlib-shims                        0.3.0                     [required by ppxlib]
+  ∗ stdune                              3.20.2+ox1                [required by ocaml-lsp-server]
+  ∗ stored_reversed                     v0.18~preview.130.106+341 [required by legacy_diffable]
+  ∗ streamable                          v0.18~preview.130.106+341 [required by incr_map]
+  ∗ string_dict                         v0.18~preview.130.106+341 [required by core]
+  ∗ stringext                           1.6.0                     [required by uri]
+  ∗ textutils                           v0.18~preview.130.106+341 [required by expectable]
+  ∗ textutils_kernel                    v0.18~preview.130.106+341 [required by incremental]
+  ∗ time_now                            v0.18~preview.130.106+341 [required by core]
+  ∗ topkg                               1.1.1+ox                  [required by cmarkit]
+  ∗ typerep                             v0.18~preview.130.106+341 [required by core]
+  ∗ tyxml                               4.6.0                     [required by virtual_dom]
+  ∗ uchar                               0.0.2                     [required by markup]
+  ∗ unboxed                             v0.18~preview.130.106+341 [required by core_extended]
+  ∗ unique                              v0.18~preview.130.106+341 [required by async_kernel]
+  ∗ univ_map                            v0.18~preview.130.106+341 [required by core]
+  ∗ uopt                                v0.18~preview.130.106+341 [required by core_kernel]
+  ∗ uri                                 4.4.0                     [required by virtual_dom]
+  ∗ uri-sexp                            4.4.0                     [required by async_js]
+  ∗ uucp                                17.0.0                    [required by patdiff]
+  ∗ uuseg                               17.0.0                    [required by ocamlformat-lib]
+  ∗ uutf                                1.0.4+ox                  [required by ocamlformat-lib, lsp, tyxml]
+  ∗ variantslib                         v0.18~preview.130.106+341 [required by core]
+  ∗ virtual_dom                         v0.18~preview.130.106+341
+  ∗ xdg                                 3.20.2                    [required by ocaml-lsp-server]
+  ∗ yojson                              2.2.2+ox                  [required by ocaml-lsp-server]
+  ∗ zarith                              1.12+ox3                  [required by bignum]
+  ∗ zarith_stubs_js                     v0.18~preview.130.106+341 [required by bignum]
+
+The following system packages will first need to be installed:
+    gcc gmp pkg-config
+
+<><> Processing actions <><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+⊘ removed   oxcaml-cmarkit.guard
+⊘ removed   oxcaml-dune.guard
+⊘ removed   oxcaml-dune-configurator.guard
+⊘ removed   oxcaml-dune-rpc.guard
+⊘ removed   oxcaml-dyn.guard
+⊘ removed   oxcaml-gen_js_api.guard
+⊘ removed   oxcaml-js_of_ocaml.guard
+⊘ removed   oxcaml-js_of_ocaml-compiler.guard
+⊘ removed   oxcaml-js_of_ocaml-ppx.guard
+⊘ removed   oxcaml-jsonrpc.guard
+⊘ removed   oxcaml-lsp.guard
+⊘ removed   oxcaml-merlin-lib.guard
+⊘ removed   oxcaml-ocaml-compiler-libs.guard
+⊘ removed   oxcaml-ocaml-index.guard
+⊘ removed   oxcaml-ocaml-lsp-server.guard
+⊘ removed   oxcaml-ocamlbuild.guard
+⊘ removed   oxcaml-ocamlc-loc.guard
+⊘ removed   oxcaml-ocamlfind.guard
+⊘ removed   oxcaml-ocamlformat.guard
+⊘ removed   oxcaml-ocamlformat-lib.guard
+⊘ removed   oxcaml-ojs.guard
+⊘ removed   oxcaml-ordering.guard
+⊘ removed   oxcaml-ppxlib.guard
+⊘ removed   oxcaml-ppxlib_ast.guard
+⊘ removed   oxcaml-re.guard
+⊘ removed   oxcaml-sedlex.guard
+⊘ removed   oxcaml-spawn.guard
+⊘ removed   oxcaml-stdune.guard
+⊘ removed   oxcaml-topkg.guard
+⊘ removed   oxcaml-uutf.guard
+⊘ removed   oxcaml-yojson.guard
+⊘ removed   oxcaml-zarith.guard
+⬇ retrieved abstract_algebra.v0.18~preview.130.106+341  (cached)
+⬇ retrieved angstrom.0.16.1  (cached)
+⬇ retrieved astring.0.8.5  (cached)
+⬇ retrieved async.v0.18~preview.130.106+341  (cached)
+⬇ retrieved async_js.v0.18~preview.130.106+341  (cached)
+⬇ retrieved async_kernel.v0.18~preview.130.106+341  (cached)
+⬇ retrieved async_log.v0.18~preview.130.106+341  (cached)
+⬇ retrieved async_rpc_kernel.v0.18~preview.130.106+341  (cached)
+⬇ retrieved async_unix.v0.18~preview.130.106+341  (cached)
+⬇ retrieved base.v0.18~preview.130.106+341  (cached)
+⬇ retrieved base64.3.5.2  (cached)
+⬇ retrieved base_bigstring.v0.18~preview.130.106+341  (cached)
+⬇ retrieved base_internalhash_types.v0.18~preview.130.106+341  (cached)
+⬇ retrieved base_quickcheck.v0.18~preview.130.106+341  (cached)
+⬇ retrieved basement.v0.18~preview.130.106+341  (cached)
+⬇ retrieved bignum.v0.18~preview.130.106+341  (cached)
+⬇ retrieved bigstringaf.0.10.0  (cached)
+⬇ retrieved bin_prot.v0.18~preview.130.106+341  (cached)
+⬇ retrieved bonsai_concrete.v0.18~preview.130.106+341  (cached)
+⬇ retrieved bonsai.v0.18~preview.130.106+341  (cached)
+⬇ retrieved bonsai_test.v0.18~preview.130.106+341  (cached)
+⬇ retrieved camlp-streams.5.0.1  (cached)
+⬇ retrieved capitalization.v0.18~preview.130.106+341  (cached)
+⬇ retrieved capsule.v0.18~preview.130.106+341  (cached)
+⬇ retrieved capsule0.v0.18~preview.130.106+341  (cached)
+⬇ retrieved cmdliner.2.1.1  (cached)
+⬇ retrieved conf-c++.1.0  (cached)
+⬇ retrieved conf-gmp.5  (cached)
+⬇ retrieved conf-pkg-config.5  (cached)
+⬇ retrieved cmarkit.0.3.0+ox  (cached)
+⬇ retrieved core_extended.v0.18~preview.130.106+341  (cached)
+⬇ retrieved core.v0.18~preview.130.106+341  (cached)
+∗ installed conf-gmp.5
+[NOTE] Requirement for system package gmp overridden in this switch. Use `opam option 'depext-bypass-="gmp"'' to revert.
+⬇ retrieved core_kernel.v0.18~preview.130.106+341  (cached)
+⬇ retrieved core_unix.v0.18~preview.130.106+341  (cached)
+⬇ retrieved csexp.1.5.2  (cached)
+∗ installed conf-pkg-config.5
+[NOTE] Requirement for system package pkg-config overridden in this switch. Use `opam option 'depext-bypass-="pkg-config"'' to revert.
+⬇ retrieved cstruct.6.2.0  (cached)
+⬇ retrieved either.1.0.0  (cached)
+⬇ retrieved expect_test_helpers_async.v0.18~preview.130.106+341  (cached)
+⬇ retrieved expect_test_helpers_base.v0.18~preview.130.106+341  (cached)
+∗ installed conf-gtk4.2
+⬇ retrieved expect_test_helpers_core.v0.18~preview.130.106+341  (cached)
+⬇ retrieved expectable.v0.18~preview.130.106+341  (cached)
+⬇ retrieved expectree.v0.18~preview.130.106+341  (cached)
+⬇ retrieved fiber.3.7.0  (cached)
+⬇ retrieved fieldslib.v0.18~preview.130.106+341  (cached)
+∗ installed conf-c++.1.0
+[NOTE] Requirement for system package gcc overridden in this switch. Use `opam option 'depext-bypass-="gcc"'' to revert.
+⬇ retrieved fix.20250919  (cached)
+⬇ retrieved flexible_sexp.v0.18~preview.130.106+341  (cached)
+⬇ retrieved float_array.v0.18~preview.130.106+341  (cached)
+⬇ retrieved fmt.0.11.0  (cached)
+⬇ retrieved fpath.0.7.3  (cached)
+⬇ retrieved gen.1.1  (cached)
+⬇ retrieved gen_js_api.1.1.2+ox, ojs.1.1.2+ox  (cached)
+⬇ retrieved incr_map.v0.18~preview.130.106+341  (cached)
+⬇ retrieved incr_select.v0.18~preview.130.106+341  (cached)
+⬇ retrieved incremental.v0.18~preview.130.106+341  (cached)
+⬇ retrieved int_repr.v0.18~preview.130.106+341  (cached)
+⬇ retrieved jane-street-headers.v0.18~preview.130.106+341  (cached)
+⬇ retrieved chrome-trace.3.20.2, dune-build-info.3.20.2, dune-rpc.3.20.2+ox, dyn.3.20.2+ox, ocamlc-loc.3.20.2+ox, ordering.3.20.2+ox, stdune.3.20.2+ox1, xdg.3.20.2  (cached)
+⬇ retrieved dune.3.22.2+ox, dune-configurator.3.22.2+ox  (cached)
+⬇ retrieved jane_rope.v0.18~preview.130.106+341  (cached)
+⬇ retrieved janestreet_lru_cache.v0.18~preview.130.106+341  (cached)
+⬇ retrieved js_of_ocaml.6.3.2+ox, js_of_ocaml-compiler.6.3.2+ox  (cached)
+⬇ retrieved js_of_ocaml-ppx.6.3.2+ox  (cached)
+⬇ retrieved jst-config.v0.18~preview.130.106+341  (cached)
+⬇ retrieved lambdasoup.1.1.1  (cached)
+⬇ retrieved legacy_diffable.v0.18~preview.130.106+341  (cached)
+⬇ retrieved markup.1.0.3  (cached)
+⬇ retrieved menhir.20240715, menhirCST.20240715, menhirLib.20240715, menhirSdk.20240715  (cached)
+⬇ retrieved lsp.1.19.0+ox2  (git+https://github.com/oxcaml/ocaml-lsp.git#5.2.0minus-39)
+⬇ retrieved jsonrpc.1.19.0+ox2  (git+https://github.com/oxcaml/ocaml-lsp.git#5.2.0minus-39)
+⬇ retrieved nonempty_list_type.v0.18~preview.130.106+341  (cached)
+⬇ retrieved num.1.6  (cached)
+⬇ retrieved ocaml-compiler-libs.v0.17.0+ox  (cached)
+⬇ retrieved ocaml-embed-file.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ocaml-syntax-shims.1.0.0  (cached)
+⬇ retrieved ocaml-version.4.1.3  (cached)
+⬇ retrieved ocaml_intrinsics_kernel.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ocamlbuild.0.16.1+ox  (cached)
+⬇ retrieved ocamlfind.1.9.8+ox  (cached)
+⬇ retrieved merlin-lib.5.2.1-502+ox2, ocaml-index.1.1+ox2  (cached)
+⬇ retrieved ocaml-lsp-server.1.19.0+ox2  (git+https://github.com/oxcaml/ocaml-lsp.git#5.2.0minus-39)
+⬇ retrieved ocamlformat.0.26.2+ox2  (git+https://github.com/oxcaml/ocamlformat.git#with-extensions-minus-39)
+⬇ retrieved ocp-indent.1.9.0  (cached)
+⬇ retrieved ocamlformat-lib.0.26.2+ox2  (git+https://github.com/oxcaml/ocamlformat.git#with-extensions-minus-39)
+⬇ retrieved parsexp.v0.18~preview.130.106+341  (cached)
+⬇ retrieved patdiff.v0.18~preview.130.106+341  (cached)
+⬇ retrieved patience_diff.v0.18~preview.130.106+341  (cached)
+⬇ retrieved pipe_with_writer_error.v0.18~preview.130.106+341  (cached)
+⬇ retrieved portable.v0.18~preview.130.106+341  (cached)
+⬇ retrieved pp.2.0.0  (cached)
+⬇ retrieved ppx_array_base.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_assert.v0.18~preview.130.106+341  (cached)
+⬇ retrieved odoc-parser.3.2.1  (cached)
+⬇ retrieved ocamlformat-rpc-lib.0.29.0  (cached)
+⬇ retrieved ppx_base.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_bench.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_bin_prot.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_box.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_builtin.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_compare.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_custom_printf.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_debug_assert.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_derivers.1.2.1  (cached)
+⬇ retrieved ppx_diff.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_disable_unused_warnings.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_enumerate.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_fields_conv.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_expect.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_fixed_literal.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_fuelproof.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_globalize.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_hash.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_helpers.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_here.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_ignore_instrumentation.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_inline_test.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_int63_literal.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_jane.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_js_style.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_let.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_log.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_module_timer.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_optcomp.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_optional.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_pattern_bind.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_pipebang.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_portable.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_quick_test.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_sexp_conv.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_sexp_message.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_sexp_value.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_shorthand.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_stable.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_stable_witness.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_string.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_string_conv.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_template.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_tydi.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_typed_fields.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_typerep_conv.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_var_name.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_variants_conv.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_yojson_conv.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppx_yojson_conv_lib.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppxlib_jane.v0.18~preview.130.106+341  (cached)
+⬇ retrieved protocol_version_header.v0.18~preview.130.106+341  (cached)
+⬇ retrieved ppxlib.0.33.0+ox2, ppxlib_ast.0.33.0+ox2  (cached)
+⬇ retrieved re.1.14.0+ox  (cached)
+⬇ retrieved re2.v0.18~preview.130.106+341  (cached)
+⬇ retrieved record_builder.v0.18~preview.130.106+341  (cached)
+⬇ retrieved regex_parser_intf.v0.18~preview.130.106+341  (cached)
+⬇ retrieved seq.base  (cached)
+∗ installed seq.base
+⬇ retrieved result.1.5  (cached)
+⬇ retrieved sedlex.3.7+ox  (cached)
+⬇ retrieved sexp_pretty.v0.18~preview.130.106+341  (cached)
+⬇ retrieved sexp_type.v0.18~preview.130.106+341  (cached)
+⬇ retrieved sexplib.v0.18~preview.130.106+341  (cached)
+⬇ retrieved sexplib0.v0.18~preview.130.106+341  (cached)
+⬇ retrieved spawn.v0.15.1+ox  (cached)
+⬇ retrieved splittable_random.v0.18~preview.130.106+341  (cached)
+⬇ retrieved stdio.v0.18~preview.130.106+341  (cached)
+⬇ retrieved stdlib-shims.0.3.0  (cached)
+⬇ retrieved stored_reversed.v0.18~preview.130.106+341  (cached)
+⬇ retrieved streamable.v0.18~preview.130.106+341  (cached)
+⬇ retrieved string_dict.v0.18~preview.130.106+341  (cached)
+⬇ retrieved stringext.1.6.0  (cached)
+⬇ retrieved textutils.v0.18~preview.130.106+341  (cached)
+⬇ retrieved textutils_kernel.v0.18~preview.130.106+341  (cached)
+⬇ retrieved time_now.v0.18~preview.130.106+341  (cached)
+⬇ retrieved typerep.v0.18~preview.130.106+341  (cached)
+⬇ retrieved topkg.1.1.1+ox  (cached)
+⬇ retrieved tyxml.4.6.0  (cached)
+⬇ retrieved uchar.0.0.2  (cached)
+⬇ retrieved unboxed.v0.18~preview.130.106+341  (cached)
+⬇ retrieved unique.v0.18~preview.130.106+341  (cached)
+⬇ retrieved univ_map.v0.18~preview.130.106+341  (cached)
+⬇ retrieved uopt.v0.18~preview.130.106+341  (cached)
+⬇ retrieved uuseg.17.0.0  (cached)
+⬇ retrieved uutf.1.0.4+ox  (cached)
+⬇ retrieved uri.4.4.0, uri-sexp.4.4.0  (cached)
+⬇ retrieved variantslib.v0.18~preview.130.106+341  (cached)
+⬇ retrieved virtual_dom.v0.18~preview.130.106+341  (cached)
+⬇ retrieved yojson.2.2.2+ox  (cached)
+⬇ retrieved zarith.1.12+ox3  (cached)
+⬇ retrieved zarith_stubs_js.v0.18~preview.130.106+341  (cached)
+⬇ retrieved uucp.17.0.0  (cached)
+∗ installed num.1.6
+∗ installed cmdliner.2.1.1
+∗ installed ocamlfind.1.9.8+ox
+∗ installed oxcaml-ocamlfind-patches.enabled
+∗ installed zarith.1.12+ox3
+∗ installed oxcaml-zarith-patches.enabled
+∗ installed ocamlbuild.0.16.1+ox
+∗ installed oxcaml-ocamlbuild-patches.enabled
+∗ installed uchar.0.0.2
+∗ installed topkg.1.1.1+ox
+∗ installed oxcaml-topkg-patches.enabled
+∗ installed uutf.1.0.4+ox
+∗ installed oxcaml-uutf-patches.enabled
+∗ installed fmt.0.11.0
+∗ installed astring.0.8.5
+∗ installed fpath.0.7.3
+∗ installed cmarkit.0.3.0+ox
+∗ installed oxcaml-cmarkit-patches.enabled
+∗ installed dune.3.22.2+ox
+∗ installed base64.3.5.2
+∗ installed base_internalhash_types.v0.18~preview.130.106+341
+∗ installed oxcaml-dune-patches.enabled
+∗ installed jane-street-headers.v0.18~preview.130.106+341
+∗ installed camlp-streams.5.0.1
+∗ installed csexp.1.5.2
+∗ installed either.1.0.0
+∗ installed basement.v0.18~preview.130.106+341
+∗ installed cstruct.6.2.0
+∗ installed menhirCST.20240715
+∗ installed nonempty_list_type.v0.18~preview.130.106+341
+∗ installed ocaml-version.4.1.3
+∗ installed ppx_derivers.1.2.1
+∗ installed ocaml_intrinsics_kernel.v0.18~preview.130.106+341
+∗ installed menhirSdk.20240715
+∗ installed chrome-trace.3.20.2
+∗ installed dune-build-info.3.20.2
+∗ installed pp.2.0.0
+∗ installed fix.20250919
+∗ installed sexp_type.v0.18~preview.130.106+341
+∗ installed result.1.5
+∗ installed stdlib-shims.0.3.0
+∗ installed stringext.1.6.0
+∗ installed menhirLib.20240715
+∗ installed zarith_stubs_js.v0.18~preview.130.106+341
+∗ installed ocamlformat-rpc-lib.0.29.0
+∗ installed ocaml-syntax-shims.1.0.0
+∗ installed ordering.3.20.2+ox
+∗ installed oxcaml-ordering-patches.enabled
+∗ installed spawn.v0.15.1+ox
+∗ installed oxcaml-spawn-patches.enabled
+∗ installed gen.1.1
+∗ installed ocaml-compiler-libs.v0.17.0+ox
+∗ installed oxcaml-ocaml-compiler-libs-patches.enabled
+∗ installed odoc-parser.3.2.1
+∗ installed xdg.3.20.2
+∗ installed dyn.3.20.2+ox
+∗ installed oxcaml-dyn-patches.enabled
+∗ installed re.1.14.0+ox
+∗ installed oxcaml-re-patches.enabled
+∗ installed sexplib0.v0.18~preview.130.106+341
+∗ installed ocp-indent.1.9.0
+∗ installed dune-configurator.3.22.2+ox
+∗ installed oxcaml-dune-configurator-patches.enabled
+∗ installed markup.1.0.3
+∗ installed ocamlc-loc.3.20.2+ox
+∗ installed oxcaml-ocamlc-loc-patches.enabled
+∗ installed bigstringaf.0.10.0
+∗ installed lambdasoup.1.1.1
+∗ installed yojson.2.2.2+ox
+∗ installed oxcaml-yojson-patches.enabled
+∗ installed angstrom.0.16.1
+∗ installed jsonrpc.1.19.0+ox2
+∗ installed oxcaml-jsonrpc-patches.enabled
+∗ installed ppx_yojson_conv_lib.v0.18~preview.130.106+341
+∗ installed tyxml.4.6.0
+∗ installed stdune.3.20.2+ox1
+∗ installed oxcaml-stdune-patches.enabled
+∗ installed uri.4.4.0
+∗ installed fiber.3.7.0
+∗ installed dune-rpc.3.20.2+ox
+∗ installed oxcaml-dune-rpc-patches.enabled
+∗ installed ppxlib_ast.0.33.0+ox2
+∗ installed oxcaml-ppxlib_ast-patches.enabled
+∗ installed ppxlib_jane.v0.18~preview.130.106+341
+∗ installed uucp.17.0.0
+∗ installed uuseg.17.0.0
+∗ installed menhir.20240715
+∗ installed ppxlib.0.33.0+ox2
+∗ installed oxcaml-ppxlib-patches.enabled
+∗ installed ppx_disable_unused_warnings.v0.18~preview.130.106+341
+∗ installed ppx_builtin.v0.18~preview.130.106+341
+∗ installed ppx_helpers.v0.18~preview.130.106+341
+∗ installed ppx_optcomp.v0.18~preview.130.106+341
+∗ installed ppx_ignore_instrumentation.v0.18~preview.130.106+341
+∗ installed ppx_pipebang.v0.18~preview.130.106+341
+∗ installed ppx_debug_assert.v0.18~preview.130.106+341
+∗ installed ppx_enumerate.v0.18~preview.130.106+341
+∗ installed ppx_shorthand.v0.18~preview.130.106+341
+∗ installed sedlex.3.7+ox
+∗ installed oxcaml-sedlex-patches.enabled
+∗ installed ocgtk.0.1~preview2
+∗ installed ppx_globalize.v0.18~preview.130.106+341
+∗ installed ppx_array_base.v0.18~preview.130.106+341
+∗ installed ppx_sexp_conv.v0.18~preview.130.106+341
+∗ installed uri-sexp.4.4.0
+∗ installed ppx_template.v0.18~preview.130.106+341
+∗ installed unique.v0.18~preview.130.106+341
+∗ installed capsule0.v0.18~preview.130.106+341
+∗ installed ppx_js_style.v0.18~preview.130.106+341
+∗ installed ppx_compare.v0.18~preview.130.106+341
+∗ installed parsexp.v0.18~preview.130.106+341
+∗ installed ppx_hash.v0.18~preview.130.106+341
+∗ installed ppx_base.v0.18~preview.130.106+341
+∗ installed sexplib.v0.18~preview.130.106+341
+∗ installed js_of_ocaml-compiler.6.3.2+ox
+∗ installed oxcaml-js_of_ocaml-compiler-patches.enabled
+∗ installed ojs.1.1.2+ox
+∗ installed oxcaml-ojs-patches.enabled
+∗ installed gen_js_api.1.1.2+ox
+∗ installed oxcaml-gen_js_api-patches.enabled
+∗ installed merlin-lib.5.2.1-502+ox2
+∗ installed oxcaml-merlin-lib-patches.enabled
+∗ installed js_of_ocaml.6.3.2+ox
+∗ installed oxcaml-js_of_ocaml-patches.enabled
+∗ installed ocaml-index.1.1+ox2
+∗ installed oxcaml-ocaml-index-patches.enabled
+∗ installed js_of_ocaml-ppx.6.3.2+ox
+∗ installed oxcaml-js_of_ocaml-ppx-patches.enabled
+∗ installed base.v0.18~preview.130.106+341
+∗ installed fieldslib.v0.18~preview.130.106+341
+∗ installed regex_parser_intf.v0.18~preview.130.106+341
+∗ installed variantslib.v0.18~preview.130.106+341
+∗ installed stdio.v0.18~preview.130.106+341
+∗ installed capsule.v0.18~preview.130.106+341
+∗ installed string_dict.v0.18~preview.130.106+341
+∗ installed ppx_tydi.v0.18~preview.130.106+341
+∗ installed capitalization.v0.18~preview.130.106+341
+∗ installed ppx_here.v0.18~preview.130.106+341
+∗ installed ppx_var_name.v0.18~preview.130.106+341
+∗ installed ppx_portable.v0.18~preview.130.106+341
+∗ installed ppx_int63_literal.v0.18~preview.130.106+341
+∗ installed ppx_fixed_literal.v0.18~preview.130.106+341
+∗ installed sexp_pretty.v0.18~preview.130.106+341
+∗ installed ppx_optional.v0.18~preview.130.106+341
+∗ installed ppx_stable_witness.v0.18~preview.130.106+341
+∗ installed ppx_string.v0.18~preview.130.106+341
+∗ installed ppx_stable.v0.18~preview.130.106+341
+∗ installed ppx_variants_conv.v0.18~preview.130.106+341
+∗ installed ppx_custom_printf.v0.18~preview.130.106+341
+∗ installed ppx_assert.v0.18~preview.130.106+341
+∗ installed ppx_fields_conv.v0.18~preview.130.106+341
+∗ installed ppx_sexp_value.v0.18~preview.130.106+341
+∗ installed ppx_sexp_message.v0.18~preview.130.106+341
+∗ installed ppx_let.v0.18~preview.130.106+341
+∗ installed ppx_pattern_bind.v0.18~preview.130.106+341
+∗ installed ppx_fuelproof.v0.18~preview.130.106+341
+∗ installed jst-config.v0.18~preview.130.106+341
+∗ installed ppx_string_conv.v0.18~preview.130.106+341
+∗ installed time_now.v0.18~preview.130.106+341
+∗ installed bin_prot.v0.18~preview.130.106+341
+∗ installed ppx_module_timer.v0.18~preview.130.106+341
+∗ installed ppx_inline_test.v0.18~preview.130.106+341
+∗ installed ppx_bench.v0.18~preview.130.106+341
+∗ installed univ_map.v0.18~preview.130.106+341
+∗ installed ppx_bin_prot.v0.18~preview.130.106+341
+∗ installed splittable_random.v0.18~preview.130.106+341
+∗ installed base_quickcheck.v0.18~preview.130.106+341
+∗ installed ppx_typed_fields.v0.18~preview.130.106+341
+∗ installed portable.v0.18~preview.130.106+341
+∗ installed ppx_expect.v0.18~preview.130.106+341
+∗ installed typerep.v0.18~preview.130.106+341
+∗ installed ocamlformat-lib.0.26.2+ox2
+∗ installed oxcaml-ocamlformat-lib-patches.enabled
+∗ installed ocamlformat.0.26.2+ox2
+∗ installed oxcaml-ocamlformat-patches.enabled
+∗ installed ppx_typerep_conv.v0.18~preview.130.106+341
+∗ installed ppx_log.v0.18~preview.130.106+341
+∗ installed ppx_jane.v0.18~preview.130.106+341
+∗ installed abstract_algebra.v0.18~preview.130.106+341
+∗ installed uopt.v0.18~preview.130.106+341
+∗ installed jane_rope.v0.18~preview.130.106+341
+∗ installed int_repr.v0.18~preview.130.106+341
+∗ installed record_builder.v0.18~preview.130.106+341
+∗ installed expect_test_helpers_base.v0.18~preview.130.106+341
+∗ installed ppx_yojson_conv.v0.18~preview.130.106+341
+∗ installed ppx_box.v0.18~preview.130.106+341
+∗ installed base_bigstring.v0.18~preview.130.106+341
+∗ installed ppx_diff.v0.18~preview.130.106+341
+∗ installed lsp.1.19.0+ox2
+∗ installed oxcaml-lsp-patches.enabled
+∗ installed core.v0.18~preview.130.106+341
+∗ installed stored_reversed.v0.18~preview.130.106+341
+∗ installed protocol_version_header.v0.18~preview.130.106+341
+∗ installed janestreet_lru_cache.v0.18~preview.130.106+341
+∗ installed flexible_sexp.v0.18~preview.130.106+341
+∗ installed textutils_kernel.v0.18~preview.130.106+341
+∗ installed expectree.v0.18~preview.130.106+341
+∗ installed expect_test_helpers_core.v0.18~preview.130.106+341
+∗ installed float_array.v0.18~preview.130.106+341
+∗ installed patience_diff.v0.18~preview.130.106+341
+∗ installed bignum.v0.18~preview.130.106+341
+∗ installed core_kernel.v0.18~preview.130.106+341
+∗ installed unboxed.v0.18~preview.130.106+341
+∗ installed incremental.v0.18~preview.130.106+341
+∗ installed core_unix.v0.18~preview.130.106+341
+∗ installed incr_select.v0.18~preview.130.106+341
+∗ installed textutils.v0.18~preview.130.106+341
+∗ installed core_extended.v0.18~preview.130.106+341
+∗ installed expectable.v0.18~preview.130.106+341
+∗ installed async_kernel.v0.18~preview.130.106+341
+∗ installed re2.v0.18~preview.130.106+341
+∗ installed pipe_with_writer_error.v0.18~preview.130.106+341
+∗ installed patdiff.v0.18~preview.130.106+341
+∗ installed async_unix.v0.18~preview.130.106+341
+∗ installed async_rpc_kernel.v0.18~preview.130.106+341
+∗ installed async_log.v0.18~preview.130.106+341
+∗ installed streamable.v0.18~preview.130.106+341
+∗ installed async.v0.18~preview.130.106+341
+∗ installed async_js.v0.18~preview.130.106+341
+∗ installed legacy_diffable.v0.18~preview.130.106+341
+∗ installed expect_test_helpers_async.v0.18~preview.130.106+341
+∗ installed ocaml-embed-file.v0.18~preview.130.106+341
+∗ installed ppx_quick_test.v0.18~preview.130.106+341
+∗ installed incr_map.v0.18~preview.130.106+341
+∗ installed ocaml-lsp-server.1.19.0+ox2
+∗ installed oxcaml-ocaml-lsp-server-patches.enabled
+∗ installed virtual_dom.v0.18~preview.130.106+341
+∗ installed bonsai_concrete.v0.18~preview.130.106+341
+∗ installed bonsai.v0.18~preview.130.106+341
+∗ installed bonsai_test.v0.18~preview.130.106+341
+Done.
+
+<><> ocp-indent.1.9.0 installed successfully ><><><><><><><><><><><><><><><><><>
+=> This package requires additional configuration for use in editors. Install package 'user-setup', or manually:
+
+   * for Emacs, add these lines to ~/.emacs:
+     (add-to-list 'load-path "/tmp/claude-278400001/-home-dlobraico-src-stavekeeper/99e80f86-e33c-49b7-8288-5c822cdb4e96/scratchpad/bonsai_gtk-cold/_opam/share/emacs/site-lisp")
+     (require 'ocp-indent)
+
+   * for Vim, add this line to ~/.vimrc:
+     set rtp^="/tmp/claude-278400001/-home-dlobraico-src-stavekeeper/99e80f86-e33c-49b7-8288-5c822cdb4e96/scratchpad/bonsai_gtk-cold/_opam/share/ocp-indent/vim"
+Switch ready. In a shell: eval $(opam env --switch=. --set-switch)
