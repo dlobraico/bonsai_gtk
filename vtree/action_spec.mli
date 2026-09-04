@@ -63,3 +63,8 @@ val radio
   -> state:string
   -> (string -> unit Ui_effect.t)
   -> t
+
+(** The charset check the three constructors run, exposed because {!t} is an exposed
+    record: a record literal bypasses the constructors, so [Attr.actions] re-runs this on
+    every spec — the one place all specs must pass before the runtime can see one. *)
+val validate_name : string -> unit

@@ -558,6 +558,12 @@ let actions ~scope specs =
    | Some name ->
      invalid_argf "Attr.actions: two specs are named %S in scope %S" name scope ()
    | None -> ());
+  (* Re-checked here because [Action_spec.t] is an exposed record: a record literal
+     bypasses the three constructors, and this is the one place every spec must pass
+     before the runtime can see it. The string is deliberately the constructors' own --
+     the mistake is the same out-of-class name, only reached through a literal, and the
+     message already names [Action_spec], which is where the record was built. *)
+  List.iter specs ~f:(fun (s : Action_spec.t) -> Action_spec.validate_name s.name);
   Actions { scope; specs }
 ;;
 

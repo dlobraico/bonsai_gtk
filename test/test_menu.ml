@@ -112,7 +112,21 @@ let%expect_test "Action_spec names and Attr.actions scopes are held to GTK's cha
     (Attr.actions ~scope:"app-2" [ Action_spec.simple ~name:"file.open-recent" noop ]
      : Attr.t);
   print_s [%sexp "dots and dashes pass"];
-  [%expect {| "dots and dashes pass" |}]
+  [%expect {| "dots and dashes pass" |}];
+  (* [Action_spec.t] is an exposed record, so a record literal bypasses the three
+     constructors -- [Attr.actions] re-checks every spec's name at the one place all specs
+     must pass. Same string as the constructor rejection, deliberately: the mistake is the
+     same out-of-class name, only reached through a literal, and the message already names
+     [Action_spec], where the record was built. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Attr.actions
+      ~scope:"app"
+      [ { Action_spec.name = "my act"; enabled = true; kind = Simple noop } ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Action_spec: name \"my act\" must be non-empty and contain only [A-Za-z0-9.-] (GTK's action-name charset -- anything else aborts in GLib's detailed-action parser)")
+    |}]
 ;;
 
 (* The resolution walk, over the four shapes that decide it: an action on the menu button
