@@ -47,7 +47,14 @@ val sexp_of_t : t -> Sexp.t
 (** States compare structurally, handlers physically — the event-attr rule. *)
 val equal : t -> t -> bool
 
+(** All three constructors reject a [name] that is empty or strays outside GTK's
+    action-name charset ([A-Za-z0-9.-], GLib's [g_action_name_is_valid]) with
+    [Invalid_argument]. GLib itself does not check: [g_simple_action_new] accepts any
+    string, and the first parser to see the reference ([g_menu_item_set_detailed_action])
+    responds to what it cannot parse with [g_error] -- a process abort -- so the rejection
+    happens here, where the typo is. *)
 val simple : ?enabled:bool -> name:string -> unit Ui_effect.t -> t
+
 val toggle : ?enabled:bool -> name:string -> state:bool -> unit Ui_effect.t -> t
 
 val radio

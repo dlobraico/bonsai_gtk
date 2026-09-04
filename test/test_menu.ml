@@ -64,6 +64,57 @@ let%expect_test "Attr.actions rejects duplicate names and bad scopes" =
     |}]
 ;;
 
+(* The charset rejections. GLib validates action names nowhere the runtime touches
+   ([g_simple_action_new] accepts anything, probed), so a bad name's first parser is
+   [g_menu_item_set_detailed_action] -- whose answer to a parse failure is [g_error], a
+   process abort ("Detailed action name 'app.my act' has invalid format", SIGABRT under
+   xvfb). The resolution walk cannot catch it: declared and referenced are the same
+   string, so a malformed pair *resolves*. Hence the constructors reject GLib's
+   [g_action_name_is_valid] class violations where the typo is. *)
+let%expect_test "Action_spec names and Attr.actions scopes are held to GTK's charset" =
+  (* The natural typo: a space. Live this is the aborting case. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Action_spec.simple ~name:"my act" noop);
+  [%expect
+    {|
+    (Invalid_argument
+     "Action_spec: name \"my act\" must be non-empty and contain only [A-Za-z0-9.-] (GTK's action-name charset -- anything else aborts in GLib's detailed-action parser)")
+    |}];
+  (* Empty: parses live ("app." splits at the first dot) but no group can serve the empty
+     name -- a certified item that renders inert. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Action_spec.toggle ~name:"" ~state:false noop);
+  [%expect
+    {|
+    (Invalid_argument
+     "Action_spec: name \"\" must be non-empty and contain only [A-Za-z0-9.-] (GTK's action-name charset -- anything else aborts in GLib's detailed-action parser)")
+    |}];
+  (* Parentheses: "app.do('x')" parses live as a *targeted* activation of "app.do" -- a
+     silent retarget, not an abort. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Action_spec.radio ~name:"do('x')" ~state:"x" (fun _ -> noop));
+  [%expect
+    {|
+    (Invalid_argument
+     "Action_spec: name \"do('x')\" must be non-empty and contain only [A-Za-z0-9.-] (GTK's action-name charset -- anything else aborts in GLib's detailed-action parser)")
+    |}];
+  (* The scope half of the same abort ("my app.act" dies in the same parser). *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Attr.actions ~scope:"my app" [ Action_spec.simple ~name:"act" noop ]);
+  [%expect
+    {|
+    (Invalid_argument
+     "Attr.actions: scope \"my app\" must contain only [A-Za-z0-9-] (GTK's action-name charset -- anything else aborts in GLib's detailed-action parser)")
+    |}];
+  (* Dots and dashes are inside the class, and dotted names really do resolve (the walk
+     splits references at the first dot only). *)
+  ignore
+    (Attr.actions ~scope:"app-2" [ Action_spec.simple ~name:"file.open-recent" noop ]
+     : Attr.t);
+  print_s [%sexp "dots and dashes pass"];
+  [%expect {| "dots and dashes pass" |}]
+;;
+
 (* The resolution walk, over the four shapes that decide it: an action on the menu button
    itself, one on an ancestor, one that is absent, and one that exists only on a sibling
    -- which is absent, because GTK resolves a popover's names against the button and its

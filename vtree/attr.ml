@@ -526,17 +526,28 @@ let focusable b = Focusable b
 let can_focus b = Can_focus b
 let autofocus b = Autofocus b
 
-(* Two structural rejections, both at the line that made the mistake. A duplicate name
+(* Three structural rejections, all at the line that made the mistake. A duplicate name
    would be two [GSimpleAction]s fighting over one lookup; a dotted (or empty) scope would
-   make every "scope.name" reference ambiguous, since resolution splits on the first dot.
-   Action {i names} may contain dots -- GTK allows them, and the first-dot split still
-   finds the scope. *)
+   make every "scope.name" reference ambiguous, since resolution splits on the first dot;
+   and a scope outside GTK's action-name charset would sail through the resolution walk
+   (declared and referenced are the same string) only to hit
+   [g_menu_item_set_detailed_action]'s parser live, whose answer to a parse failure is
+   [g_error] -- a process abort (probed; see [Action_spec.validate_name], which guards the
+   name half the same way). Action {i names} may contain dots -- GTK allows them, and the
+   first-dot split still finds the scope. *)
 let actions ~scope specs =
   if String.is_empty scope || String.mem scope '.'
   then
     invalid_argf
       "Attr.actions: scope %S must be non-empty and contain no '.' (action references \
        split on the first dot)"
+      scope
+      ();
+  if not (String.for_all scope ~f:(fun c -> Char.is_alphanum c || Char.equal c '-'))
+  then
+    invalid_argf
+      "Attr.actions: scope %S must contain only [A-Za-z0-9-] (GTK's action-name charset \
+       -- anything else aborts in GLib's detailed-action parser)"
       scope
       ();
   (match

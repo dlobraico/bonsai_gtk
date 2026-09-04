@@ -63,12 +63,38 @@ let equal a b =
   String.equal a.name b.name && Bool.equal a.enabled b.enabled && equal_kind a.kind b.kind
 ;;
 
-let simple ?(enabled = true) ~name eff = { name; enabled; kind = Simple eff }
+(* GLib's [g_action_name_is_valid] class: non-empty, ASCII alphanumerics plus '.' and '-'.
+   Anything outside it is rejected here because the resolution walk compares declared and
+   referenced strings for equality -- a malformed pair *resolves* -- and the first GTK
+   call to see the reference, [g_menu_item_set_detailed_action], responds to a parse
+   failure with [g_error]: a process abort (probed under xvfb; a space in the name dies
+   with "Detailed action name 'app.my act' has invalid format", SIGABRT). A name with
+   valid GVariant text in parentheses would instead parse as a *targeted* activation of a
+   different action, and an empty name builds an item no group can ever serve. None of the
+   three becomes valid in a later frame, so by node.mli's rejection rule all three belong
+   here. *)
+let validate_name name =
+  let valid_char c = Char.is_alphanum c || Char.equal c '.' || Char.equal c '-' in
+  if String.is_empty name || not (String.for_all name ~f:valid_char)
+  then
+    invalid_argf
+      "Action_spec: name %S must be non-empty and contain only [A-Za-z0-9.-] (GTK's \
+       action-name charset -- anything else aborts in GLib's detailed-action parser)"
+      name
+      ()
+;;
+
+let simple ?(enabled = true) ~name eff =
+  validate_name name;
+  { name; enabled; kind = Simple eff }
+;;
 
 let toggle ?(enabled = true) ~name ~state on_activate =
+  validate_name name;
   { name; enabled; kind = Toggle { state; on_activate } }
 ;;
 
 let radio ?(enabled = true) ~name ~state on_activate =
+  validate_name name;
   { name; enabled; kind = Radio { state; on_activate } }
 ;;

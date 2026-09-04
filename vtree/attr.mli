@@ -302,8 +302,11 @@ val autofocus : bool -> t
 
     At most one [Attr.actions] per node ({!Attrs} is keyed by name; a later one replaces);
     more scopes belong on ancestors, which is also where GTK looks. Duplicate spec names
-    within the attr, and a scope that is empty or contains a dot, are [Invalid_argument]
-    from this constructor.
+    within the attr, and a scope that is empty, contains a dot, or strays outside GTK's
+    action-name charset ([A-Za-z0-9-] once the dot is spoken for), are [Invalid_argument]
+    from this constructor — the last because GLib's detailed-action parser answers an
+    unparseable ["scope.name"] with [g_error], a process abort (see {!Action_spec} for the
+    name half).
 
     {b One caveat, measured (pre-flight correction 1)}: an [Attr.actions]
     {i first appearing} on an already-mounted node resolves for activation, but a
