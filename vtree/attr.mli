@@ -279,6 +279,13 @@ val can_focus : bool -> t
     paths (the single-referent rule, §5.4's singular arity), at fixup time and headlessly
     from [Bonsai_gtk_test].
 
+    {b Ordering against a same-frame popover open}: the grab runs {i after} the generic
+    fixup queue, so a frame that both opens a popover ([~open_] flipping true) and fires
+    an autofocus in the same toplevel lands popup-first, grab-second — and GTK does not
+    treat the programmatic grab as leaving the popover: measured, the autohide popover
+    stays up, no [closed] is emitted, and the steady state is the open popover with focus
+    in the grabbed widget, stable across reassert frames.
+
     {b Under [Bonsai_gtk.Expert.embed], the mount-frame grab does nothing.} At fixup time
     an embedded tree has no [GtkRoot] yet -- the caller parents the wrapper only after
     [create] returns -- and [gtk_widget_grab_focus] on a rootless widget returns FALSE

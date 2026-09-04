@@ -58,12 +58,14 @@ module Alert_dialog : sig
       [cancel] (default 0) is the index answered on dismissal -- Escape, Alt+F4, the
       window close button, all of which deliver a reserved negative response id
       (DELETE_EVENT, measured) -- the addition that makes the effect {i total} where §8's
-      signature said nothing about dismissal (deviation recorded in Task 13). The dialog
-      is held by the runtime from show until its response, so the effect value may be
-      dropped freely; two alerts at once are two dialogs. One still up when [Driver.stop]
-      runs simply stays up and resolves whenever it is answered, under the dropped-hooks
-      contract ({!after}'s log-and-resolve) -- nothing leaks: the response empties the
-      table either way. *)
+      signature said nothing about dismissal (deviation recorded in Task 13). Raises
+      [Invalid_argument] at effect-build time unless [cancel] indexes [buttons] -- which
+      also rejects a buttonless alert, whose only resolution would be the dismissal that
+      must name a button. The dialog is held by the runtime from show until its response,
+      so the effect value may be dropped freely; two alerts at once are two dialogs. One
+      still up when [Driver.stop] runs simply stays up and resolves whenever it is
+      answered, under the dropped-hooks contract ({!after}'s log-and-resolve) -- nothing
+      leaks: the response empties the table either way. *)
   val show : ?detail:string -> ?cancel:int -> buttons:string list -> string -> int t
 end
 

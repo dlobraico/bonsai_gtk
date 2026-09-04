@@ -213,12 +213,20 @@ let apply_stack_claims ctx =
    pass's work into the next one would raise again from a frame that had nothing to do
    with it. *)
 let run_fixups ctx =
-  Exn.protect
-    ~f:(fun () -> Queue.iter ctx.fixups ~f:(fun f -> f ()))
-    ~finally:(fun () -> Queue.clear ctx.fixups);
+  (try Queue.iter ctx.fixups ~f:(fun f -> f ()) with
+   | exn ->
+     let backtrace = Stdlib.Printexc.get_raw_backtrace () in
+     Queue.clear ctx.fixups;
+     (* The autofocus claims go with the failed pass, {i here} rather than only in
+        [Driver.frame]'s [abandon_fixups]: this function's own doc invites hand-driven
+        callers, and one that catches the raise and pumps another pass would otherwise
+        fire the dead pass's grabs -- [apply_autofocus] calls [Widget.grab_focus] on
+        widgets the failed pass captured, possibly destroyed ones. *)
+     Queue.clear ctx.autofocus_claims;
+     Stdlib.Printexc.raise_with_backtrace exn backtrace);
+  Queue.clear ctx.fixups;
   (* After the generic queue, so a selection the same frame set has settled before focus
-     moves; a raise in the queue above abandons these (the [finally] runs, [apply] does
-     not), which matches the all-or-nothing a raising frame already has. *)
+     moves. *)
   apply_autofocus ctx
 ;;
 

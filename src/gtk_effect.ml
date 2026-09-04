@@ -213,6 +213,18 @@ let transient_parent () = Option.bind !app ~f:Gtk_import.W.Application.get_activ
 
 module Alert_dialog = struct
   let show ?detail ?(cancel = 0) ~buttons message =
+    (* At effect-build time, M2's constructor-arithmetic family: a dismissal resolves the
+       raw [cancel], so an out-of-range index -- including any index into an empty
+       [buttons] -- would resolve an answer naming no button, quietly breaking the
+       totality the mli promises. *)
+    if cancel < 0 || cancel >= List.length buttons
+    then
+      invalid_argf
+        "Effect.Alert_dialog.show: ~cancel:%d is not the index of any button (%d given); \
+         dismissal answers ~cancel, so it must name one"
+        cancel
+        (List.length buttons)
+        ();
     Ui_effect.Private.make ~request:() ~evaluator:(fun callback ->
       let open Gtk_import in
       let d = W.Dialog.new_ () in

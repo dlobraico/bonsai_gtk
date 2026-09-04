@@ -16,3 +16,5 @@ second answered 1: first=pending second=1
 first answered 0: first=0 second=1
 no criticals above this line is the teardown assertion
 done
+out-of-range cancel rejected: Effect.Alert_dialog.show: ~cancel:5 is not the index of any button (1 given); dismissal answers ~cancel, so it must name one
+buttonless alert rejected: Effect.Alert_dialog.show: ~cancel:0 is not the index of any button (0 given); dismissal answers ~cancel, so it must name one

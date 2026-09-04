@@ -163,3 +163,15 @@ let () =
   For_runtime.unregister reg;
   printf "done\n"
 ;;
+
+(* Fix-wave core M3: [?cancel] must index [~buttons] -- rejected at effect-build time,
+   before any GTK object exists, so a dismissal can never resolve an index naming no
+   button. *)
+let () =
+  (match Effect.Alert_dialog.show ~cancel:5 ~buttons:[ "OK" ] "x" with
+   | (_ : int Ui_effect.t) -> printf "out-of-range cancel was accepted (BUG)\n"
+   | exception Invalid_argument m -> printf "out-of-range cancel rejected: %s\n" m);
+  match Effect.Alert_dialog.show ~buttons:[] "x" with
+  | (_ : int Ui_effect.t) -> printf "buttonless alert was accepted (BUG)\n"
+  | exception Invalid_argument m -> printf "buttonless alert rejected: %s\n" m
+;;
