@@ -174,3 +174,100 @@ let () =
   P.destroy ctx live;
   printf "popover done\n"
 ;;
+
+(* Fix-wave chrome M1: [Attr.autofocus] inside the popover slot, both renderings. The grab
+   runs from the fixup queue against a popover subtree that is mounted even while the
+   popover is closed ([mount_slots] walks every slot), so the question is what the one
+   fire-once grab does there. Measured: it {i lands} -- [Window.get_focus] points at the
+   entry even while the popover is hidden, and still does once the model opens it -- so
+   nothing is lost, but until the popover opens the window's focus sits on an unmapped
+   widget. The [open_]-conditional rendering (the attr flipping with the popover) lands
+   the grab in the frame that pops up -- popup runs first in the generic queue, the grab
+   after it -- and the popover survives the grab. Both steady states are the open popover
+   with focus in its entry. *)
+let () =
+  let module W = Bonsai_gtk.Private.Gtk_import.W in
+  let module Widget = Bonsai_gtk.Private.Gtk_import.Widget in
+  let cast = Bonsai_gtk.Private.Gtk_import.cast in
+  let type_name = Bonsai_gtk.Private.Gtk_import.type_name in
+  let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children in
+  let rec find_type name w =
+    if String.equal (type_name w) name
+    then Some w
+    else List.find_map (widget_children w) ~f:(find_type name)
+  in
+  let run label ~autofocus_of =
+    let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+    let ctx =
+      P.create_ctx
+        ~signals:
+          { schedule = (fun _ -> ())
+          ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+          ; on_exn =
+              (fun ~node_path exn ->
+                printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+          }
+        ~on_window_created:(fun w -> W.Window.present (cast w))
+        ()
+    in
+    let pump () =
+      let rec go n =
+        if n > 0 && Bonsai_gtk.Private.Gtk_import.Glib.Main.iteration false then go (n - 1)
+      in
+      go 200
+    in
+    let view ~open_ =
+      Node.window
+        ~title:label
+        (Node.box
+           ~orientation:Vertical
+           [ Node.menu_button
+               ~label:"m"
+               ~popover:
+                 (Node.popover
+                    ~open_
+                    (Node.entry
+                       ~attrs:[ Attr.autofocus (autofocus_of ~open_) ]
+                       ~text:""
+                       ()))
+               ()
+           ])
+    in
+    let live =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        let live = P.mount ctx ~path:label ~is_root:true (view ~open_:false) in
+        P.run_fixups ctx;
+        live)
+    in
+    pump ();
+    let report tag =
+      let popover = Option.value_exn (find_type "GtkPopover" live.P.widget) in
+      let entry = Option.value_exn (find_type "GtkEntry" live.P.widget) in
+      let focus_in_entry =
+        match W.Window.get_focus (cast live.P.widget) with
+        | Some f ->
+          Bonsai_gtk.Private.Gtk_import.Gobject.same f entry || Widget.is_ancestor f entry
+        | None -> false
+      in
+      printf
+        "popover autofocus (%s) %s: popover visible=%b, focus in popover entry=%b\n"
+        label
+        tag
+        (Widget.get_visible popover)
+        focus_in_entry
+    in
+    report "mounted closed";
+    let live2 =
+      Scheduler.with_patch_guard scheduler (fun () ->
+        let l = P.patch ctx ~path:label ~is_root:true live (view ~open_:true) in
+        P.run_fixups ctx;
+        l)
+    in
+    pump ();
+    report "model-opened";
+    P.destroy ctx live2
+  in
+  run "unconditional" ~autofocus_of:(fun ~open_:_ -> true);
+  run "open-conditional" ~autofocus_of:(fun ~open_ -> open_);
+  printf "popover autofocus done\n"
+;;

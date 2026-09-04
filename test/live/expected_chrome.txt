@@ -71,3 +71,8 @@ model closed it: open=false closes=0
 user dismissed it: open=false closes=1
 the model declined: open=true closes=1
 popover done
+popover autofocus (unconditional) mounted closed: popover visible=false, focus in popover entry=true
+popover autofocus (unconditional) model-opened: popover visible=true, focus in popover entry=true
+popover autofocus (open-conditional) mounted closed: popover visible=false, focus in popover entry=false
+popover autofocus (open-conditional) model-opened: popover visible=true, focus in popover entry=true
+popover autofocus done

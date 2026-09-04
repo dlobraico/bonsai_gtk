@@ -286,6 +286,18 @@ val can_focus : bool -> t
     stays up, no [closed] is emitted, and the steady state is the open popover with focus
     in the grabbed widget, stable across reassert frames.
 
+    {b Inside a popover slot}, two facts to know (both measured,
+    [test/live/live_chrome.ml]). A popover's subtree is mounted even while the popover is
+    closed, so [autofocus true] rendered unconditionally fires its one grab at mount,
+    against the hidden subtree — and the grab {i lands}: the window's focus widget is the
+    popover's entry from then on, before and after the popover opens. Nothing is lost, but
+    until the open the window's focus sits on an unmapped widget; rendering the attr
+    [open_]-conditionally ([Attr.autofocus open_]) lands the grab in the frame that pops
+    up instead, which is usually what a popover form wants. And the
+    one-per-frame-per-toplevel rule counts a {i dormant} claim: the popover's root is the
+    window, so an autofocus in the window body plus one inside a closed popover in the
+    same frame is the two-claims [Invalid_argument].
+
     {b Under [Bonsai_gtk.Expert.embed], the mount-frame grab does nothing.} At fixup time
     an embedded tree has no [GtkRoot] yet -- the caller parents the wrapper only after
     [create] returns -- and [gtk_widget_grab_focus] on a rootless widget returns FALSE

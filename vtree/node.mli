@@ -1454,7 +1454,12 @@ val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t
 
     [~position] is the {i preferred} edge (GTK flips it when there is no room);
     [~autohide] ([true]) is GTK's dismiss-on-click-away-or-Escape; [~has_arrow] ([true])
-    draws the little nub. *)
+    draws the little nub.
+
+    The popover's subtree is {b mounted even while closed} (slots always mount), which
+    matters to {!Attr.autofocus} inside one: the fire-once grab fires at mount against the
+    hidden subtree, and a dormant claim counts against the one-per-toplevel rule. Render
+    such an attr [open_]-conditionally; {!Attr.autofocus}'s doc has the measured details. *)
 val popover
   :  ?key:Key.t
   -> ?attrs:Attr.t list
