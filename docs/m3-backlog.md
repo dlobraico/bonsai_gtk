@@ -125,6 +125,17 @@ Every bullet from m2-backlog's list, accounted for by name:
 - **A free-floating popover** — needs the `GdkRectangle` constructor (fork round 3) and
   a placement design; stavekeeper's only popover is the menu button's, so M3 ships
   `Node.popover` only as that slot.
+- **`Window.set_titlebar` wiring (`~titlebar` on `Node.window`)** — deliberately
+  unshipped in M3: Task 4 deferred it, Task 8 reconfirmed the deferral (plan step 4's
+  ruling), and until the final-review fix wave nothing in-tree recorded that. In M3 a
+  header bar is an ordinary first child (`examples/chrome.ml`), which is exact under
+  X11 — GTK 4.22.4 adds its default title bar only where it draws CSD *and* the display
+  is composited (`gtkwindow.c` realize; probed under xvfb with and without `GTK_CSD=1`:
+  no default bar either way). On a Wayland desktop the default bar appears above a
+  first-child header bar, which is what shipping `~titlebar`
+  (`Window.set_titlebar : t -> Widget.t option`, bound) fixes. The bar becomes a window
+  *slot* rather than a child then — the slot machinery is `w_header_bar`'s.
+  final-review chrome lens, I1.
 - **The named-widget registry generalisation** — `SearchEntry.set_key_capture_widget`
   and `Attr.mnemonic_widget` both need the vtree to name a widget; the stack-name
   registry (and now the window-key registry) is the pattern to generalise.

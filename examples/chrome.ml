@@ -77,6 +77,10 @@ let app (graph @ local) =
         ]
       (Node.box
          ~orientation:Vertical
+         (* The M3 shape: the header bar is an ordinary first child ([Window.set_titlebar]
+            is deliberately unshipped -- m3-backlog). Exact under X11; on a Wayland
+            desktop GTK's own default title bar renders above this one until [~titlebar]
+            ships. See [Node.header_bar]'s doc. *)
          [ Node.header_bar
              ~title:(Node.label ~attrs:[ Attr.css_class "title-4" ] "chrome")
              ~end_:

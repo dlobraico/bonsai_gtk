@@ -1506,10 +1506,19 @@ val menu_button
     a [Node.window ~title]. A custom title (a subtitle box, a stack switcher, an entry) is
     the slot's business; give it the ["title"] CSS class to match the builtin look.
 
-    {b Where the bar goes is the application's choice in M3.} [Window.set_titlebar] wiring
-    lands with the window props (Task 8); until then a header bar is an ordinary first
-    child of the window's box — which is exactly what stavekeeper's hand-rolled header row
-    is ([viewer_window.ml:678-817]), so that port is true either way.
+    {b Where the bar goes is the application's choice in M3, and [Window.set_titlebar] is
+      deliberately unshipped}
+    — Task 4 deferred the wiring and Task 8 reconfirmed the deferral rather than landing
+    it (the plan's ruling; [docs/m3-backlog.md] carries the [~titlebar] entry). A header
+    bar is therefore an ordinary first child of the window's box — exactly what
+    stavekeeper's hand-rolled header row is ([viewer_window.ml:678-817]), so that port is
+    true as-is. One platform honesty note, from GTK 4.22.4's own [gtkwindow.c] (realize):
+    GTK adds its {i default} title bar to a window with no titlebar widget only where it
+    draws client-side decorations {b and} the display is composited — every Wayland
+    desktop; X11 only under [GTK_CSD=1]. On such a desktop a first-child header bar
+    renders {i under} GTK's own bar until [~titlebar] ships. Under X11 without that
+    variable — and under xvfb, composited or not (probed both ways, screenshot and widget
+    walk) — there is no default bar and the single-bar rendering is exact.
 
     {b Children keep insertion order within each pack area.} GTK offers no reorder inside
     a pack area — removal and re-packing is the only move — so the slot lists are
