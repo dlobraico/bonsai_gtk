@@ -336,10 +336,17 @@ val autofocus : bool -> t
     frame, whether the attr sits on an ancestor or on the menu button itself (both
     measured in [test/live/live_menus.ml]; the tracker binds late enough that the order of
     the two writes within one frame is invisible). Only an {i unchanged} menu stays stuck.
-    Mount the actions with the tree (the normal shape) and this never arises; the
-    limitation is documented rather than repaired because the repair — re-setting every
-    descendant menu button's model from an ancestor's attr change — needs machinery no
-    other attr needs. [test/live/live_menus.ml] pins the activation half. *)
+    Mount the actions with the tree (the normal shape) and this never arises — but note
+    that a {i move} counts as an appearance: an attr migrating between ancestors in one
+    frame (A drops it, B gains it, menu untouched) de-binds the working rows on the
+    removal half and the post-rooting insert on B never notifies them, so the menu greys
+    even though every individual frame looked like the normal shape and activation still
+    resolves (measured in [test/live/live_menus.ml]: insensitive item, resolving
+    [activate_action]). The re-bind rule above is the way out there too — ship any menu
+    change with (or after) the move. The limitation is documented rather than repaired
+    because the repair — re-setting every descendant menu button's model from an
+    ancestor's attr change — needs machinery no other attr needs.
+    [test/live/live_menus.ml] pins the activation half. *)
 val actions : scope:string -> Action_spec.t list -> t
 
 (** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]

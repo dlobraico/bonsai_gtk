@@ -187,7 +187,14 @@ let controller_family : Attr.Name.t -> Family.t option = function
    [Attr.actions] carries handlers (so [is_event] says yes and the diagnostics apply) but
    is no impl's signal -- [src/actions.ml] attaches a [GSimpleActionGroup] to whatever
    widget carries it, exactly as [Controllers] attaches an event controller -- so
-   [is_supported] admits it on every kind and [Signals.require_slots] skips it. *)
+   [is_supported] admits it on every kind and [Signals.require_slots] skips it.
+
+   The wildcard is safe here where [attr_phase]'s was not, because the question is
+   definitional rather than a table: this asks "is it the [Actions] constructor", and an
+   attr that ought to answer yes would be a {i second} carve-out -- new runtime machinery,
+   its own predicate, a change nobody makes by only adding a [Name] row. And a new attr
+   wrongly falling into [false] here fails loudly ([is_supported] rejects it on kinds that
+   do not emit it), never silently. *)
 let is_actions_attr : Attr.Name.t -> bool = function
   | Actions -> true
   | _ -> false

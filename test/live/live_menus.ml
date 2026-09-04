@@ -493,3 +493,108 @@ let () =
   P.destroy ctx live;
   printf "shadowing measurement done\n"
 ;;
+
+(* Fix-wave input M3, measured: [Attr.actions] MOVING between ancestors (box -> window) in
+   one frame with the menu [Menu.equal]-unchanged. The walk certifies both frames and
+   GTK's muxer agrees for {i activation} -- but the removal half de-binds the built rows
+   and the post-rooting insert on the new holder never notifies them, so the item greys
+   with no menu edit to trigger the measured re-bind. This is the caveat's "first
+   appearing on an already-mounted node" reached through frames that each look like the
+   normal shape; the golden is the honest record: insensitive item, resolving activation. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
+  in
+  let pump () =
+    let rec go n =
+      if n > 0 && Bonsai_gtk.Private.Gtk_import.Glib.Main.iteration false then go (n - 1)
+    in
+    go 100
+  in
+  let app_actions =
+    Attr.actions ~scope:"app" [ Action_spec.simple ~name:"x" Ui_effect.Ignore ]
+  in
+  let menu = [ Menu.item ~label:"X" ~action:"app.x" () ] in
+  let view ~holder =
+    Node.window
+      ~title:"move"
+      ~attrs:
+        (match holder with
+         | `Window -> [ app_actions ]
+         | `Box -> [])
+      (Node.box
+         ~orientation:Vertical
+         ~attrs:
+           (match holder with
+            | `Box -> [ app_actions ]
+            | `Window -> [])
+         [ Node.menu_button ~label:"m" ~menu () ])
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.mount ctx ~path:"move" ~is_root:true (view ~holder:`Box) in
+      P.run_fixups ctx;
+      live)
+  in
+  let button (l : P.live) =
+    match l.children with
+    | Single (Some box) ->
+      (match box.P.children with
+       | List [ mb ] -> mb.P.widget
+       | _ -> assert false)
+    | _ -> assert false
+  in
+  let type_name = Bonsai_gtk.Private.Gtk_import.type_name in
+  let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children in
+  let rec find_labelled_model_buttons w acc =
+    let acc =
+      if String.equal (type_name w) "GtkModelButton"
+      then (
+        let rec first_label w =
+          if String.equal (type_name w) "GtkLabel"
+          then Some (W.Label.get_text (cast w))
+          else List.find_map (widget_children w) ~f:first_label
+        in
+        (Option.value (first_label w) ~default:"?", w) :: acc)
+      else acc
+    in
+    List.fold (widget_children w) ~init:acc ~f:(fun acc c ->
+      find_labelled_model_buttons c acc)
+  in
+  let probe label (l : P.live) =
+    let mb : W.Menu_button.t = cast (button l) in
+    W.Menu_button.popup mb;
+    pump ();
+    (match W.Menu_button.get_popover mb with
+     | None -> printf "%s: no internal popover\n" label
+     | Some p ->
+       find_labelled_model_buttons ((p :> Widget.t) : Widget.t) []
+       |> List.iter ~f:(fun (text, w) ->
+         printf "%s: item %s sensitive=%b\n" label text (W.Widget.get_sensitive w)));
+    W.Menu_button.popdown mb;
+    pump ();
+    printf
+      "%s: app.x activates from the button: %b\n"
+      label
+      (Widget.activate_action_variant (button l) "app.x" None)
+  in
+  probe "group on the box" live;
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let l = P.patch ctx ~path:"move" ~is_root:true live (view ~holder:`Window) in
+      P.run_fixups ctx;
+      l)
+  in
+  probe "group moved box->window, menu unchanged" live;
+  P.destroy ctx live;
+  printf "move measurement done\n"
+;;

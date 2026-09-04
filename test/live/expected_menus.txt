@@ -109,3 +109,8 @@ same-node measurement done
 from the leaf, app.y (the nearer group's own): true
 from the leaf, app.x (only in the ancestor's app): true
 shadowing measurement done
+group on the box: item X sensitive=true
+group on the box: app.x activates from the button: true
+group moved box->window, menu unchanged: item X sensitive=false
+group moved box->window, menu unchanged: app.x activates from the button: true
+move measurement done

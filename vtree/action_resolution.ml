@@ -46,10 +46,56 @@ let node_actions (node : Node.t) =
    stripping on that side. *)
 let node_references (node : Node.t) =
   let from_menu =
+    (* Exhaustive on purpose, never a wildcard (events.ml's doctrine): a future
+       menu-carrying kind -- the menubar is already a round-3/M4 candidate -- must be
+       added HERE or it silently escapes the resolution walk, reopening the
+       certify-then-grey-out gap this module exists to close. The compiler is the
+       reminder. *)
     match node.kind with
     | Menu_button { menu = Some menu; _ } ->
       List.map (Menu.action_references menu) ~f:(fun r -> r, `Menu)
-    | _ -> []
+    | Menu_button { menu = None; _ }
+    | Label _
+    | Button _
+    | Toggle_button _
+    | Check_button _
+    | Switch _
+    | Entry _
+    | Password_entry _
+    | Search_entry _
+    | Text_view _
+    | Spin_button _
+    | Scale _
+    | Progress_bar _
+    | Spinner _
+    | Level_bar _
+    | Image _
+    | Picture _
+    | Separator _
+    | Scrolled_window _
+    | Frame _
+    | Expander _
+    | Revealer _
+    | Box _
+    | Grid _
+    | Stack _
+    | Stack_switcher _
+    | Stack_sidebar _
+    | List_box _
+    | Flow_box _
+    | Notebook _
+    | Drop_down _
+    | Calendar _
+    | Editable_label _
+    | Center_box _
+    | Paned _
+    | Overlay _
+    | Header_bar _
+    | Action_bar _
+    | Popover _
+    | Window _
+    | Windows
+    | Native _ -> []
   in
   let from_shortcuts =
     match (Attrs.find node.attrs Shortcut :> Attr.Private.t option) with
