@@ -250,6 +250,15 @@ New items M3's own reviews chose not to take, each citing its review under
 - **A handlerless popover dismissal schedules nothing**, so the declined-dismissal
   reopen waits for the next frame from any source — the latency every controlled prop
   has for handlerless edits. Not new, not wrong. task-5 review.
+- **Destroying an OPEN slot popover, then popping up a new one in the same window,
+  emits one GTK critical** (`gtk_widget_is_ancestor: assertion 'GTK_IS_WIDGET
+  (widget)' failed`) during the later popup — GTK-internal stale-focus bookkeeping.
+  Probed during the fix wave with a bare-button control: the critical appears whether
+  or not `~menu` is involved, so it is *not* the popover↔menu swap path (whose both
+  directions are now pinned convergent in `live_chrome.ml`); the runtime's own repair
+  connection was instrumented and exonerated. One line of stderr noise, no crash, no
+  behavioural consequence observed. If it ever warrants closing, the shape to try is a
+  `popdown` before a visible popover's destroy. final-review fix wave, chrome M2 probe.
 
 ## Carried forward from M2 (still open)
 

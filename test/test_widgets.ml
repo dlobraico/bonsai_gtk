@@ -425,6 +425,28 @@ let%expect_test "menu_button rejects a non-popover slot and a label+icon pair" =
     |}]
 ;;
 
+(* The popover's own constructor rejection (fix-wave chrome M3): [Attr.visible] writes the
+   one visibility bit the controlled [~open_] owns, and at mount the attr application
+   precedes the slot's parenting -- where showing an unparented popover is a measured
+   SEGFAULT, not merely the deferred-popup critical. *)
+let%expect_test "popover rejects Attr.visible" =
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.popover ~attrs:[ Attr.visible true ] (Node.label "body"));
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.popover: Attr.visible fights the controlled ~open_ (both write the popover's one visibility bit), and applying it at create time -- before the slot parents the popover -- crashes GTK outright. Drive the popover with ~open_.")
+    |}];
+  (* [false] is rejected too -- the fight is the same bit, whichever way it points. *)
+  Expect_test_helpers_core.require_does_raise (fun () ->
+    Node.popover ~attrs:[ Attr.visible false ] (Node.label "body"));
+  [%expect
+    {|
+    (Invalid_argument
+     "Node.popover: Attr.visible fights the controlled ~open_ (both write the popover's one visibility bit), and applying it at create time -- before the slot parents the popover -- crashes GTK outright. Drive the popover with ~open_.")
+    |}]
+;;
+
 (* Keys are scoped per pack area: the two lists are reconciled independently, so the same
    key in [~start] and [~end_] is two distinct children and is accepted -- and a key
    moving between areas is therefore a remove plus a fresh insert, as the constructor doc

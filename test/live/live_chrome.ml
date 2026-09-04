@@ -271,3 +271,119 @@ let () =
   run "open-conditional" ~autofocus_of:(fun ~open_ -> open_);
   printf "popover autofocus done\n"
 ;;
+
+(* Fix-wave chrome M2: the popover-slot <-> [~menu] swap in one frame, both directions,
+   with the popover OPEN -- the one path that bypasses the disarm-before-unparent order
+   ([impl.update]'s [set_menu_model] makes GTK unparent the still-armed slot popover
+   before [patch_single]'s disarm runs). Pinned: both directions converge -- the slot
+   popover is gone and the model set after popover->menu, and a fresh slot popover is
+   parented and popped up after menu->popover -- with no spurious [on_closed] (the
+   unparent's synchronous [closed] lands inside the patch guard and is dropped).
+
+   One stray stderr line to know about, deliberately NOT part of this golden: the
+   menu->popover frame emits a single GTK critical (gtk_widget_is_ancestor on a
+   non-widget). Probed during the fix wave: it appears identically when the middle frame
+   is a BARE button (no menu at all), so it belongs to "destroy an open slot popover, then
+   pop up a new one in the same window" -- GTK-internal stale-focus bookkeeping, not the
+   swap path; recorded in docs/m3-backlog.md. *)
+let () =
+  let module W = Bonsai_gtk.Private.Gtk_import.W in
+  let module Widget = Bonsai_gtk.Private.Gtk_import.Widget in
+  let cast = Bonsai_gtk.Private.Gtk_import.cast in
+  let type_name = Bonsai_gtk.Private.Gtk_import.type_name in
+  let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children in
+  let rec find_type name w =
+    if String.equal (type_name w) name
+    then Some w
+    else List.find_map (widget_children w) ~f:(find_type name)
+  in
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let closes = ref 0 in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
+  in
+  let pump () =
+    let rec go n =
+      if n > 0 && Bonsai_gtk.Private.Gtk_import.Glib.Main.iteration false then go (n - 1)
+    in
+    go 200
+  in
+  let popover_node =
+    Node.popover
+      ~open_:true
+      ~attrs:[ Attr.on_closed (Ui_effect.of_sync_fun (fun () -> incr closes) ()) ]
+      (Node.label "slot body")
+  in
+  let view = function
+    | `Popover ->
+      Node.window
+        ~title:"swap"
+        (Node.box
+           ~orientation:Vertical
+           [ Node.menu_button ~label:"m" ~popover:popover_node () ])
+    | `Menu ->
+      Node.window
+        ~title:"swap"
+        (Node.box
+           ~orientation:Vertical
+           [ Node.menu_button
+               ~label:"m"
+               ~attrs:
+                 [ Attr.actions
+                     ~scope:"s"
+                     [ Action_spec.simple ~name:"x" Ui_effect.Ignore ]
+                 ]
+               ~menu:[ Menu.item ~label:"X" ~action:"s.x" () ]
+               ()
+           ])
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.mount ctx ~path:"swap" ~is_root:true (view `Popover) in
+      P.run_fixups ctx;
+      live)
+  in
+  pump ();
+  let button () =
+    match live.P.children with
+    | Single (Some box) ->
+      (match box.P.children with
+       | List [ mb ] -> mb.P.widget
+       | _ -> assert false)
+    | _ -> assert false
+  in
+  let mb () : W.Menu_button.t = cast (button ()) in
+  let report tag =
+    printf
+      "swap %s: slot popover=%s, model set=%b, closes=%d\n"
+      tag
+      (match find_type "GtkPopover" (button ()) with
+       | Some p -> sprintf "visible=%b" (Widget.get_visible p)
+       | None -> "none")
+      (Option.is_some (W.Menu_button.get_menu_model (mb ())))
+      !closes
+  in
+  report "mounted with open slot popover";
+  let patch v =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let l = P.patch ctx ~path:"swap" ~is_root:true live v in
+      P.run_fixups ctx;
+      ignore (l : P.live))
+  in
+  patch (view `Menu);
+  pump ();
+  report "open popover -> menu in one frame";
+  patch (view `Popover);
+  pump ();
+  report "menu -> open popover in one frame";
+  P.destroy ctx live;
+  printf "swap done\n"
+;;

@@ -858,6 +858,20 @@ let popover
   ?(has_arrow = Defaults.Popover.has_arrow)
   child
   =
+  (* [Attr.visible] writes the same GTK bit the controlled [~open_] owns ([apply_open]
+     compares against [get_visible] and writes with [popup]/[popdown]), so after mount the
+     two silently fight -- and at mount the attr is applied at [create] time, before the
+     slot parents the popover, where showing an unparented popover is not the
+     deferred-popup critical but a measured SEGFAULT ([gdk_surface_new_popup] with no
+     parent surface, then the crash; probed under xvfb). No later frame makes a second
+     writer valid, so the rejection is here. *)
+  (match Option.bind attrs ~f:(fun attrs -> Attrs.find (Attrs.of_list attrs) Visible) with
+   | Some _ ->
+     invalid_arg
+       "Node.popover: Attr.visible fights the controlled ~open_ (both write the \
+        popover's one visibility bit), and applying it at create time -- before the slot \
+        parents the popover -- crashes GTK outright. Drive the popover with ~open_."
+   | None -> ());
   make
     ?key
     ?attrs

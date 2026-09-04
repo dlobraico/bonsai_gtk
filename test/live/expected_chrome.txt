@@ -76,3 +76,7 @@ popover autofocus (unconditional) model-opened: popover visible=true, focus in p
 popover autofocus (open-conditional) mounted closed: popover visible=false, focus in popover entry=false
 popover autofocus (open-conditional) model-opened: popover visible=true, focus in popover entry=true
 popover autofocus done
+swap mounted with open slot popover: slot popover=visible=true, model set=false, closes=0
+swap open popover -> menu in one frame: slot popover=none, model set=true, closes=0
+swap menu -> open popover in one frame: slot popover=visible=true, model set=false, closes=0
+swap done

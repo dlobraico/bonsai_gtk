@@ -1456,6 +1456,12 @@ val overlay : ?key:Key.t -> ?attrs:Attr.t list -> ?overlays:t list -> t -> t
     [~autohide] ([true]) is GTK's dismiss-on-click-away-or-Escape; [~has_arrow] ([true])
     draws the little nub.
 
+    {b [Attr.visible] is rejected} ([Invalid_argument] from this constructor): it writes
+    the same visibility bit the controlled [~open_] owns, so the two would silently fight
+    — and at mount the attr application precedes the slot's parenting, where showing an
+    unparented popover crashes GTK outright (measured, not merely the deferred-popup
+    critical).
+
     The popover's subtree is {b mounted even while closed} (slots always mount), which
     matters to {!Attr.autofocus} inside one: the fire-once grab fires at mount against the
     hidden subtree, and a dormant claim counts against the one-per-toplevel rule. Render
