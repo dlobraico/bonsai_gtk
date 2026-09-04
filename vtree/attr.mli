@@ -312,11 +312,15 @@ val autofocus : bool -> t
     {i first appearing} on an already-mounted node resolves for activation, but a
     [PopoverMenu] built before the group existed never binds its item tracker to it — the
     items render permanently insensitive, and [set_enabled] does not move them. Changing
-    the menu (any [Menu.equal]-visible change) rebuilds the model and re-binds. Mount the
-    actions with the tree (the normal shape) and this never arises; the limitation is
-    documented rather than repaired because the repair — re-setting every descendant menu
-    button's model from an ancestor's attr change — needs machinery no other attr needs.
-    [test/live/live_menus.ml] pins the activation half. *)
+    the menu (any [Menu.equal]-visible change) rebuilds the model and re-binds — and that
+    holds even when the menu change and the attr's first appearance land in the {i same}
+    frame, whether the attr sits on an ancestor or on the menu button itself (both
+    measured in [test/live/live_menus.ml]; the tracker binds late enough that the order of
+    the two writes within one frame is invisible). Only an {i unchanged} menu stays stuck.
+    Mount the actions with the tree (the normal shape) and this never arises; the
+    limitation is documented rather than repaired because the repair — re-setting every
+    descendant menu button's model from an ancestor's attr change — needs machinery no
+    other attr needs. [test/live/live_menus.ml] pins the activation half. *)
 val actions : scope:string -> Action_spec.t list -> t
 
 (** [GtkWidget]'s [name] — the CSS "#id" selector. Called [widget_name] rather than [name]

@@ -103,6 +103,9 @@ late group + in-place menu edit: item Y sensitive=true
 late group + full model re-set: item X sensitive=true
 late group + full model re-set: item Y sensitive=true
 rebind measurement done
+same-node menu+actions in one frame: item X sensitive=true
+same-node own.x activates: true
+same-node measurement done
 from the leaf, app.y (the nearer group's own): true
 from the leaf, app.x (only in the ancestor's app): true
 shadowing measurement done

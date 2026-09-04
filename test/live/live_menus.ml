@@ -325,6 +325,112 @@ let () =
   printf "rebind measurement done\n"
 ;;
 
+(* The final review's same-node variant of the block above: a mounted, rooted menu button
+   (no menu, no actions -- a dynamic UI's placeholder) gains [~menu] and its {i own}
+   [Attr.actions] in one frame. Within one node [patch] runs [impl.update] (the model
+   build) {i before} [Actions.update] (the group insert) -- the inverse of the top-down
+   order the ancestor case above enjoys -- so if the item tracker bound at row-build time
+   this would be the frame that stays grey after the walk certified it. Measured: it binds
+   ([sensitive=true]), so the tracker's binding is late enough that within-frame write
+   order is invisible, and the attr's documented re-bind workaround holds for the
+   same-node, same-frame shape too. *)
+let () =
+  let scheduler = Scheduler.create ~run_frame:(fun () -> ()) in
+  let ctx =
+    P.create_ctx
+      ~signals:
+        { schedule = (fun e -> Ui_effect.Expert.eval e ~f:Fn.id ~on_exn:raise)
+        ; in_patch = (fun () -> Scheduler.in_patch scheduler)
+        ; on_exn =
+            (fun ~node_path exn -> printf "EXN at %s: %s\n" node_path (Exn.to_string exn))
+        }
+      ~on_window_created:(fun w -> W.Window.present (cast w))
+      ()
+  in
+  let pump () =
+    let rec go n =
+      if n > 0 && Bonsai_gtk.Private.Gtk_import.Glib.Main.iteration false then go (n - 1)
+    in
+    go 50
+  in
+  let view ~armed =
+    Node.window
+      ~title:"same-node"
+      (Node.box
+         ~orientation:Vertical
+         [ Node.menu_button
+             ~label:"m"
+             ~attrs:
+               (if armed
+                then
+                  [ Attr.actions
+                      ~scope:"own"
+                      [ Action_spec.simple ~name:"x" Ui_effect.Ignore ]
+                  ]
+                else [])
+             ?menu:
+               (if armed then Some [ Menu.item ~label:"X" ~action:"own.x" () ] else None)
+             ()
+         ])
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.mount ctx ~path:"same-node" ~is_root:true (view ~armed:false) in
+      P.run_fixups ctx;
+      live)
+  in
+  let button (l : P.live) =
+    match l.children with
+    | Single (Some box) ->
+      (match box.P.children with
+       | List [ mb ] -> mb.P.widget
+       | _ -> assert false)
+    | _ -> assert false
+  in
+  let type_name = Bonsai_gtk.Private.Gtk_import.type_name in
+  let widget_children = Bonsai_gtk.Private.Gtk_import.widget_children in
+  let rec find_labelled_model_buttons w acc =
+    let acc =
+      if String.equal (type_name w) "GtkModelButton"
+      then (
+        let rec first_label w =
+          if String.equal (type_name w) "GtkLabel"
+          then Some (W.Label.get_text (cast w))
+          else List.find_map (widget_children w) ~f:first_label
+        in
+        (Option.value (first_label w) ~default:"?", w) :: acc)
+      else acc
+    in
+    List.fold (widget_children w) ~init:acc ~f:(fun acc c ->
+      find_labelled_model_buttons c acc)
+  in
+  let live =
+    Scheduler.with_patch_guard scheduler (fun () ->
+      let live = P.patch ctx ~path:"same-node" ~is_root:true live (view ~armed:true) in
+      P.run_fixups ctx;
+      live)
+  in
+  let mb : W.Menu_button.t = cast (button live) in
+  W.Menu_button.popup mb;
+  pump ();
+  (match W.Menu_button.get_popover mb with
+   | None -> printf "same-node menu+actions in one frame: no internal popover\n"
+   | Some p ->
+     find_labelled_model_buttons ((p :> Widget.t) : Widget.t) []
+     |> List.iter ~f:(fun (text, w) ->
+       printf
+         "same-node menu+actions in one frame: item %s sensitive=%b\n"
+         text
+         (W.Widget.get_sensitive w)));
+  W.Menu_button.popdown mb;
+  pump ();
+  printf
+    "same-node own.x activates: %b\n"
+    (Widget.activate_action_variant (button live) "own.x" None);
+  P.destroy ctx live;
+  printf "same-node measurement done\n"
+;;
+
 (* Task-6 review M5, the measurement: same-scope shadowing. A descendant inserts
    [~scope:"app" [y]] while an ancestor holds [~scope:"app" [x]]; does GTK's muxer fall
    through to the ancestor's "app" for a name the nearer group lacks? The probes go
