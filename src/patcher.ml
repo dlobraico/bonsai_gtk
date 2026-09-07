@@ -16,12 +16,19 @@ type ctx = Patcher_fixups.ctx =
   ; stack_claims : stack_claim Queue.t
   ; fixups : (unit -> unit) Queue.t
   ; autofocus_claims : autofocus_claim Queue.t
+  ; mutable deferred_autofocus : deferred_autofocus option
   ; windows : (Key.t, Widget.t) Hashtbl.t
   }
 
 and autofocus_claim = Patcher_fixups.autofocus_claim =
   { autofocus_path : string
   ; autofocus_widget : Widget.t
+  }
+
+and deferred_autofocus = Patcher_fixups.deferred_autofocus =
+  { deferred_widget : Widget.t
+  ; deferred_handler : Gobject.Signal.handler_id
+  ; mutable deferred_fired : bool
   }
 
 and stack_claim = Patcher_fixups.stack_claim =
@@ -60,6 +67,9 @@ type live =
    both paths, and a single exhaustive match is what makes adding one a compile error in
    the one place rather than a silent leak in the other. *)
 let release_kind ctx ~(node : Node.t) ~(widget : Widget.t) =
+  (* Before the kind-specific half, and for every kind: a grab parked on this widget's
+     rooting must not outlive the widget (see [Patcher_fixups.cancel_deferred_autofocus]). *)
+  Patcher_fixups.cancel_deferred_autofocus ctx widget;
   match node.kind with
   (* A window has no parent to unparent it, so it must be destroyed explicitly. The
      registry entry goes first (guarded by widget identity, so a window that was never

@@ -298,12 +298,17 @@ val can_focus : bool -> t
     window, so an autofocus in the window body plus one inside a closed popover in the
     same frame is the two-claims [Invalid_argument].
 
-    {b Under [Bonsai_gtk.Expert.embed], the mount-frame grab does nothing.} At fixup time
-    an embedded tree has no [GtkRoot] yet -- the caller parents the wrapper only after
-    [create] returns -- and [gtk_widget_grab_focus] on a rootless widget returns FALSE
-    outright; fire-once means it is not retried. A later false-to-true flip, after the
-    host has rooted the wrapper, works. Deferring the lost mount-frame grab to a
-    root-change is tracked as bead [bonsai_gtk-vdy].
+    {b Under [Bonsai_gtk.Expert.embed], the mount-frame grab waits for the host.} At fixup
+    time an embedded tree has no [GtkRoot] yet -- the caller parents the wrapper only
+    after [embed] returns -- and [gtk_widget_grab_focus] on a rootless widget returns
+    FALSE outright. So a grab whose widget has no root is not fired and lost but parked on
+    that widget's [notify::root], and lands the moment the host roots the wrapper: the
+    palette shape -- a page whose entry should hold focus when it appears -- works whether
+    the host parents the page before or after the first frame (measured,
+    [test/live/live_embed.ml]). Fire-once still holds across the wait: a second
+    false-to-true flip while the tree is still unrooted supersedes the parked grab rather
+    than adding to it, and a tree stopped before it is ever rooted drops it. Once the tree
+    is rooted the attr behaves exactly as under [start].
 
     This is a deliberately narrow interim primitive. Who holds focus is state the model
     should own -- a full focus-is-state design (focus following the model,

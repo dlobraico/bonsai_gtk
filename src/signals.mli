@@ -35,11 +35,15 @@ type ctx =
     the driver's [on_root_widget_changed] -- which is precisely what makes the wrapper
     finalisable, because while the backstop is connected the closure cycle (wrapper -> the
     handler's GClosure -> the driver -> [on_root_widget_changed] -> wrapper) holds it
-    alive. Everything else this module connects -- the [notify::] read-backs, the
-    connections that name a [GtkTextBuffer], a [GtkStringList] or an event controller --
-    is disconnected by [Patcher.destroy] before its widget can be collected, and could not
-    be reached from the collector anyway: a connected closure roots the driver, which
-    roots the widget.
+    alive. The one [notify::root] connection, [Patcher_fixups.defer_autofocus]'s parked
+    [Attr.autofocus] grab, is connected only while its widget is unrooted -- the state in
+    which dispose cannot emit that notify, since [gtk_widget_unroot] runs only for a
+    rooted widget -- fires and disconnects itself on the first rooting, and is cancelled
+    by [Patcher.release_kind] before the widget can become collectable. Everything else
+    this module connects -- the [notify::] read-backs, the connections that name a
+    [GtkTextBuffer], a [GtkStringList] or an event controller -- is disconnected by
+    [Patcher.destroy] before its widget can be collected, and could not be reached from
+    the collector anyway: a connected closure roots the driver, which roots the widget.
 
     A new signal added to a widget impl's [Widget_impl.signals] is safe by construction --
     [Patcher.destroy] disconnects the whole list. A connection made anywhere {i else} is

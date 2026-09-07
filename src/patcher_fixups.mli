@@ -18,12 +18,19 @@ type ctx =
   ; stack_claims : stack_claim Queue.t
   ; fixups : (unit -> unit) Queue.t
   ; autofocus_claims : autofocus_claim Queue.t
+  ; mutable deferred_autofocus : deferred_autofocus option
   ; windows : (Key.t, Widget.t) Hashtbl.t
   }
 
 and autofocus_claim =
   { autofocus_path : string
   ; autofocus_widget : Widget.t
+  }
+
+and deferred_autofocus =
+  { deferred_widget : Widget.t
+  ; deferred_handler : Gobject.Signal.handler_id
+  ; mutable deferred_fired : bool
   }
 
 and stack_claim =
@@ -75,6 +82,14 @@ val apply_stack_claims : ctx -> unit
     most one per toplevel per frame; two is [Invalid_argument] naming both paths, via
     [Events.autofocus_rejection]) and then applied with [Widget.grab_focus]. *)
 val claim_autofocus : ctx -> path:string -> Widget.t -> unit
+
+(** Forgets a grab {!run_fixups} parked on [widget]'s [notify::root] because the widget
+    had no root at fixup time (an embedded tree the host had not parented yet), and
+    disconnects the handler if it has not fired. A no-op for any other widget. Called by
+    [Patcher.release_kind] for every widget it tears down, so that the connection never
+    outlives the shadow tree's reference to the widget -- see [defer_autofocus] in the
+    implementation for why the connection is safe on [Signals]' terms. *)
+val cancel_deferred_autofocus : ctx -> Widget.t -> unit
 
 (** See {!Patcher.run_fixups}. *)
 val run_fixups : ctx -> unit

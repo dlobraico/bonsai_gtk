@@ -120,6 +120,30 @@ end
 
 let counted = Native.impl (module Counted)
 
+(* The palette shape under [embed]: a page whose entry should hold focus when it appears.
+   A plain entry sits {i first} so that the probe cannot be satisfied by GTK's own default
+   -- a presented window with no focus widget focuses its first focusable child, which
+   would be the autofocused entry itself if it came first. The second computation flips a
+   {i second} entry's autofocus on a click, so that a false-to-true edge can happen while
+   the tree is still unrooted. *)
+let autofocus_entry (_graph @ local) =
+  Bonsai.return
+    (Node.box
+       ~orientation:Vertical
+       [ Node.entry ~text:"" (); Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" () ])
+;;
+
+let autofocus_flip (graph @ local) =
+  let n, set_n = Bonsai.state 0 graph in
+  let%arr n and set_n in
+  Node.box
+    ~orientation:Vertical
+    [ Node.entry ~attrs:[ Attr.autofocus true ] ~text:"" ()
+    ; Node.entry ~attrs:[ Attr.autofocus (n > 0) ] ~text:"" ()
+    ; Node.button ~attrs:[ Attr.on_clicked (set_n (n + 1)) ] ~label:"flip" ()
+    ]
+;;
+
 (* A mount that raises on its last child, with three fully-built siblings in front of it.
    [Attr.on_clicked] on a [Node.label] is refused by [require_specs] -- a label emits no
    [clicked], so the handler would be silently inert -- which is a realistic application
@@ -396,6 +420,89 @@ let () =
   Expert.Embedded.stop changer;
   W.Stack.remove stack2 (Expert.Embedded.widget changer);
   W.Window.destroy host2;
+  (* ---------------------------------------------------------------------------------
+     {b [Attr.autofocus] on the mount frame} (bead bonsai_gtk-vdy).
+
+     At fixup time an embedded tree has no [GtkRoot]: the caller parents the wrapper only
+     after [embed] returns, and [gtk_widget_grab_focus] on a rootless widget returns FALSE
+     outright. Fire-once used to mean the grab was simply lost, so the palette shape -- a
+     dialog page whose entry should hold focus when it appears -- silently did not. The
+     grab is now deferred to the widget's [notify::root], a one-shot that fires when the
+     host parents the wrapper into a rooted tree; the probe is the host window's focus
+     widget, never [has_focus] on the entry, because an entry's focus widget is its
+     internal [GtkText]. *)
+  let focus_in host target =
+    W.Widget.has_focus target
+    ||
+    match W.Window.get_focus host with
+    | None -> false
+    | Some f -> W.Widget.is_ancestor f target
+  in
+  let host3 = W.Window.new_ () in
+  let stack3 = W.Stack.new_ () in
+  W.Window.set_child host3 (Some (cast stack3 : Widget.t));
+  let focused = Expert.embed ~time_source:(time_source ()) autofocus_entry in
+  printf
+    "autofocus under embed, before the caller parents it: root %s\n"
+    (match W.Widget.get_root (Expert.Embedded.widget focused) with
+     | None -> "none"
+     | Some _ -> "some");
+  ignore
+    (W.Stack.add_named stack3 (Expert.Embedded.widget focused) (Some "page")
+     : W.Stack_page.t);
+  W.Window.present host3;
+  drain ();
+  printf
+    "autofocus under embed, after the host roots it: plain=%b autofocus=%b\n"
+    (focus_in host3 (nth focused 0))
+    (focus_in host3 (nth focused 1));
+  Expert.Embedded.stop focused;
+  W.Stack.remove stack3 (Expert.Embedded.widget focused);
+  (* A later flip while still unrooted supersedes the earlier deferral: the latest
+     false-to-true edge is the one that lands, which is what it would have been had the
+     tree been rooted for both frames. *)
+  let flipped = Expert.embed ~time_source:(time_source ()) autofocus_flip in
+  click (nth flipped 2);
+  ignore
+    (W.Stack.add_named stack3 (Expert.Embedded.widget flipped) (Some "page")
+     : W.Stack_page.t);
+  drain ();
+  printf
+    "autofocus flipped while unrooted, then rooted: e1=%b e2=%b\n"
+    (focus_in host3 (nth flipped 0))
+    (focus_in host3 (nth flipped 1));
+  Expert.Embedded.stop flipped;
+  W.Stack.remove stack3 (Expert.Embedded.widget flipped);
+  (* And a deferral that never lands: the embed is stopped before anyone parents it, and
+     the wrapper is rooted only afterwards. The teardown cancels the parked connection
+     ([Patcher.release_kind]), so rooting the emptied wrapper reaches no callback and no
+     widget stays pinned by one; what this pins observably is that the sequence is
+     ordinary -- no raise, and nothing under the re-rooted wrapper holding focus. (Two
+     things this probe deliberately does not ask. Whether the entry was finalised: ocgtk
+     hands back a fresh OCaml wrapper per lookup, so a finaliser on it measures nothing.
+     And what [Window.get_focus] returns in absolute terms: measured, after the stopped
+     page above was removed the host still reports that page's [GtkText] -- unrooted, no
+     longer under the stack -- as its focus widget, so the honest question is where focus
+     is {i not}.) *)
+  let abandoned =
+    Expert.embed
+      ~time_source:(time_source ())
+      ~target_frames_per_second:0.
+      autofocus_entry
+  in
+  Expert.Embedded.stop abandoned;
+  ignore
+    (W.Stack.add_named stack3 (Expert.Embedded.widget abandoned) (Some "page")
+     : W.Stack_page.t);
+  drain ();
+  printf
+    "autofocus deferred, stopped before rooting, then rooted: focus under the wrapper %b\n"
+    (match W.Window.get_focus host3 with
+     | None -> false
+     | Some f -> W.Widget.is_ancestor f (Expert.Embedded.widget abandoned));
+  W.Stack.remove stack3 (Expert.Embedded.widget abandoned);
+  W.Window.destroy host3;
+  drain ();
   (* ---------------------------------------------------------------------------------
      {b A mount that raises leaves nothing behind} (task-12-review.md I1).
 

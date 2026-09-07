@@ -52,6 +52,13 @@ type ctx = private
       [Invalid_argument] naming both paths) and then applied with [Widget.grab_focus],
       whose refusal -- a widget that is not focusable -- is GTK's answer and is not
       retried. Empty between passes. *)
+  ; mutable deferred_autofocus : deferred_autofocus option
+  (** The one grab of the claims above that could not fire because its widget had no
+      [GtkRoot] at fixup time -- an embedded tree before the host has parented the wrapper
+      -- parked on a one-shot [notify::root] on that widget and fired when the host roots
+      it. One slot: a rootless tree has one future root, so a later deferral supersedes an
+      earlier one the way a later flip supersedes an earlier grab. Dropped by the widget's
+      own teardown. *)
   ; windows : (Key.t, Widget.t) Hashtbl.t
   (** The live [GtkWindow]s of a {!Bonsai_gtk_vtree.Node.windows} root, by their [~key] —
       registered by each child's mount and dropped by its teardown, so a sibling's
@@ -65,6 +72,12 @@ type ctx = private
 and autofocus_claim = private
   { autofocus_path : string
   ; autofocus_widget : Widget.t
+  }
+
+and deferred_autofocus = private
+  { deferred_widget : Widget.t
+  ; deferred_handler : Gobject.Signal.handler_id
+  ; mutable deferred_fired : bool
   }
 
 and stack_claim = private

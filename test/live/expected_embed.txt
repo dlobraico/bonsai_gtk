@@ -51,6 +51,10 @@ the widget the patcher replaced is a GtkButton whose parent is now nothing
         (GtkButton (label (+)) (css (text-button))
          (children (GtkLabel (text +))))))))))))
 a click on the new content reached the model: "loaded 2", broken false
+autofocus under embed, before the caller parents it: root none
+autofocus under embed, after the host roots it: plain=false autofocus=true
+autofocus flipped while unrooted, then rooted: e1=false e2=true
+autofocus deferred, stopped before rooting, then rooted: focus under the wrapper false
 a mount that raises: root/3: Label does not emit On_clicked
 the siblings it had already built were torn down: 2 native destroys of 2
 a first frame rejected after the walk: root/3: two Node.stacks are named "nav" in one tree

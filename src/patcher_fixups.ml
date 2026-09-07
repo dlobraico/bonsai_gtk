@@ -33,6 +33,13 @@ type ctx =
        A queue of its own rather than closures in [fixups], because the
        once-per-frame-per-toplevel check has to see all of them together. *)
     autofocus_claims : autofocus_claim Queue.t
+  ; (* A grab [apply_autofocus] could not fire because its widget had no [GtkRoot] at
+       fixup time -- an embedded tree before the host has parented the wrapper -- parked
+       on a one-shot [notify::root] on that widget. One slot rather than a queue: a
+       rootless tree has exactly one future root, so a later deferral supersedes the
+       earlier one the way a later false-to-true flip supersedes an earlier grab in a
+       rooted tree. See [defer_autofocus]. *)
+    mutable deferred_autofocus : deferred_autofocus option
   ; (* The live [GtkWindow]s of a [Node.windows] root, by their [~key] -- registered by
        each child's mount and dropped by its teardown, so a sibling's [~transient_for] can
        resolve after the whole list exists whichever order the walk mounted them in. See
@@ -43,6 +50,17 @@ type ctx =
 and autofocus_claim =
   { autofocus_path : string
   ; autofocus_widget : Widget.t
+  }
+
+and deferred_autofocus =
+  { deferred_widget : Widget.t
+  ; deferred_handler : Gobject.Signal.handler_id
+  ; (* Set by the callback once it has fired and disconnected itself, so that a later
+       [cancel_deferred_autofocus] or a superseding deferral does not disconnect an id
+       that is already gone (a GLib critical). Shared with the callback's closure, which
+       is why it is a field of a record the closure captures rather than of [ctx]: the
+       closure must not capture [ctx], or a GClosure would root the driver. *)
+    mutable deferred_fired : bool
   }
 
 and stack_claim =
@@ -62,6 +80,7 @@ let create_ctx ?(report = default_report) ~signals ~on_window_created () =
   ; stack_claims = Queue.create ()
   ; fixups = Queue.create ()
   ; autofocus_claims = Queue.create ()
+  ; deferred_autofocus = None
   ; windows = Hashtbl.create (module Key)
   }
 ;;
@@ -73,6 +92,85 @@ let drop_on_window_created ctx = ctx.on_window_created <- (fun (_ : Widget.t) ->
 
 let claim_autofocus ctx ~path widget =
   Queue.enqueue ctx.autofocus_claims { autofocus_path = path; autofocus_widget = widget }
+;;
+
+(* Disconnects a deferral that has not fired, and forgets it either way. *)
+let drop_deferred_autofocus ctx =
+  Option.iter ctx.deferred_autofocus ~f:(fun d ->
+    if not d.deferred_fired
+    then (
+      d.deferred_fired <- true;
+      Gobject.Signal.disconnect d.deferred_widget d.deferred_handler));
+  ctx.deferred_autofocus <- None
+;;
+
+let cancel_deferred_autofocus ctx widget =
+  match ctx.deferred_autofocus with
+  | Some d when Gobject.same d.deferred_widget widget -> drop_deferred_autofocus ctx
+  | Some _ | None -> ()
+;;
+
+(* A grab whose widget has no root yet, parked on the widget's own [notify::root].
+
+   This is a [notify::] on a property a widget clears on the way down, which [Signals]'
+   rule about dispose-time signals names as a signal never to connect to -- so here is why
+   this one is safe, on that rule's own terms. The handler is connected only while the
+   widget is {i unrooted}, and [gtk_widget_unroot] (the one place dispose could emit
+   [notify::root] from) runs only for a widget that {i has} a root: a rootless widget's
+   dispose cannot reach this callback. The first rooting fires the callback, which
+   disconnects itself before anything else can happen to the widget. And a widget that is
+   destroyed while still unrooted -- an embed stopped before its host ever parented it, or
+   a patch that drops the entry while the tree is still off screen -- goes through
+   [Patcher.release_kind], which calls [cancel_deferred_autofocus] and disconnects the
+   handler in the same teardown that makes the widget collectable. So the connection is
+   never alive on a widget GTK could dispose from the collector, and it never outlives the
+   shadow tree's own reference to the widget.
+
+   The callback captures the widget and the record, never [ctx]: a GClosure roots what it
+   captures for as long as it is connected, and capturing [ctx] would root the driver from
+   a widget the driver may already have let go of.
+
+   [notify::root] is also emitted on unrooting, with the property now [None]; that cannot
+   happen while this handler is connected (the widget is unrooted the whole time), but the
+   callback checks anyway rather than grabbing on a [None] it cannot explain. The grab's
+   [bool] is dropped exactly as [apply_autofocus] drops it. *)
+let defer_autofocus ctx widget =
+  drop_deferred_autofocus ctx;
+  let record = ref None in
+  let fire () =
+    match !record with
+    | None -> ()
+    | Some d ->
+      (match Widget.get_root widget with
+       | None -> ()
+       | Some _ ->
+         if not d.deferred_fired
+         then (
+           d.deferred_fired <- true;
+           Gobject.Signal.disconnect widget d.deferred_handler;
+           ignore (Widget.grab_focus widget : bool)))
+  in
+  let handler =
+    Gobject.Signal.connect_simple
+      widget
+      ~name:"notify::root"
+      ~callback:(fun () ->
+        (* A C-called frame: report-then-swallow, like every trampoline. *)
+        try fire () with
+        | exn ->
+          (try
+             eprintf
+               "bonsai_gtk: exception firing a deferred Attr.autofocus grab: %s\n%!"
+               (Exn.to_string exn)
+           with
+           | _ -> ()))
+      ~after:false
+  in
+  let d =
+    { deferred_widget = widget; deferred_handler = handler; deferred_fired = false }
+  in
+  record := Some d;
+  ctx.deferred_autofocus <- Some d
 ;;
 
 (* The grabs of one pass, checked together and then fired. Two grabs aimed at one toplevel
@@ -87,7 +185,11 @@ let claim_autofocus ctx ~path widget =
 
    The [bool] answer of [grab_focus] is dropped: a widget that refuses the grab (not
    focusable, or its focus vfunc declined) is GTK's answer at grab time, and there is
-   nothing to do about it on this frame. Fire-once means exactly that.
+   nothing to do about it on this frame. Fire-once means exactly that -- with one
+   exception that is not a refusal: a widget with no [GtkRoot] at all, which is an
+   embedded tree the host has not parented yet. [gtk_widget_grab_focus] returns FALSE for
+   one before consulting anything, and the grab is parked on the widget's rooting instead;
+   see [defer_autofocus].
 
    Emptied even when the duplicate check raises, on [run_fixups]'s reasoning: the queue
    describes one pass. *)
@@ -112,7 +214,10 @@ let apply_autofocus ctx =
                ~first:earlier.autofocus_path
                ~second:c.autofocus_path)
         | None -> ());
-      List.iter claims ~f:(fun c -> ignore (Widget.grab_focus c.autofocus_widget : bool)))
+      List.iter claims ~f:(fun c ->
+        match root_of c with
+        | Some _ -> ignore (Widget.grab_focus c.autofocus_widget : bool)
+        | None -> defer_autofocus ctx c.autofocus_widget))
     ~finally:(fun () -> Queue.clear ctx.autofocus_claims)
 ;;
 

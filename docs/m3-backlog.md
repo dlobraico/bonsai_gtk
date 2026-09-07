@@ -96,10 +96,11 @@ Every bullet from m2-backlog's list, accounted for by name:
 
 - **The declarative focus model** — the largest named gap, again, and now with a
   concrete interim floor to build from: `Attr.autofocus` (fire-once, at most one per
-  frame per toplevel) shipped in M3 for the palette/dialog open-grab — with one known
-  hole: the mount-frame grab is a rootless silent no-op under `Expert.embed` (the tree
-  is parented after the frame), ruled doc-only for M3 with the real fix filed as bead
-  `bonsai_gtk-vdy` (a map/`notify::root` retry candidate) — and everything
+  frame per toplevel) shipped in M3 for the palette/dialog open-grab. Its one known
+  hole — the mount-frame grab was a rootless silent no-op under `Expert.embed` (the
+  tree is parented after the frame) — was closed after M3 (bead `bonsai_gtk-vdy`): a
+  rootless grab is parked on the widget's `notify::root` and lands when the host roots
+  the wrapper, cancelled by the widget's teardown — and everything
   beyond it — who holds focus as *state*, `set_focus None` on page swaps,
   `select_region`, `~default_widget` — stays app-side or impossible. The port's
   remaining imperative focus calls are enumerated in the M3 plan's stavekeeper section.
